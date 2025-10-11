@@ -142,6 +142,21 @@ ENUM_OPTIONS = [
     CONF_POWER_ON_METHOD,
 ]
 
+# ---- Frame Art options (stored in entry.options) ----------------------------
+OPT_FRAME_ART_ENABLED = "frame_art_enabled"
+OPT_FRAME_ART_SOURCE_OFF = "frame_art_source_off"
+OPT_FRAME_ART_APP_ID = "frame_art_app_id"
+OPT_FRAME_ART_SELECT_DELAY = "frame_art_select_delay"
+OPT_FRAME_ART_RETRIES = "frame_art_retries"
+OPT_FRAME_ART_RETRY_SLEEP = "frame_art_retry_sleep"
+
+DEF_FRAME_ART_ENABLED = True
+DEF_FRAME_ART_APP_ID = "TV/HDMI"
+DEF_FRAME_ART_SELECT_DELAY = 0.6
+DEF_FRAME_ART_RETRIES = 6
+DEF_FRAME_ART_RETRY_SLEEP = 0.35
+# ---------------------------------------------------------------------------
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -688,6 +703,40 @@ class OptionsFlowHandler(OptionsFlow):
             )
         else:
             data_schema = vol.Schema(opt_schema)
+
+        # ---- Frame Art fields (always visible in standard options) ----------
+        frame_art_schema = {
+            vol.Optional(
+                OPT_FRAME_ART_ENABLED,
+                default=options.get(OPT_FRAME_ART_ENABLED, DEF_FRAME_ART_ENABLED),
+            ): bool,
+            vol.Optional(
+                OPT_FRAME_ART_SOURCE_OFF,
+                default=options.get(OPT_FRAME_ART_SOURCE_OFF, ""),
+            ): str,
+            vol.Optional(
+                OPT_FRAME_ART_APP_ID,
+                default=options.get(OPT_FRAME_ART_APP_ID, DEF_FRAME_ART_APP_ID),
+            ): str,
+            vol.Optional(
+                OPT_FRAME_ART_SELECT_DELAY,
+                default=options.get(
+                    OPT_FRAME_ART_SELECT_DELAY, DEF_FRAME_ART_SELECT_DELAY
+                ),
+            ): vol.Coerce(float),
+            vol.Optional(
+                OPT_FRAME_ART_RETRIES,
+                default=options.get(OPT_FRAME_ART_RETRIES, DEF_FRAME_ART_RETRIES),
+            ): vol.Coerce(int),
+            vol.Optional(
+                OPT_FRAME_ART_RETRY_SLEEP,
+                default=options.get(
+                    OPT_FRAME_ART_RETRY_SLEEP, DEF_FRAME_ART_RETRY_SLEEP
+                ),
+            ): vol.Coerce(float),
+        }
+        data_schema = data_schema.extend(frame_art_schema)
+        # ---------------------------------------------------------------------
 
         if not self._adv_chk:
             data_schema = data_schema.extend(
