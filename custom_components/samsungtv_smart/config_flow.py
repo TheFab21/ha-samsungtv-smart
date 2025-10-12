@@ -1,3 +1,4 @@
+# -- DEBUT FICHIER --  (copie intégrale)
 """Config flow for Samsung TV."""
 
 from __future__ import annotations
@@ -174,10 +175,9 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    # pylint: disable=no-member # https://github.com/PyCQA/pylint/issues/3167
+    # pylint: disable=no-member
 
     def __init__(self) -> None:
-        """Initialize flow."""
         self._user_data = None
         self._st_devices_schema = None
 
@@ -195,24 +195,20 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         self._error: str | None = None
 
     def _stdev_already_used(self, devices_id) -> bool:
-        """Check if a device_id is in HA config."""
         for entry in self._async_current_entries():
             if entry.data.get(CONF_DEVICE_ID, "") == devices_id:
                 return True
         return False
 
     def _remove_stdev_used(self, devices_list: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove entry already used"""
         res_dev_list = devices_list.copy()
-
-        for dev_id in devices_list.keys():
+        for dev_id in list(devices_list.keys()):
             if self._stdev_already_used(dev_id):
                 res_dev_list.pop(dev_id)
         return res_dev_list
 
     @staticmethod
     def _extract_dev_name(device) -> str:
-        """Extract device neme from SmartThings Info"""
         name = device["name"]
         label = device.get("label", "")
         if label:
@@ -220,7 +216,6 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         return name
 
     def _prepare_dev_schema(self, devices_list) -> vol.Schema:
-        """Prepare the schema for select correct ST device"""
         validate = {}
         for dev_id, infos in devices_list.items():
             device_name = self._extract_dev_name(infos)
@@ -228,7 +223,6 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         return vol.Schema({vol.Required(CONF_ST_DEVICE): vol.In(validate)})
 
     async def _get_st_deviceid(self, st_device_label="") -> str:
-        """Try to detect SmartThings device id."""
         session = async_get_clientsession(self.hass)
         devices_list = await SamsungTVInfo.get_st_devices(
             self._api_key, session, st_device_label
@@ -246,7 +240,6 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         return RESULT_SUCCESS
 
     async def _try_connect(self, *, port=None, token=None, skip_info=False) -> str:
-        """Try to connect and check auth."""
         self._tv_info = SamsungTVInfo(self.hass, self._host, self._ws_name)
 
         session = async_get_clientsession(self.hass)
@@ -258,23 +251,18 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
             self._ping_port = self._tv_info.ping_port
             if not skip_info:
                 self._device_info = await get_device_info(self._host, session)
-
         return result
 
     @callback
     def _get_api_key(self) -> str | None:
-        """Get api key in configured entries if available."""
         for entry in self._async_current_entries():
-            if CONF_API_KEY in entry.data:
-                if not entry.data.get(CONF_ST_ENTRY_UNIQUE_ID):
-                    return entry.data[CONF_API_KEY]
+            if CONF_API_KEY in entry.data and not entry.data.get(CONF_ST_ENTRY_UNIQUE_ID):
+                return entry.data[CONF_API_KEY]
         return None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle a flow initialized by the user."""
-
         if not is_valid_ha_version():
             return self.async_abort(
                 reason="unsupported_version",
@@ -326,7 +314,6 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         result = RESULT_SUCCESS
         if self._api_key:
             result = await self._get_st_deviceid()
-
             if result == RESULT_SUCCESS and not self._device_id:
                 if self._st_devices_schema:
                     return await self.async_step_stdevice()
@@ -340,19 +327,16 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_stdevice(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle a flow to select ST device."""
         if user_input is None:
             return self._show_form(step_id="stdevice")
 
         self._device_id = user_input.get(CONF_ST_DEVICE)
-
         result = await self._try_connect()
         return await self._manage_result(result)
 
     async def async_step_stdeviceid(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle a flow to manual input a ST device."""
         if user_input is None:
             return self._show_form(step_id="stdeviceid")
 
@@ -361,7 +345,6 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
             return self._show_form(errors=RESULT_ST_DEVICE_USED, step_id="stdeviceid")
 
         self._device_id = device_id
-
         result = await self._try_connect()
         if result == RESULT_ST_DEVICE_NOT_FOUND:
             return self._show_form(errors=result, step_id="stdeviceid")
@@ -370,7 +353,6 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle reconfiguration of the integration."""
         entry = self._get_reconfigure_entry()
         if entry.unique_id == entry.data[CONF_HOST]:
             return self.async_abort(reason="host_unique_id")
@@ -399,9 +381,7 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         self._st_entry_unique_id = None
         if st_entry_unique_id:
             if not (api_key := get_smartthings_api_key(self.hass, st_entry_unique_id)):
-                return self._show_form(
-                    errors="st_api_key_fail", step_id=SOURCE_RECONFIGURE
-                )
+                return self._show_form(errors="st_api_key_fail", step_id=SOURCE_RECONFIGURE)
             self._st_entry_unique_id = st_entry_unique_id
         else:
             api_key = api_key or entry.data.get(CONF_API_KEY)
@@ -417,8 +397,6 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         return self._manage_reconfigure(result)
 
     async def _manage_result(self, result: str, is_user_step=False) -> ConfigFlowResult:
-        """Manage the previous result."""
-
         if result != RESULT_SUCCESS:
             self._error = result
             if result == RESULT_ST_DEVICE_NOT_FOUND:
@@ -431,26 +409,20 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
             unique_id = self._device_info[ATTR_DEVICE_ID]
         else:
             mac = self._device_info.get(ATTR_DEVICE_MAC)
-            unique_id = mac or self._host  # as last option we use host as unique id
+            unique_id = mac or self._host
 
         await self.async_set_unique_id(unique_id)
         self._abort_if_unique_id_configured()
-
         return self._save_entry()
 
     @callback
     def _manage_reconfigure(self, result: str) -> ConfigFlowResult:
-        """Manage the reconfigure result."""
-
         if result != RESULT_SUCCESS:
             self._error = result
             return self._show_form(step_id=SOURCE_RECONFIGURE)
 
         entry = self._get_reconfigure_entry()
-        updates = {
-            CONF_HOST: self._host,
-            CONF_PORT: self._tv_info.ws_port,
-        }
+        updates = {CONF_HOST: self._host, CONF_PORT: self._tv_info.ws_port}
         if self._token:
             updates[CONF_TOKEN] = self._token
 
@@ -465,7 +437,6 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @callback
     def _save_entry(self) -> ConfigFlowResult:
-        """Generate new entry."""
         data = {
             CONF_HOST: self._host,
             CONF_NAME: self._name,
@@ -501,76 +472,48 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(title=title, data=data, options=options)
 
     def _get_init_schema(self) -> vol.Schema:
-        """Return the schema for initial configuration form."""
         data = self._user_data or {}
         st_entries = get_smartthings_entries(self.hass)
 
         init_schema = {
             vol.Required(CONF_HOST, default=data.get(CONF_HOST, "")): str,
             vol.Required(CONF_NAME, default=data.get(CONF_NAME, "")): str,
-            vol.Optional(
-                CONF_USE_HA_NAME, default=data.get(CONF_USE_HA_NAME, False)
-            ): bool,
-            vol.Optional(
-                CONF_API_KEY,
-                description={"suggested_value": data.get(CONF_API_KEY, "")},
-            ): str,
+            vol.Optional(CONF_USE_HA_NAME, default=data.get(CONF_USE_HA_NAME, False)): bool,
+            vol.Optional(CONF_API_KEY, description={"suggested_value": data.get(CONF_API_KEY, "")}): str,
         }
 
         if st_entries:
             st_unique_id = data.get(CONF_ST_ENTRY_UNIQUE_ID)
             sugg_val = st_unique_id if st_unique_id in st_entries else None
             init_schema.update(
-                {
-                    vol.Optional(
-                        CONF_ST_ENTRY_UNIQUE_ID,
-                        description={"suggested_value": sugg_val},
-                    ): SelectSelector(_dict_to_select(st_entries)),
-                }
+                {vol.Optional(CONF_ST_ENTRY_UNIQUE_ID, description={"suggested_value": sugg_val}): SelectSelector(_dict_to_select(st_entries))}
             )
 
         return vol.Schema(init_schema)
 
     def _get_reconfigure_schema(self) -> vol.Schema:
-        """Return the schema for reconfiguration form."""
         entry = self._get_reconfigure_entry()
         data = entry.data
         st_entries = get_smartthings_entries(self.hass)
 
-        init_schema = {
-            vol.Required(CONF_HOST, default=data.get(CONF_HOST, "")): str,
-        }
+        init_schema = {vol.Required(CONF_HOST, default=data.get(CONF_HOST, "")): str}
 
         if CONF_API_KEY in data and CONF_DEVICE_ID in data:
             st_unique_id = data.get(CONF_ST_ENTRY_UNIQUE_ID)
             use_st_key = st_entries is not None and st_unique_id in st_entries
             sugg_val = data[CONF_API_KEY] if not use_st_key else ""
-            init_schema.update(
-                {
-                    vol.Optional(
-                        CONF_API_KEY, description={"suggested_value": sugg_val}
-                    ): str,
-                }
-            )
+            init_schema.update({vol.Optional(CONF_API_KEY, description={"suggested_value": sugg_val}): str})
 
             if st_entries:
                 sugg_val = st_unique_id if use_st_key else None
                 init_schema.update(
-                    {
-                        vol.Optional(
-                            CONF_ST_ENTRY_UNIQUE_ID,
-                            description={"suggested_value": sugg_val},
-                        ): SelectSelector(_dict_to_select(st_entries)),
-                    }
+                    {vol.Optional(CONF_ST_ENTRY_UNIQUE_ID, description={"suggested_value": sugg_val}): SelectSelector(_dict_to_select(st_entries))}
                 )
 
         return vol.Schema(init_schema)
 
     @callback
-    def _show_form(
-        self, errors: str | None = None, step_id=SOURCE_USER
-    ) -> ConfigFlowResult:
-        """Show the form to the user."""
+    def _show_form(self, errors: str | None = None, step_id=SOURCE_USER) -> ConfigFlowResult:
         base_err = errors or self._error
         self._error = None
 
@@ -583,16 +526,11 @@ class SamsungTVConfigFlow(ConfigFlow, domain=DOMAIN):
         else:
             data_schema = self._get_init_schema()
 
-        return self.async_show_form(
-            step_id=step_id,
-            data_schema=data_schema,
-            errors={CONF_BASE: base_err} if base_err else None,
-        )
+        return self.async_show_form(step_id=step_id, data_schema=data_schema, errors={CONF_BASE: base_err} if base_err else None)
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry) -> OptionsFlowHandler:
-        """Get the options flow for this handler."""
+    def async_get_options_flow(config_entry) -> "OptionsFlowHandler":
         return OptionsFlowHandler(config_entry)
 
 
@@ -600,20 +538,11 @@ class OptionsFlowHandler(OptionsFlow):
     """Handle an option flow for Samsung TV Smart."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
         self._entry_id = config_entry.entry_id
         self._adv_chk = False
         self._std_options = config_entry.options.copy()
-        self._adv_options = {
-            key: values
-            for key, values in config_entry.options.items()
-            if key in ADVANCED_OPTIONS
-        }
-        self._sync_ent_opt = {
-            key: values
-            for key, values in config_entry.options.items()
-            if key in [CONF_SYNC_TURN_OFF, CONF_SYNC_TURN_ON]
-        }
+        self._adv_options = {k: v for k, v in config_entry.options.items() if k in ADVANCED_OPTIONS}
+        self._sync_ent_opt = {k: v for k, v in config_entry.options.items() if k in [CONF_SYNC_TURN_OFF, CONF_SYNC_TURN_ON]}
         self._app_list = self._std_options.get(CONF_APP_LIST)
         self._channel_list = self._std_options.get(CONF_CHANNEL_LIST)
         self._source_list = self._std_options.get(CONF_SOURCE_LIST)
@@ -623,7 +552,6 @@ class OptionsFlowHandler(OptionsFlow):
 
     @callback
     def _save_entry(self, data) -> ConfigFlowResult:
-        """Save configuration options"""
         data.update(self._adv_options)
         data.update(self._sync_ent_opt)
         entry_data = {k: v for k, v in data.items() if v is not None}
@@ -633,11 +561,9 @@ class OptionsFlowHandler(OptionsFlow):
         entry_data[CONF_APP_LIST] = self._app_list or {}
         entry_data[CONF_CHANNEL_LIST] = self._channel_list or {}
         entry_data[CONF_SOURCE_LIST] = self._source_list or {}
-
         return self.async_create_entry(title="", data=entry_data)
 
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
-        """Handle initial options flow."""
         if user_input is not None:
             if self._adv_chk or user_input.pop(CONF_SHOW_ADV_OPT, False):
                 self._adv_chk = True
@@ -648,124 +574,56 @@ class OptionsFlowHandler(OptionsFlow):
 
     @callback
     def _async_option_form(self):
-        """Return configuration form for options."""
         options = _validate_options(self._std_options)
 
         opt_schema = {
-            vol.Required(
-                CONF_LOGO_OPTION,
-                default=options.get(CONF_LOGO_OPTION, str(LOGO_OPTION_DEFAULT.value)),
-            ): SelectSelector(_dict_to_select(LOGO_OPTIONS)),
-            vol.Required(
-                CONF_USE_LOCAL_LOGO,
-                default=options.get(CONF_USE_LOCAL_LOGO, True),
-            ): bool,
+            vol.Required(CONF_LOGO_OPTION, default=options.get(CONF_LOGO_OPTION, str(LOGO_OPTION_DEFAULT.value))): SelectSelector(_dict_to_select(LOGO_OPTIONS)),
+            vol.Required(CONF_USE_LOCAL_LOGO, default=options.get(CONF_USE_LOCAL_LOGO, True)): bool,
         }
 
         if not self._app_list:
-            opt_schema.update(
-                {
-                    vol.Required(
-                        CONF_APP_LOAD_METHOD,
-                        default=options.get(
-                            CONF_APP_LOAD_METHOD, str(AppLoadMethod.All.value)
-                        ),
-                    ): SelectSelector(_dict_to_select(APP_LOAD_METHODS)),
-                }
-            )
+            opt_schema.update({
+                vol.Required(CONF_APP_LOAD_METHOD, default=options.get(CONF_APP_LOAD_METHOD, str(AppLoadMethod.All.value))): SelectSelector(_dict_to_select(APP_LOAD_METHODS)),
+            })
 
         if self._use_st:
-            data_schema = vol.Schema(
-                {
-                    vol.Required(
-                        CONF_USE_ST_STATUS_INFO,
-                        default=options.get(CONF_USE_ST_STATUS_INFO, True),
-                    ): bool,
-                    vol.Required(
-                        CONF_USE_ST_CHANNEL_INFO,
-                        default=options.get(CONF_USE_ST_CHANNEL_INFO, True),
-                    ): bool,
-                    vol.Required(
-                        CONF_SHOW_CHANNEL_NR,
-                        default=options.get(CONF_SHOW_CHANNEL_NR, False),
-                    ): bool,
-                }
-            ).extend(opt_schema)
-            data_schema = data_schema.extend(
-                {
-                    vol.Required(
-                        CONF_POWER_ON_METHOD,
-                        default=options.get(
-                            CONF_POWER_ON_METHOD, str(PowerOnMethod.WOL.value)
-                        ),
-                    ): SelectSelector(_dict_to_select(POWER_ON_METHODS)),
-                }
-            )
+            data_schema = vol.Schema({
+                vol.Required(CONF_USE_ST_STATUS_INFO, default=options.get(CONF_USE_ST_STATUS_INFO, True)): bool,
+                vol.Required(CONF_USE_ST_CHANNEL_INFO, default=options.get(CONF_USE_ST_CHANNEL_INFO, True)): bool,
+                vol.Required(CONF_SHOW_CHANNEL_NR, default=options.get(CONF_SHOW_CHANNEL_NR, False)): bool,
+            }).extend(opt_schema)
+            data_schema = data_schema.extend({
+                vol.Required(CONF_POWER_ON_METHOD, default=options.get(CONF_POWER_ON_METHOD, str(PowerOnMethod.WOL.value))): SelectSelector(_dict_to_select(POWER_ON_METHODS)),
+            })
         else:
             data_schema = vol.Schema(opt_schema)
 
-        # ---- Frame Art fields (always visible in standard options) ----------
+        # ---- Frame Art (toujours visible dans l’onglet Options standard)
         frame_art_schema = {
-            vol.Optional(
-                OPT_FRAME_ART_ENABLED,
-                default=options.get(OPT_FRAME_ART_ENABLED, DEF_FRAME_ART_ENABLED),
-            ): bool,
-            vol.Optional(
-                OPT_FRAME_ART_SOURCE_OFF,
-                default=options.get(OPT_FRAME_ART_SOURCE_OFF, ""),
-            ): str,
-            vol.Optional(
-                OPT_FRAME_ART_APP_ID,
-                default=options.get(OPT_FRAME_ART_APP_ID, DEF_FRAME_ART_APP_ID),
-            ): str,
-            vol.Optional(
-                OPT_FRAME_ART_SELECT_DELAY,
-                default=options.get(
-                    OPT_FRAME_ART_SELECT_DELAY, DEF_FRAME_ART_SELECT_DELAY
-                ),
-            ): vol.Coerce(float),
-            vol.Optional(
-                OPT_FRAME_ART_RETRIES,
-                default=options.get(OPT_FRAME_ART_RETRIES, DEF_FRAME_ART_RETRIES),
-            ): vol.Coerce(int),
-            vol.Optional(
-                OPT_FRAME_ART_RETRY_SLEEP,
-                default=options.get(
-                    OPT_FRAME_ART_RETRY_SLEEP, DEF_FRAME_ART_RETRY_SLEEP
-                ),
-            ): vol.Coerce(float),
+            vol.Optional(OPT_FRAME_ART_ENABLED, default=options.get(OPT_FRAME_ART_ENABLED, DEF_FRAME_ART_ENABLED)): bool,
+            vol.Optional(OPT_FRAME_ART_SOURCE_OFF, default=options.get(OPT_FRAME_ART_SOURCE_OFF, "")): str,
+            vol.Optional(OPT_FRAME_ART_APP_ID, default=options.get(OPT_FRAME_ART_APP_ID, DEF_FRAME_ART_APP_ID)): str,
+            vol.Optional(OPT_FRAME_ART_SELECT_DELAY, default=options.get(OPT_FRAME_ART_SELECT_DELAY, DEF_FRAME_ART_SELECT_DELAY)): vol.Coerce(float),
+            vol.Optional(OPT_FRAME_ART_RETRIES, default=options.get(OPT_FRAME_ART_RETRIES, DEF_FRAME_ART_RETRIES)): vol.Coerce(int),
+            vol.Optional(OPT_FRAME_ART_RETRY_SLEEP, default=options.get(OPT_FRAME_ART_RETRY_SLEEP, DEF_FRAME_ART_RETRY_SLEEP)): vol.Coerce(float),
         }
         data_schema = data_schema.extend(frame_art_schema)
-        # ---------------------------------------------------------------------
 
         if not self._adv_chk:
-            data_schema = data_schema.extend(
-                {vol.Required(CONF_SHOW_ADV_OPT, default=False): bool}
-            )
+            data_schema = data_schema.extend({vol.Required(CONF_SHOW_ADV_OPT, default=False): bool})
 
         return self.async_show_form(step_id="init", data_schema=data_schema)
 
     async def async_step_menu(self, _=None):
-        """Handle advanced options menu."""
         return self.async_show_menu(
             step_id="menu",
-            menu_options=[
-                "source_list",
-                "app_list",
-                "channel_list",
-                "sync_ent",
-                "init",
-                "adv_opt",
-                "save_exit",
-            ],
+            menu_options=["source_list", "app_list", "channel_list", "sync_ent", "init", "adv_opt", "save_exit"],
         )
 
     async def async_step_save_exit(self, _) -> ConfigFlowResult:
-        """Handle save and exit flow."""
         return self._save_entry(data=self._std_options)
 
     async def async_step_source_list(self, user_input=None):
-        """Handle sources list flow."""
         errors: dict[str, str] | None = None
         if user_input is not None:
             valid_list = _validate_tv_list(user_input[CONF_SOURCE_LIST])
@@ -774,19 +632,10 @@ class OptionsFlowHandler(OptionsFlow):
                 return await self.async_step_menu()
             errors = {CONF_BASE: "invalid_tv_list"}
 
-        data_schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_SOURCE_LIST, default=self._source_list
-                ): ObjectSelector()
-            }
-        )
-        return self.async_show_form(
-            step_id="source_list", data_schema=data_schema, errors=errors
-        )
+        data_schema = vol.Schema({vol.Optional(CONF_SOURCE_LIST, default=self._source_list): ObjectSelector()})
+        return self.async_show_form(step_id="source_list", data_schema=data_schema, errors=errors)
 
     async def async_step_app_list(self, user_input=None) -> ConfigFlowResult:
-        """Handle apps list flow."""
         errors: dict[str, str] | None = None
         if user_input is not None:
             valid_list = _validate_tv_list(user_input[CONF_APP_LIST])
@@ -795,15 +644,10 @@ class OptionsFlowHandler(OptionsFlow):
                 return await self.async_step_menu()
             errors = {CONF_BASE: "invalid_tv_list"}
 
-        data_schema = vol.Schema(
-            {vol.Optional(CONF_APP_LIST, default=self._app_list): ObjectSelector()}
-        )
-        return self.async_show_form(
-            step_id="app_list", data_schema=data_schema, errors=errors
-        )
+        data_schema = vol.Schema({vol.Optional(CONF_APP_LIST, default=self._app_list): ObjectSelector()})
+        return self.async_show_form(step_id="app_list", data_schema=data_schema, errors=errors)
 
     async def async_step_channel_list(self, user_input=None) -> ConfigFlowResult:
-        """Handle channels list flow."""
         errors: dict[str, str] | None = None
         if user_input is not None:
             valid_list = _validate_tv_list(user_input[CONF_CHANNEL_LIST])
@@ -812,19 +656,10 @@ class OptionsFlowHandler(OptionsFlow):
                 return await self.async_step_menu()
             errors = {CONF_BASE: "invalid_tv_list"}
 
-        data_schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_CHANNEL_LIST, default=self._channel_list
-                ): ObjectSelector()
-            }
-        )
-        return self.async_show_form(
-            step_id="channel_list", data_schema=data_schema, errors=errors
-        )
+        data_schema = vol.Schema({vol.Optional(CONF_CHANNEL_LIST, default=self._channel_list): ObjectSelector()})
+        return self.async_show_form(step_id="channel_list", data_schema=data_schema, errors=errors)
 
     async def async_step_sync_ent(self, user_input=None) -> ConfigFlowResult:
-        """Handle syncronized entity flow."""
         if user_input is not None:
             self._sync_ent_opt = user_input
             return await self.async_step_menu()
@@ -832,32 +667,19 @@ class OptionsFlowHandler(OptionsFlow):
 
     @callback
     def _async_sync_ent_form(self) -> ConfigFlowResult:
-        """Return configuration form for syncronized entity."""
         select_entities = EntitySelectorConfig(
             domain=_async_get_domains_service(self.hass, SERVICE_TURN_ON),
             exclude_entities=_async_get_entry_entities(self.hass, self._entry_id),
             multiple=True,
         )
         options = _validate_options(self._sync_ent_opt)
-
-        data_schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_SYNC_TURN_OFF,
-                    description={
-                        "suggested_value": options.get(CONF_SYNC_TURN_OFF, [])
-                    },
-                ): EntitySelector(select_entities),
-                vol.Optional(
-                    CONF_SYNC_TURN_ON,
-                    description={"suggested_value": options.get(CONF_SYNC_TURN_ON, [])},
-                ): EntitySelector(select_entities),
-            }
-        )
+        data_schema = vol.Schema({
+            vol.Optional(CONF_SYNC_TURN_OFF, description={"suggested_value": options.get(CONF_SYNC_TURN_OFF, [])}): EntitySelector(select_entities),
+            vol.Optional(CONF_SYNC_TURN_ON, description={"suggested_value": options.get(CONF_SYNC_TURN_ON, [])}): EntitySelector(select_entities),
+        })
         return self.async_show_form(step_id="sync_ent", data_schema=data_schema)
 
     async def async_step_adv_opt(self, user_input=None) -> ConfigFlowResult:
-        """Handle advanced options flow."""
         if user_input is not None:
             self._adv_options = user_input
             return await self.async_step_menu()
@@ -865,50 +687,21 @@ class OptionsFlowHandler(OptionsFlow):
 
     @callback
     def _async_adv_opt_form(self) -> ConfigFlowResult:
-        """Return configuration form for advanced options."""
         select_entities = EntitySelectorConfig(domain=BS_DOMAIN)
         options = _validate_options(self._adv_options)
-
-        data_schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_APP_LAUNCH_METHOD,
-                    default=options.get(
-                        CONF_APP_LAUNCH_METHOD, str(AppLaunchMethod.Standard.value)
-                    ),
-                ): SelectSelector(_dict_to_select(APP_LAUNCH_METHODS)),
-                vol.Required(
-                    CONF_WOL_REPEAT,
-                    default=min(options.get(CONF_WOL_REPEAT, 1), MAX_WOL_REPEAT),
-                ): vol.All(vol.Coerce(int), vol.Clamp(min=1, max=MAX_WOL_REPEAT)),
-                vol.Required(
-                    CONF_PING_PORT, default=options.get(CONF_PING_PORT, 0)
-                ): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=65535)),
-                vol.Optional(
-                    CONF_EXT_POWER_ENTITY,
-                    description={
-                        "suggested_value": options.get(CONF_EXT_POWER_ENTITY, "")
-                    },
-                ): EntitySelector(select_entities),
-                vol.Required(
-                    CONF_USE_MUTE_CHECK,
-                    default=options.get(CONF_USE_MUTE_CHECK, False),
-                ): bool,
-                vol.Required(
-                    CONF_DUMP_APPS,
-                    default=options.get(CONF_DUMP_APPS, False),
-                ): bool,
-                vol.Required(
-                    CONF_TOGGLE_ART_MODE,
-                    default=options.get(CONF_TOGGLE_ART_MODE, False),
-                ): bool,
-            }
-        )
+        data_schema = vol.Schema({
+            vol.Required(CONF_APP_LAUNCH_METHOD, default=options.get(CONF_APP_LAUNCH_METHOD, str(AppLaunchMethod.Standard.value))): SelectSelector(_dict_to_select(APP_LAUNCH_METHODS)),
+            vol.Required(CONF_WOL_REPEAT, default=min(options.get(CONF_WOL_REPEAT, 1), MAX_WOL_REPEAT)): vol.All(vol.Coerce(int), vol.Clamp(min=1, max=MAX_WOL_REPEAT)),
+            vol.Required(CONF_PING_PORT, default=options.get(CONF_PING_PORT, 0)): vol.All(vol.Coerce(int), vol.Clamp(min=0, max=65535)),
+            vol.Optional(CONF_EXT_POWER_ENTITY, description={"suggested_value": options.get(CONF_EXT_POWER_ENTITY, "")}): EntitySelector(select_entities),
+            vol.Required(CONF_USE_MUTE_CHECK, default=options.get(CONF_USE_MUTE_CHECK, False)): bool,
+            vol.Required(CONF_DUMP_APPS, default=options.get(CONF_DUMP_APPS, False)): bool,
+            vol.Required(CONF_TOGGLE_ART_MODE, default=options.get(CONF_TOGGLE_ART_MODE, False)): bool,
+        })
         return self.async_show_form(step_id="adv_opt", data_schema=data_schema)
 
 
 def _validate_options(options: dict) -> dict:
-    """Validate options format"""
     valid_options = {}
     for opt_key, opt_val in options.items():
         if opt_key in [CONF_SYNC_TURN_OFF, CONF_SYNC_TURN_ON]:
@@ -922,7 +715,6 @@ def _validate_options(options: dict) -> dict:
 
 
 def _validate_tv_list(input_list: dict[str, Any]) -> dict[str, str] | None:
-    """Validate TV list from object selector."""
     valid_list = {}
     for name_val, id_val in input_list.items():
         if not id_val:
@@ -936,7 +728,6 @@ def _validate_tv_list(input_list: dict[str, Any]) -> dict[str, str] | None:
 
 
 def _dict_to_select(opt_dict: dict) -> SelectSelectorConfig:
-    """Covert a dict to a SelectSelectorConfig."""
     return SelectSelectorConfig(
         options=[SelectOptionDict(value=str(k), label=v) for k, v in opt_dict.items()],
         mode=SelectSelectorMode.DROPDOWN,
@@ -944,17 +735,9 @@ def _dict_to_select(opt_dict: dict) -> SelectSelectorConfig:
 
 
 def _async_get_domains_service(hass: HomeAssistant, service_name: str) -> list[str]:
-    """Fetch list of domain that provide a specific service."""
-    return [
-        domain
-        for domain, service in hass.services.async_services().items()
-        if service_name in service
-    ]
+    return [domain for domain, service in hass.services.async_services().items() if service_name in service]
 
 
 def _async_get_entry_entities(hass: HomeAssistant, entry_id: str) -> list[str]:
-    """Get the entities related to current entry"""
-    return [
-        entry.entity_id
-        for entry in (er.async_entries_for_config_entry(er.async_get(hass), entry_id))
-    ]
+    return [entry.entity_id for entry in (er.async_entries_for_config_entry(er.async_get(hass), entry_id))]
+# -- FIN FICHIER --
