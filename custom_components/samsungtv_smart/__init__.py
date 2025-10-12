@@ -681,3 +681,17 @@ async def _update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update when config_entry options update."""
     hass.data[DOMAIN][entry.entry_id][DATA_OPTIONS] = entry.options.copy()
     async_dispatcher_send(hass, SIGNAL_CONFIG_ENTITY)
+    +# Re-export des symboles utilisés par config_flow pour éviter les erreurs d'import
+
+from .websockets import SamsungTVInfo  # classe utilisée pour try_connect
+from .shortcuts import get_device_info, is_valid_ha_version
+from .smartthings import get_smartthings_api_key, get_smartthings_entries
+
+__all__ = [
+    "SamsungTVInfo",
+    "get_device_info",
+    "get_smartthings_api_key",
+    "get_smartthings_entries",
+    "is_valid_ha_version",
+]
+
