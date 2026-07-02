@@ -944,6 +944,11 @@ class SamsungTVPictureModeSelect(SelectEntity):
         self._capability: str | None = None
         # Cooldown: skip polls briefly after setting a mode
         self._skip_poll_until: float = 0
+        # After a set, remember the desired mode and hold it until the cloud
+        # confirms it — SmartThings lags ~30-45s, so a plain short skip lets a
+        # stale "old mode" poll revert the selection (issue #116).
+        self._pending_mode: str | None = None
+        self._pending_until: float = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -1082,10 +1087,14 @@ class SamsungTVPictureModeSelect(SelectEntity):
 
             self._attr_current_option = option
             self.async_write_ha_state()
-            # Skip polls for 5 seconds to let the TV apply the change;
-            # without this, the next async_update() reads the OLD mode
-            # from the TV (which hasn't switched yet) and overwrites ours.
-            self._skip_poll_until = time.time() + 5
+            # Short blind skip to let the TV apply the change, then hold the
+            # desired value until SmartThings actually reports it (cloud lag
+            # can be 30-45s). Without the hold, a poll in between reads the OLD
+            # mode and reverts the selection (issue #116).
+            now = time.time()
+            self._skip_poll_until = now + 5
+            self._pending_mode = option
+            self._pending_until = now + 60
 
         except Exception as ex:
             _LOGGER.error("Error setting picture mode to %s: %s", option, ex)
@@ -1136,6 +1145,28 @@ class SamsungTVPictureModeSelect(SelectEntity):
             self._attr_options = [*self._attr_options, new_mode]
             if raw_mode != new_mode:
                 self._mode_map[new_mode] = raw_mode
+
+        # Hold the just-set mode until the cloud confirms it. While a set is
+        # pending: if the cloud now reports our desired mode, it's confirmed;
+        # if it still reports the old value (cloud lag), keep our selection
+        # instead of reverting. After the grace window we accept whatever the
+        # cloud says (covers a genuine change made on the TV itself).
+        if self._pending_mode is not None:
+            if new_mode == self._pending_mode:
+                self._pending_mode = None
+                self._pending_until = 0
+            elif time.time() < self._pending_until:
+                _LOGGER.debug(
+                    "Picture mode: cloud still reports %s, holding pending %s",
+                    new_mode,
+                    self._pending_mode,
+                )
+                return
+            else:
+                # Grace expired without confirmation — give up on the pending
+                # value and accept the cloud's reading below.
+                self._pending_mode = None
+                self._pending_until = 0
 
         if new_mode != self._attr_current_option:
             _LOGGER.debug(
