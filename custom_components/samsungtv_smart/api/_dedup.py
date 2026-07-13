@@ -6,10 +6,15 @@ Dedup approach adapted from NickWaterton async_art_gallery_web.py (LGPL).
 from __future__ import annotations
 
 import io
+import json
+import os
 
 from PIL import Image, ImageChops, ImageFilter
 
 _THUMB_SIZE = (384, 216)
+
+# Samsung-Store art is SAM-F####; other tools' uploads are MY-F####. Never modify.
+_PROTECTED_PREFIXES = ("SAM-F", "MY-F")
 
 
 def _fingerprint(data: bytes) -> Image.Image:
@@ -35,3 +40,33 @@ def perceptual_diff(img_a: bytes, img_b: bytes) -> float:
 def is_duplicate(img_a: bytes, img_b: bytes, threshold: float = 1.0) -> bool:
     """True if two images are perceptually identical (survives TV re-encode)."""
     return perceptual_diff(img_a, img_b) <= threshold
+
+
+def load_sidecar(path: str) -> dict:
+    """Load the content_id sidecar map, or {} if it does not exist."""
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_sidecar(path: str, data: dict) -> None:
+    """Persist the content_id sidecar map."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+
+def needs_upload(filename: str, mtime: float, sidecar: dict) -> bool:
+    """True if the file is new or its mtime changed since the last upload."""
+    entry = sidecar.get(filename)
+    if not entry:
+        return True
+    return entry.get("modified") != mtime
+
+
+def is_protected(content_id: str) -> bool:
+    """True for Samsung-Store (SAM-F####) or other-tools (MY-F####) art."""
+    return content_id.startswith(_PROTECTED_PREFIXES)
