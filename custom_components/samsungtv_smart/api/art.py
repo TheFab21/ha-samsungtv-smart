@@ -31,6 +31,13 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
+_UPLOAD_THROTTLE_SECONDS = 2.0
+
+try:
+    from . import _dedup  # normal package import inside HA
+except ImportError:  # test/standalone: conftest.py put the api dir on sys.path
+    import _dedup
+
 
 class _DeviceLoggerAdapter(logging.LoggerAdapter):
     """Prefix every log line with the TV's host so multi-TV logs can be told apart."""
@@ -1885,6 +1892,36 @@ class SamsungTVAsyncArt:
 
             self._log.debug("Art API: Upload traceback: %s", traceback.format_exc())
             return None
+
+    async def upload_batch(
+        self,
+        files: list[str],
+        hass=None,
+        throttle: float = _UPLOAD_THROTTLE_SECONDS,
+        sidecar_path: str | None = None,
+    ) -> list[str]:
+        """Upload files with ~2s spacing; skip unchanged files via the sidecar.
+
+        A second run of an unchanged folder uploads 0 files (criterion 12).
+        """
+        sidecar = _dedup.load_sidecar(sidecar_path) if sidecar_path else {}
+        content_ids: list[str] = []
+        did_upload = False
+        for file in files:
+            name = os.path.basename(file)
+            mtime = os.path.getmtime(file) if os.path.exists(file) else 0.0
+            if sidecar_path and not _dedup.needs_upload(name, mtime, sidecar):
+                continue  # unchanged since last run -> skip
+            if did_upload:
+                await asyncio.sleep(throttle)
+            cid = await self.upload(file, hass=hass)
+            did_upload = True
+            if cid:
+                content_ids.append(cid)
+                sidecar[name] = {"content_id": cid, "modified": mtime}
+        if sidecar_path:
+            _dedup.save_sidecar(sidecar_path, sidecar)
+        return content_ids
 
     async def delete(self, content_id: str) -> bool:
         """Delete an uploaded piece of art."""
