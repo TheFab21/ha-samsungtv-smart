@@ -50,6 +50,8 @@ writes. To stop *every* IP Control write to a TV you suspect, turn off
   nothing — contributed by [@alienpoop03](https://github.com/alienpoop03).
 - **Driving the TV like a remote is documented** — it always worked, nobody
   could find it.
+- **Two more entities stop reading sleeping TVs**, removing what became the
+  largest log producer once the poll overrun was fixed.
 
 ---
 
@@ -133,6 +135,26 @@ have achieved. The warning is kept where it still means something: a
 genuinely slow *reachable* TV warns at most once per five minutes, with the
 count it stands for.
 
+## Sleeping TVs, part two: the colour tone and backlight entities
+
+The same shape as above, one platform over, found by the same reporter on the
+same fleet. Five of the seven IP Control picture entities read through a
+shared coordinator that returns early when the TV is off or in Art Mode.
+**The colour-tone select and the backlight number polled independently and
+had no such gate**, so they kept opening a connection to a sleeping TV every
+30 s. Measured: 7.8 s for one such read, against 0.15 s awake — and because
+each takes the per-host lock on its own, two of them queued behind each other
+cross Home Assistant's 10 s per-entity threshold.
+
+That produced **6 019 `Update of <entity> is taking over 10 seconds` lines in
+21.4 hours** on a 13-TV install, the largest single log producer there once
+the sleeping-TV overrun was fixed. Correlation with time asleep: 0.81.
+
+Both now use the same gate as their five siblings, which is also why those
+five never produced a single warning. As a side effect, the speaker select's
+private copy of that gate is now the shared one — three definitions became
+one.
+
 ## Services that answer
 
 19 of the 26 services computed a result and were registered without
@@ -193,6 +215,11 @@ sequence can mix `ST_` and `IP_` source keys with remote keys.
   when the same action was just sent and did not take. Before, it was sent
   again silently. If you see that warning, the TV — not the automation —
   is the thing to look at.
+- **`Art Mode ON aborted …` is reworded.** It claimed more than it did: the
+  power-on request *had* been sent, and only the art-mode part was deferred.
+  It now says so, and repeats while a deferral is already outstanding drop to
+  INFO — a TV that simply wakes late used to produce one WARNING per attempt
+  all morning.
 
 ---
 

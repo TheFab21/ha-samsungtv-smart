@@ -471,6 +471,28 @@ async def _load_motion_options(
 # ══════════════════════════════════════════════════════════════════════════
 
 
+def _tv_normal_viewing(hass: HomeAssistant, entry_id: str) -> bool:
+    """True when the TV is on for normal viewing (not off, not Art Mode).
+
+    The IP Control picture and speaker methods answer -32601 outside normal
+    viewing, so polling them while the TV is off or showing art is pointless —
+    and on a TV that has left the network it is expensive: the connection
+    attempt costs CMD_TIMEOUT plus the weak-DH retry, ~7.8 s measured, against
+    0.15 s awake. Entities that poll independently take the per-host lock one
+    after another, so two of them are enough to push a single update past Home
+    Assistant's 10 s per-entity threshold (#248).
+    """
+    registry = er.async_get(hass)
+    for entity in registry.entities.get_entries_for_config_entry_id(entry_id):
+        if entity.domain != "media_player":
+            continue
+        state = hass.states.get(entity.entity_id)
+        if state is None or state.state in (STATE_OFF, "unavailable", "unknown"):
+            return False
+        return state.attributes.get("art_mode_status") != "on"
+    return False
+
+
 class SamsungTVIPControlColorToneSelect(SelectEntity):
     """Select entity for the IP Control picture color tone."""
 
@@ -578,6 +600,14 @@ class SamsungTVIPControlColorToneSelect(SelectEntity):
 
     async def async_update(self) -> None:
         """Read current picture color tone from IP Control."""
+        # See _tv_normal_viewing: this entity polls on its own rather than
+        # through IPControlVideoCoordinator, so without this gate it kept
+        # reading a sleeping TV every 30 s at ~7.8 s a time — 4 392 core
+        # warnings in 21 h on a 13-TV install (#248).
+        if not _tv_normal_viewing(self.hass, self._entry_id):
+            self._mark_unavailable()
+            return
+
         client = self._get_ip_control()
         if client is None:
             self._mark_unavailable()
@@ -703,15 +733,7 @@ class SamsungTVIPControlSpeakerSelect(SelectEntity):
         and only allow switching — during normal viewing. Field-observed: 50
         pointless -32601 reads per art session before this gate.
         """
-        registry = er.async_get(self.hass)
-        for entity in registry.entities.get_entries_for_config_entry_id(self._entry_id):
-            if entity.domain != "media_player":
-                continue
-            state = self.hass.states.get(entity.entity_id)
-            if state is None or state.state in (STATE_OFF, "unavailable", "unknown"):
-                return False
-            return state.attributes.get("art_mode_status") != "on"
-        return False
+        return _tv_normal_viewing(self.hass, self._entry_id)
 
     def _rebuild_options(self) -> None:
         """Options = fixed public targets + currently listed external devices."""
