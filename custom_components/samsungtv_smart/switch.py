@@ -477,7 +477,10 @@ class FrameArtModeSwitch(SwitchEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn Art Mode on."""
         self._log.debug("Turning Art Mode ON for %s", self._device_name)
-        # A fresh explicit attempt supersedes any earlier deferred one.
+        # A fresh explicit attempt supersedes any earlier deferred one. Keep
+        # whether one was outstanding: it distinguishes the first failure to
+        # reach a TV from the repeats of a caller that keeps asking.
+        was_pending = self._pending_art_on
         self._pending_art_on = False
 
         # Short-circuit: if already in Art Mode, nothing to do.
@@ -519,10 +522,24 @@ class FrameArtModeSwitch(SwitchEntity):
             # command on an off Salon TV — issue #116 follow-up).
             tv_was_off = True
             if not await self._wait_for_tv_ready(max_wait=20):
-                self._log.warning(
-                    "Art Mode ON aborted for %s: TV did not become reachable "
-                    "after power-on (likely off the network) — will re-apply "
-                    "when the TV comes back online",
+                # Say what actually happened: the power-on WAS sent (WOL, or
+                # KEY_POWER / IP Control powerOn depending on the configured
+                # method) and the TV did not answer within 20 s. Only the art
+                # mode part is deferred.
+                #
+                # Repeat calls are logged at INFO. An automation that asks
+                # every few minutes re-enters here each time — and because the
+                # top of this method clears _pending_art_on, each call also
+                # cancels the previous deferral — so a TV that wakes late
+                # produced one WARNING per attempt for an entirely normal
+                # morning (11 in 50 minutes on a TV whose usual wake time is
+                # 05:51-08:10, #248). The first is worth a warning; the rest
+                # are the deferral working.
+                log = self._log.info if was_pending else self._log.warning
+                log(
+                    "Art Mode ON for %s: the TV did not answer within 20s of "
+                    "the power-on request (likely in deep standby / off the "
+                    "network) — art mode deferred until it is back online",
                     self._device_name,
                 )
                 # Defer instead of hammering: re-apply once the media_player

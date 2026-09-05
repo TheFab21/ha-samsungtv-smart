@@ -292,6 +292,22 @@ class SamsungTVIPControlBacklightNumber(NumberEntity):
 
     async def async_update(self) -> None:
         """Read current picture backlight from IP Control."""
+        # Guardrail, same as the coordinator-backed picture sliders: backlight
+        # applies to normal viewing only and answers -32601 in Art Mode, so a
+        # read while the TV is off or showing art is pointless. It is also
+        # expensive: on a TV that has left the network the connection attempt
+        # costs CMD_TIMEOUT plus the weak-DH retry (~7.8 s measured), and this
+        # entity polls independently of the video coordinator, taking the
+        # per-host lock on its own. Two such entities per TV queued behind each
+        # other is what pushed single updates past Home Assistant's 10 s
+        # per-entity threshold — 1 626 core warnings in 21 h on a 13-TV install
+        # (#248). The coordinator-backed sliders never produced one, because
+        # the coordinator returns early on exactly this condition.
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        if entry is None or not _tv_normal_viewing(self.hass, entry):
+            self._mark_unavailable()
+            return
+
         client = self._get_ip_control()
         if client is None:
             self._mark_unavailable()
