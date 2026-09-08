@@ -11,7 +11,22 @@ If this project is useful to you, you can support its development:
 
 <a href="https://buymeacoffee.com/thefab21" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-black.png" alt="Buy Me A Coffee" height="41" width="174"></a>
 
-This fork brings improved WebSocket stability, full Samsung Frame TV Art Mode support, picture mode and source selection fixes for 2024 Frame TVs, and OAuth2 authentication for SmartThings.
+**What this fork adds.** It began as a handful of Frame TV fixes and grew a
+second control channel. Next to the WebSocket and SmartThings paths it now
+speaks Samsung's local **IP Control** (JSON-RPC), so power, input, volume,
+picture calibration, speaker output and a reboot button work without the
+cloud — on 2020+ sets and on older ones, which use a different port that is
+tried automatically.
+
+On a **Frame** it adds Art Mode proper: browse and upload artwork, mattes,
+slideshow, brightness and colour temperature, a gallery card and an upload
+card, uploads re-encoded to suit the panel — and optional **artwork
+identification**, which tells you the title, artist and date of what is on
+your wall, in five languages.
+
+Everywhere: **OAuth2** for SmartThings (or a token, or your existing
+SmartThings integration), a self-healing art WebSocket, and per-TV polling
+you can tune.
 
 ---
 
