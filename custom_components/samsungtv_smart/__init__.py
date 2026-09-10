@@ -68,11 +68,17 @@ from .const import (
     CONF_DEVICE_NAME,
     CONF_ENABLE_IP_CONTROL,
     CONF_IP_CONTROL_ART_MODE,
+    CONF_IP_CONTROL_FW_VERSION,
+    CONF_IP_CONTROL_MODEL_ID,
     CONF_IP_CONTROL_POLL_INTERVAL,
+    CONF_IP_CONTROL_TOKEN,
+    CONF_IS_FRAME_TV,
     CONF_LOAD_ALL_APPS,
     CONF_OAUTH_TOKEN,
+    CONF_REST_PORT,
     CONF_SCAN_APP_HTTP,
     CONF_SHOW_CHANNEL_NR,
+    CONF_SLIDESHOW_API,
     CONF_SOURCE_LIST,
     CONF_ST_ENTRY_UNIQUE_ID,
     CONF_ST_PICTURE_MODE_CAPABILITY,
@@ -1335,6 +1341,25 @@ _NO_RELOAD_DATA_KEYS = (
     CONF_ART_LLM_PROVIDER,
     CONF_ART_LLM_API_KEY,
     CONF_ART_LLM_MODEL,
+    # Connection facts LEARNED and refreshed at runtime by the live clients,
+    # which have already adapted by the time these are persisted — the write
+    # only exists to survive a restart, so it must not reload (#12). The WS and
+    # OAuth tokens rotate, and on ~2020 Frames the Art/REST ports re-learn on
+    # reconnect; before this list, each such write reloaded the whole entry,
+    # which on an unstable connection looped every few minutes (entity flapping
+    # unavailable -> unknown -> restored). A reconfigure still reloads: it bumps
+    # CONF_RECONFIGURE_GENERATION, which is NOT excluded here.
+    CONF_TOKEN,
+    CONF_OAUTH_TOKEN,
+    CONF_PORT,
+    CONF_REST_PORT,
+    CONF_SUPPORTS_GET_BRIGHTNESS,
+    CONF_SUPPORTS_GET_COLOR_TEMPERATURE,
+    CONF_IS_FRAME_TV,
+    CONF_SLIDESHOW_API,
+    CONF_IP_CONTROL_TOKEN,
+    CONF_IP_CONTROL_MODEL_ID,
+    CONF_IP_CONTROL_FW_VERSION,
 )
 
 

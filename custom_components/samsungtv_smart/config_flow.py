@@ -6,6 +6,7 @@ import logging
 from numbers import Number
 import socket
 from typing import Any, Dict
+import uuid
 
 import voluptuous as vol
 
@@ -89,6 +90,7 @@ from .const import (
     CONF_OAUTH_TOKEN,
     CONF_PING_PORT,
     CONF_POWER_ON_METHOD,
+    CONF_RECONFIGURE_GENERATION,
     CONF_REST_PORT,
     CONF_SHOW_CHANNEL_NR,
     CONF_SOURCE_LIST,
@@ -857,7 +859,10 @@ class SamsungTVSmartOAuth2FlowHandler(
         # client is rebuilt with the new id.
         return self.async_update_and_abort(
             entry,
-            data_updates={CONF_DEVICE_ID: device_id},
+            data_updates={
+                CONF_DEVICE_ID: device_id,
+                CONF_RECONFIGURE_GENERATION: uuid.uuid4().hex,
+            },
             reason="st_device_updated",
         )
 
@@ -997,6 +1002,9 @@ class SamsungTVSmartOAuth2FlowHandler(
                     data_updates: dict[str, Any] = {
                         CONF_IP_CONTROL_TOKEN: token,
                         CONF_IP_CONTROL_PORT: port,
+                        # Force the reload even though the token is excluded from
+                        # the fingerprint (#12).
+                        CONF_RECONFIGURE_GENERATION: uuid.uuid4().hex,
                     }
                     try:
                         device_info = await client.async_get_device_information()
@@ -1116,6 +1124,10 @@ class SamsungTVSmartOAuth2FlowHandler(
             updates[CONF_AUTH_METHOD] = self._auth_method
             if CONF_ST_ENTRY_UNIQUE_ID in entry.data or self._st_entry_unique_id:
                 updates[CONF_ST_ENTRY_UNIQUE_ID] = self._st_entry_unique_id
+
+        # Guarantee the reload even if every other changed key is excluded from
+        # the fingerprint (same-host re-pair, port re-detect): see #12.
+        updates[CONF_RECONFIGURE_GENERATION] = uuid.uuid4().hex
 
         # Update the entry data only; the update listener schedules the reload
         # (combining an in-flow reload with an update listener is deprecated).
