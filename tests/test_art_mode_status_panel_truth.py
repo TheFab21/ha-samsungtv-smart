@@ -95,8 +95,17 @@ class ArtModeIsOnTest(unittest.TestCase):
             self.block.index("panel_art = self._ip_control_panel_art_cached()") :
         ]
         head = seg[: seg.index("PowerState")]
-        self.assertIn("if panel_art is not None:", head)
+        self.assertIn("panel_art is not None", head)
         self.assertIn("return panel_art", head)
+
+    def test_the_panel_is_only_trusted_on_art_capable_tvs(self):
+        # pictureMode 'Ambient' also means Samsung Ambient Mode on a non-Frame
+        # set (#248 regression), so the panel value is gated by support_art_mode.
+        seg = self.block[
+            self.block.index("panel_art = self._ip_control_panel_art_cached()") :
+        ]
+        guard = seg[: seg.index("return panel_art")]
+        self.assertIn("self.support_art_mode != ArtModeSupport.UNSUPPORTED", guard)
 
     def test_the_running_app_guard_still_leads(self):
         # A real foreground app must still win over any art signal.
