@@ -750,6 +750,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # Current physical input reported by the shared getTVStates coordinator.
         # Also updated optimistically after a successful local source change.
         self._ip_input_source: str | None = None
+        # Content ids whose thumbnail is still being retried in the
+        # background after an upload; a failed fetch for one of these is an
+        # expected step, not a fault. See _retry_new_thumbnail.
+        self._thumbnail_retry_pending: set[str] = set()
         # Last SmartThings input that matched nothing in the source list,
         # so the warning above is logged once per change, not per poll.
         self._last_unmapped_source: str | None = None
@@ -4520,26 +4524,34 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """
         # ~6.5 min total: covers the multi-minute generation delay seen in logs.
         retry_delays = [15, 30, 60, 120, 180]
-        for delay in retry_delays:
-            await asyncio.sleep(delay)
-            try:
-                result = await self.async_art_get_thumbnail(content_id)
-            except Exception as ex:  # noqa: BLE001 - best-effort background retry
-                self._log.debug(
-                    "Frame Art: delayed thumbnail retry for %s errored: %s",
-                    content_id,
-                    ex,
-                )
-                continue
-            if result and not result.get("error"):
-                self._log.info(
-                    "Frame Art: thumbnail for %s is now available (delayed retry)",
-                    content_id,
-                )
-                return
-        self._log.debug(
-            "Frame Art: thumbnail for %s still unavailable after delayed retries",
+        self._thumbnail_retry_pending.add(content_id)
+        try:
+            for delay in retry_delays:
+                await asyncio.sleep(delay)
+                try:
+                    result = await self.async_art_get_thumbnail(content_id)
+                except Exception as ex:  # noqa: BLE001 - best-effort retry
+                    self._log.debug(
+                        "Frame Art: delayed thumbnail retry for %s errored: %s",
+                        content_id,
+                        ex,
+                    )
+                    continue
+                if result and not result.get("error"):
+                    self._log.info(
+                        "Frame Art: thumbnail for %s is now available (delayed retry)",
+                        content_id,
+                    )
+                    return
+        finally:
+            self._thumbnail_retry_pending.discard(content_id)
+        # Only now has the TV genuinely failed to produce it.
+        self._log.warning(
+            "Frame Art: thumbnail for %s still unavailable after %d delayed "
+            "retries over ~%d minutes — the TV never generated it",
             content_id,
+            len(retry_delays),
+            sum(retry_delays) // 60,
         )
 
     async def async_art_delete(self, content_id: str) -> dict:
@@ -4697,11 +4709,19 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 self._store_art_result(result)
                 return result
 
-            # All retries failed
+            # All retries failed. For a just-uploaded image this is an
+            # expected step, not a fault: the TV takes 30 s to several minutes
+            # to generate the thumbnail, and _retry_new_thumbnail is already
+            # waiting it out — 11 such WARNINGs in one hour on a maintainer's
+            # install, every one of which ended with the thumbnail arriving.
+            # Warn only when nothing is going to try again.
             error_msg = f"Failed after {max_retries} attempts: {last_error}"
-            self._log.warning(
-                "Could not download thumbnail for %s: %s", content_id, error_msg
+            log = (
+                self._log.debug
+                if content_id in self._thumbnail_retry_pending
+                else self._log.warning
             )
+            log("Could not download thumbnail for %s: %s", content_id, error_msg)
             result = {"error": error_msg, "content_id": content_id}
             self._store_art_result(result)
             return result
