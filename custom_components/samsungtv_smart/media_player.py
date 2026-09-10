@@ -1985,15 +1985,32 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             .get(DATA_IP_CONTROL_STATE_COORDINATOR)
         )
 
-    def _ip_control_ambient_mode_active(self) -> bool:
-        """Return whether the shared IP Control snapshot reports Ambient mode."""
+    def _ip_control_panel_art_cached(self) -> bool | None:
+        """Tri-state art state from the cached getTVStates snapshot.
+
+        True when the panel reports pictureMode 'Ambient' (art is on screen),
+        False when it reports any other picture mode (a real input), and None
+        when it cannot be told — no coordinator, no snapshot yet, or the TV is
+        powered off (a sleeping panel can't be read). Cached only: reads the IP
+        Control state coordinator's last poll, never issues a request, so it is
+        safe from a sync property. Independent of the art-mode option — this is
+        getTVStates, not the wedge-prone artModeControl flag.
+        """
         coordinator = self._get_ip_control_state_coordinator()
         data = getattr(coordinator, "data", None)
         if not isinstance(data, dict) or data.get("powered_off"):
-            return False
-
+            return None
         tv_states = data.get("tv")
-        return isinstance(tv_states, dict) and tv_states.get("pictureMode") == "Ambient"
+        if not isinstance(tv_states, dict):
+            return None
+        mode = tv_states.get("pictureMode")
+        if not isinstance(mode, str) or not mode:
+            return None
+        return mode == "Ambient"
+
+    def _ip_control_ambient_mode_active(self) -> bool:
+        """Return whether the shared IP Control snapshot reports Ambient mode."""
+        return self._ip_control_panel_art_cached() is True
 
     def _get_ip_control_input_source(self) -> str | None:
         """Return the latest physical input from the shared IP Control snapshot."""
@@ -2804,6 +2821,18 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return False
         if self._ip_art_mode is not None:
             return self._ip_art_mode
+        # With the art-mode option off (the recommended default) _ip_art_mode is
+        # None, so the value used to come from the WebSocket art channel — which
+        # on some Frames never receives the art_mode_changed event and freezes
+        # art_mode_status at its pre-transition value for hours (#248: measured
+        # 4 stretches of 7-10 h, art shown but the attribute stuck at off). The
+        # cached getTVStates.pictureMode is the panel's own truth, refreshed
+        # every IP Control poll and independent of that option, so consult it
+        # before the WS/SmartThings fallbacks. None = not readable -> fall
+        # through unchanged (no IP Control, no snapshot, or TV asleep).
+        panel_art = self._ip_control_panel_art_cached()
+        if panel_art is not None:
+            return panel_art
         if self._get_device_spec("PowerState") == "standby":
             return False
         # Cloud power-off fallback for TVs without IP Control. SmartThings
