@@ -43,6 +43,13 @@ DATA_ART_API = "art_api"  # Shared Frame Art API instance
 DATA_ART_CACHE = "art_cache"  # Shared ArtIdentifyCache instance (per entry)
 DATA_IP_CONTROL_STATE_COORDINATOR = "ip_control_state_coordinator"
 CONF_IS_FRAME_TV = "is_frame_tv"  # Persisted flag: TV confirmed as Frame TV
+# Bumped to a fresh value on every reconfigure so a reconfigure always changes
+# the reload fingerprint — even a same-host re-pair or port re-detect that
+# only touches keys listed in _NO_RELOAD_DATA_KEYS. This lets those
+# runtime-learned keys be excluded from the fingerprint (so their automatic
+# refresh no longer reloads the integration, #12) without also blinding the
+# reconfigure-driven reload.
+CONF_RECONFIGURE_GENERATION = "reconfigure_generation"
 # V7: persisted capability flags for the dedicated brightness / colour-temp
 # WebSocket requests. On TVs that don't respond (e.g. Frame 2024) we learn
 # this at runtime and remember it across restarts so we don't pay the probe
