@@ -2830,8 +2830,19 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # every IP Control poll and independent of that option, so consult it
         # before the WS/SmartThings fallbacks. None = not readable -> fall
         # through unchanged (no IP Control, no snapshot, or TV asleep).
+        #
+        # Frame TVs only: pictureMode 'Ambient' means artwork on an LS03 Frame,
+        # but Samsung's unrelated Ambient Mode on a non-Frame set (e.g. QN90A)
+        # reports the same value, and those panels sit in it near-permanently.
+        # Without this guard art_mode_status would read 'on' for a TV that has
+        # no Art Mode at all (#248). support_art_mode already folds the WS
+        # artmode capability and the FrameTVSupport device flag, so it is the
+        # right gate; a non-Frame falls through to the previous behaviour.
         panel_art = self._ip_control_panel_art_cached()
-        if panel_art is not None:
+        if (
+            panel_art is not None
+            and self.support_art_mode != ArtModeSupport.UNSUPPORTED
+        ):
             return panel_art
         if self._get_device_spec("PowerState") == "standby":
             return False
