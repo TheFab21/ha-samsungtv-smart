@@ -42,8 +42,19 @@ class SamsungTVEntity(Entity):
         )
         if self.unique_id:
             self._attr_device_info[ATTR_IDENTIFIERS] = {(DOMAIN, self.unique_id)}
+        # CONF_DEVICE_OS is stored verbatim from the TV's REST payload
+        # (device.OS), so its type is whatever the firmware sent. The device
+        # registry accepts only a string, and passing anything else has been
+        # deprecated since Home Assistant 2026.x — it stops working in
+        # 2026.12.0. Some payloads carry a list; join it rather than dropping
+        # the information, and stringify anything else.
         if dev_os := config.get(CONF_DEVICE_OS):
-            self._attr_device_info[ATTR_SW_VERSION] = dev_os
+            if isinstance(dev_os, (list, tuple, set)):
+                dev_os = ", ".join(str(part) for part in dev_os)
+            elif not isinstance(dev_os, str):
+                dev_os = str(dev_os)
+            if dev_os:
+                self._attr_device_info[ATTR_SW_VERSION] = dev_os
         if self._mac:
             self._attr_device_info[ATTR_CONNECTIONS] = {
                 (CONNECTION_NETWORK_MAC, self._mac)

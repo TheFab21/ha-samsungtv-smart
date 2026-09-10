@@ -47,6 +47,7 @@ from .api.ipcontrol import (
     SamsungIPControl,
     SamsungIPControlAuthError,
     SamsungIPControlError,
+    SamsungIPControlModeLockedError,
     SamsungIPControlTransportError,
     SamsungIPControlUnsupportedError,
 )
@@ -2628,6 +2629,17 @@ class SmartThingsPowerConsumptionSensor(CoordinatorEntity, SensorEntity):
             return None
 
 
+# Consecutive -32002 answers tolerated on a state READ before it is reported as
+# a coordinator failure. The TV returns this for a read it momentarily refuses;
+# our own message calls it "usually transient", and it is — measured as isolated
+# single occurrences a few times a day on healthy TVs, each recovering on the
+# next cycle. Raising UpdateFailed on the first one logs an ERROR for a normal
+# condition, the same mistake #248 fixed for the sleeping-TV overrun. A run of
+# them is different: that is a TV stuck in a state it will not read from, and
+# worth an ERROR.
+IP_CONTROL_READ_TRANSIENT_TOLERANCE = 3
+
+
 class IPControlStateCoordinator(DataUpdateCoordinator):
     """Polls getTVStates over IP Control for the read-only state sensors.
 
@@ -2660,6 +2672,8 @@ class IPControlStateCoordinator(DataUpdateCoordinator):
         self._ip_control: SamsungIPControl | None = None
         self._ip_control_token: str | None = None
         self._channel_control_supported: bool | None = None
+        # Consecutive -32002 answers on getTVStates; see the constant above.
+        self._transient_read_failures = 0
 
     def _device_title(self) -> str:
         entry = self.hass.config_entries.async_get_entry(self._entry.entry_id)
@@ -2780,9 +2794,31 @@ class IPControlStateCoordinator(DataUpdateCoordinator):
                 "IP Control state: transport failure (TV likely off): %s", ex
             )
             return {"tv": {}, "powered_off": True}
+        except SamsungIPControlModeLockedError as ex:
+            # -32002 on a READ: the TV refused it in its current state. Isolated
+            # occurrences are normal and recover on the next cycle, so hold the
+            # previous snapshot instead of failing the coordinator. Only a run
+            # of them means something is actually wrong.
+            self._transient_read_failures += 1
+            if self._transient_read_failures <= IP_CONTROL_READ_TRANSIENT_TOLERANCE:
+                self._log.debug(
+                    "IP Control state read refused (%s) — attempt %d of %d "
+                    "tolerated, keeping the previous snapshot",
+                    ex,
+                    self._transient_read_failures,
+                    IP_CONTROL_READ_TRANSIENT_TOLERANCE,
+                )
+                if self.data is not None:
+                    return self.data
+                return {"tv": {}, "channel": {}, "powered_off": False}
+            raise UpdateFailed(
+                f"IP Control state read refused {self._transient_read_failures} "
+                f"times in a row: {ex}"
+            ) from ex
         except SamsungIPControlError as ex:
             raise UpdateFailed(f"IP Control state read failed: {ex}") from ex
 
+        self._transient_read_failures = 0
         clear_token_problem(self.hass, self._entry.entry_id, METHOD_IP_CONTROL)
         return {
             "tv": tv_states,
