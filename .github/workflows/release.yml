@@ -9,46 +9,23 @@ permissions:
   contents: write
 
 jobs:
-  detect-branch:
-    name: "Detect target branch from release type"
-    runs-on: ubuntu-latest
-    outputs:
-      target_branch: ${{ steps.detect.outputs.branch }}
-    steps:
-      - name: "Determine target branch"
-        id: detect
-        run: |
-          # Stable releases target master.
-          # Pre-releases (betas, rc) target the dev branch matching their
-          # version line: 8.0.x -> v8-json-rpc, 8.1.x -> v8.1-dev, etc.
-          # The branch is derived from the tag's major.minor so new dev
-          # lines (8.2, ...) keep working without editing this workflow,
-          # as long as the branch is named v<major>.<minor>-dev.
-          TAG="${{ github.event.release.tag_name }}"
-          IS_PRERELEASE="${{ github.event.release.prerelease }}"
-          if [[ "$IS_PRERELEASE" != "true" ]]; then
-            BRANCH="master"
-          elif [[ "$TAG" =~ ^8\.0\.0 ]]; then
-            # The 8.0 line predates the v<maj>.<min>-dev convention.
-            BRANCH="v8-json-rpc"
-          elif [[ "$TAG" =~ ^([0-9]+)\.([0-9]+)\. ]]; then
-            BRANCH="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}-dev"
-          else
-            echo "::error::Cannot derive a dev branch from tag '$TAG'"
-            exit 1
-          fi
-          echo "Release tag: $TAG (prerelease=$IS_PRERELEASE) -> target branch: $BRANCH"
-          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-
   update-manifest:
     name: "Update manifest version"
+    # Stable releases only. A pre-release used to target a dev branch derived
+    # from its version line (8.9.1 -> v8.9-dev); those branches stopped being
+    # created once everything was cut from master, so every pre-release failed
+    # here with "couldn't find remote ref refs/heads/v8.9-dev" and took the
+    # Release job down with it (4 of 4 pre-releases in the 8.9 line). The
+    # manifest version is already set in the PR that ships the change, and the
+    # zip below sets it from the tag regardless, so there is nothing to push
+    # for a pre-release.
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
-    needs: detect-branch
     steps:
-      - name: "Checkout target branch"
+      - name: "Checkout master"
         uses: actions/checkout@v4
         with:
-          ref: refs/heads/${{ needs.detect-branch.outputs.target_branch }}
+          ref: refs/heads/master
           fetch-depth: 1
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: "Update manifest.json"
@@ -63,21 +40,27 @@ jobs:
           git add custom_components/samsungtv_smart/manifest.json
           git diff --staged --quiet || \
             git commit -m "chore: bump manifest version to ${{ github.event.release.tag_name }}"
-          git push origin refs/heads/${{ needs.detect-branch.outputs.target_branch }}
+          git push origin refs/heads/master
 
   release:
     name: "Release"
     runs-on: ubuntu-latest
-    needs: [detect-branch, update-manifest]
+    # Runs for stable and pre-releases alike. `always()` keeps it going when
+    # update-manifest was skipped (a pre-release); a failure or a cancellation
+    # there still stops it.
+    needs: [update-manifest]
+    if: ${{ always() && contains(fromJSON('["success", "skipped"]'), needs.update-manifest.result) }}
     steps:
-      - name: "Checkout the repository"
+      - name: "Checkout the release tag"
         uses: actions/checkout@v4
         with:
-          ref: refs/heads/${{ needs.detect-branch.outputs.target_branch }}
+          # The tag, not a branch: the asset must be the code that was
+          # released. Checking out a branch head shipped whatever had landed
+          # on it since, and needed a branch to exist at all.
+          ref: ${{ github.event.release.tag_name }}
       - name: "Set manifest version from tag (authoritative)"
-        # Force the version inside the artifact to match the release tag,
-        # independent of the update-manifest push having propagated.
-        # This is what makes the zip's version reliably correct.
+        # Force the version inside the artifact to match the release tag, so
+        # the zip is correct even if the tag was cut before the bump landed.
         run: |
           jq '.version = "${{ github.event.release.tag_name }}"' \
             custom_components/samsungtv_smart/manifest.json > tmp.json
