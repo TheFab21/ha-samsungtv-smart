@@ -1198,10 +1198,24 @@ class SamsungTVAsyncArt:
         request_data: dict[str, Any],
         wait_for_event: str | None = None,
         timeout: float = 5.0,
+        bypass_cooldown: bool = False,
     ) -> dict[str, Any] | None:
-        """Serialize Art requests and suppress bursts during socket recovery."""
+        """Serialize Art requests and suppress bursts during socket recovery.
+
+        ``bypass_cooldown`` is for an explicit art-mode write. The cooldown
+        exists to stop the POLLERS refilling a socket that is recovering; a
+        write asked for by a user or an automation is not a poller, it is rare,
+        and on a TV stuck on an input it is the very request that ends the
+        wedge loop. Blocking it only made Art Mode unreachable for as long as
+        the backoff lasted (#273: "Failed to turn Art Mode ON after 3 attempts"
+        twice, five minutes apart, while the channel was backing off).
+        """
         async with self._request_lock:
-            cooldown_remaining = self._request_cooldown_until - time.monotonic()
+            cooldown_remaining = (
+                0.0
+                if bypass_cooldown
+                else self._request_cooldown_until - time.monotonic()
+            )
             if cooldown_remaining > 0:
                 self._log.debug(
                     "Art API: recovery cooldown active; skipping request for %.1fs",
@@ -1836,7 +1850,8 @@ class SamsungTVAsyncArt:
                 {
                     "request": "set_artmode_status",
                     "value": mode,
-                }
+                },
+                bypass_cooldown=True,
             )
         )
         try:

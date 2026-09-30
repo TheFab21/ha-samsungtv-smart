@@ -736,6 +736,15 @@ class SamsungTVSmartOAuth2FlowHandler(
 
         result = await self._try_connect(
             port=user_input.get(CONF_PORT) or entry.data.get(CONF_PORT),
+            # Present the stored token: _try_connect_ws then takes its
+            # "preferred port + existing token" path, which needs no on-screen
+            # prompt. Without it the test always paired from scratch, which a
+            # Frame in Art Mode cannot answer — it has no screen to show the
+            # prompt on — so this step failed in ~30 s on a TV that was working
+            # (#273). A rejected token still falls back to the untokened
+            # attempt, so nothing is lost. Re-pairing is what the Authentication
+            # step is for.
+            token=entry.data.get(CONF_TOKEN),
             skip_info=True,
         )
         if result != RESULT_SUCCESS:

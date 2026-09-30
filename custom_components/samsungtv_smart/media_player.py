@@ -1495,8 +1495,19 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         )
 
         def update_status_callback():
-            """Update current TV status."""
-            run_callback_threadsafe(self.hass.loop, self._status_changed_callback)
+            """Update current TV status.
+
+            Called from the SamsungPing thread, which outlives the event loop
+            at shutdown: HA closes the loop and the thread's next tick (1 s)
+            still tries to notify, raising "Event loop is closed" as an
+            uncaught thread exception in the log. Harmless — nothing is left to
+            update — but it wrote a traceback on every stop.
+            """
+            try:
+                run_callback_threadsafe(self.hass.loop, self._status_changed_callback)
+            except RuntimeError:
+                # Home Assistant is stopping; there is nothing to update.
+                pass
 
         self._ws.register_status_callback(update_status_callback)
         await self.hass.async_add_executor_job(self._ws.start_poll)
