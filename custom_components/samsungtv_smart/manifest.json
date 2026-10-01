@@ -23,7 +23,6 @@
     "wakeonlan>=2.0.0",
     "aiofiles>=0.8.0",
     "casttube>=0.2.1",
-    "Pillow>=10.0.0",
     "pillow-heif>=0.13.0"
   ],
   "version": "8.9.8"
