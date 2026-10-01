@@ -762,11 +762,37 @@ class FrameArtCoordinator(DataUpdateCoordinator):
                 except Exception as ex:
                     self._log.debug("Error getting art mode: %s", ex)
 
+            # Art-only reads are pointless while the TV is not showing art, and
+            # they are not free. On a Frame sitting on an input (HDMI) the art app
+            # answers get_artmode_status but stays silent on get_current_artwork
+            # and on the slideshow reads, so every 5 s cycle piled up two 5 s
+            # timeouts. Three consecutive ones trip the art channel's wedge
+            # breaker (ART_WS_TIMEOUT_TRIP), which force-closes a socket that is
+            # demonstrably answering: 14 reconnects in 70 min measured on a
+            # 13-TV fleet, none of which fixed anything because nothing was
+            # broken (#273). Neither the current artwork nor the slideshow state
+            # can change while art mode is off, so skip those reads and keep the
+            # values already published. get_artmode() above is still polled every
+            # cycle: it is the request the TV does answer, and it is what tells
+            # us when to resume. Only a positive "off" skips — an unknown reading
+            # (None, e.g. the media_player state is not up yet) still polls.
+            art_mode_off = data["art_mode"] == "off"
+            if art_mode_off and self.data:
+                self._log.debug(
+                    "Frame Art: art mode is off — skipping the art-only reads "
+                    "(current artwork, slideshow) this cycle"
+                )
+                for carried in ("current_artwork", "artwork_count", "slideshow_status"):
+                    if data[carried] is None and self.data.get(carried) is not None:
+                        data[carried] = self.data[carried]
+
             # Get current artwork with timeout
             content_id = None
             try:
                 async with asyncio.timeout(8):
-                    current = await self._art_api.get_current()
+                    current = (
+                        None if art_mode_off else await self._art_api.get_current()
+                    )
                     if current:
                         raw_content_id = current.get("content_id")
                         content_id = self._confirm_content_id(raw_content_id)
@@ -898,7 +924,7 @@ class FrameArtCoordinator(DataUpdateCoordinator):
             # We detect once and persist the choice in entry.data so all
             # subsequent reads/writes use the right one.
             active_api = self._entry.data.get(CONF_SLIDESHOW_API)
-            if not active_api:
+            if not active_api and not art_mode_off:
                 try:
                     async with asyncio.timeout(8):
                         detected = await self._art_api.detect_slideshow_api()
@@ -931,7 +957,9 @@ class FrameArtCoordinator(DataUpdateCoordinator):
 
             try:
                 async with asyncio.timeout(8):
-                    if active_api == "auto_rotation":
+                    if art_mode_off:
+                        slideshow = None
+                    elif active_api == "auto_rotation":
                         slideshow = await self._art_api.get_auto_rotation_status()
                     else:
                         slideshow = await self._art_api.get_slideshow_status()
