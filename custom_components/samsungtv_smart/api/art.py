@@ -2608,6 +2608,11 @@ class SamsungTVAsyncArt:
                 "content_id_list": content_id_list,
             }
         )
+        # The TV broadcasts image_added when art appears but nothing when it is
+        # removed, so tell the listeners ourselves: the Frame Art coordinator
+        # caches the library size and would otherwise keep publishing the old
+        # count until its refresh interval elapsed.
+        self._fire_art_content_event()
         return True
 
     # ==================== Context Manager ====================
