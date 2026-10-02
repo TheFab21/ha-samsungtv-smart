@@ -56,6 +56,7 @@ from .const import (
     CONF_API_KEY,
     CONF_ART_IDENTIFY_ENABLE,
     CONF_ART_PORT,
+    CONF_CONTENT_LIST_INTERVAL,
     CONF_DEVICE_ID,
     CONF_ENABLE_IP_CONTROL,
     CONF_IP_CONTROL_POLL_INTERVAL,
@@ -68,6 +69,7 @@ from .const import (
     DATA_ART_API,
     DATA_CFG,
     DATA_IP_CONTROL_STATE_COORDINATOR,
+    DEFAULT_CONTENT_LIST_INTERVAL,
     DEFAULT_IP_CONTROL_POLL_INTERVAL,
     DEFAULT_PORT,
     DEFAULT_ST_POLL_ON_INTERVAL,
@@ -386,6 +388,11 @@ async def async_setup_entry(  # noqa: C901
         # two-poll confirmation that only exists to filter spurious glitches).
         def _on_art_content() -> None:
             coordinator._trust_next_content_id = True
+            # image_added / image_of_list_added change the library size, and
+            # the others are cheap to re-read on an event that already forces a
+            # refresh — so drop the cached count rather than guess which
+            # broadcast resized the library.
+            coordinator.invalidate_artwork_count()
             hass.async_create_task(coordinator.async_request_refresh())
 
         art_api.register_art_content_callback(_on_art_content)
@@ -672,6 +679,15 @@ class FrameArtCoordinator(DataUpdateCoordinator):
         # seen only once, held until a second consecutive poll confirms it.
         self._confirmed_content_id: str | None = None
         self._pending_content_id: str | None = None
+        # Artwork count, cached. get_content_list returns the WHOLE library
+        # (~19 KB for 61 pieces, measured) and the count is all we publish from
+        # it, yet it ran on every 5 s poll: 5 203 calls and ~99 MB of WebSocket
+        # payload in 18 h on one Frame. The library only changes when art is
+        # added or removed, both of which invalidate this cache, so the read is
+        # throttled to CONF_CONTENT_LIST_INTERVAL — the option already offered
+        # in the Options screen, which nothing read until now.
+        self._artwork_count: int | None = None
+        self._artwork_count_at: float | None = None
         # Enabled by default - thumbnails are fetched for current artwork
         self._thumbnail_fetch_enabled = True
         self._thumbnail_failures = 0
@@ -686,6 +702,27 @@ class FrameArtCoordinator(DataUpdateCoordinator):
         self._log.info(
             "Frame Art Coordinator initialized with thumbnail fetching enabled"
         )
+
+    def _content_list_interval(self) -> int:
+        """How long a cached artwork count stays usable, in seconds."""
+        return self._entry.options.get(
+            CONF_CONTENT_LIST_INTERVAL, DEFAULT_CONTENT_LIST_INTERVAL
+        )
+
+    def _artwork_count_is_fresh(self) -> bool:
+        """True when the cached count may be published without a TV read."""
+        if self._artwork_count is None or self._artwork_count_at is None:
+            return False
+        return time.time() - self._artwork_count_at < self._content_list_interval()
+
+    def invalidate_artwork_count(self) -> None:
+        """Forget the cached count so the next poll reads the TV.
+
+        Called on every art-content broadcast (image_added, image_selected,
+        favorite_changed…) and after a delete, so an added or removed piece is
+        reflected immediately rather than at the end of the throttle window.
+        """
+        self._artwork_count_at = None
 
     async def _async_update_data(self) -> dict[str, Any]:  # noqa: C901
         """Fetch data from the Frame TV."""
@@ -906,16 +943,22 @@ class FrameArtCoordinator(DataUpdateCoordinator):
                     f"/local/frame_art/{self._entry.entry_id}/current.jpg"
                 )
 
-            # Get artwork count (less frequently, only if art_mode is on)
+            # Get artwork count (throttled, only if art_mode is on)
             if data["art_mode"] == "on":
-                try:
-                    async with asyncio.timeout(15):
-                        artwork_list = await self._art_api.available()
-                        data["artwork_count"] = len(artwork_list) if artwork_list else 0
-                except asyncio.TimeoutError:
-                    self._log.debug("Timeout getting artwork list")
-                except Exception as ex:
-                    self._log.debug("Error getting artwork list: %s", ex)
+                if self._artwork_count_is_fresh():
+                    data["artwork_count"] = self._artwork_count
+                else:
+                    try:
+                        async with asyncio.timeout(15):
+                            artwork_list = await self._art_api.available()
+                            count = len(artwork_list) if artwork_list else 0
+                            data["artwork_count"] = count
+                            self._artwork_count = count
+                            self._artwork_count_at = time.time()
+                    except asyncio.TimeoutError:
+                        self._log.debug("Timeout getting artwork list")
+                    except Exception as ex:
+                        self._log.debug("Error getting artwork list: %s", ex)
 
             # Get slideshow / auto-rotation status (routed via persisted API).
             # Samsung Frame TVs split this feature across two parallel APIs
