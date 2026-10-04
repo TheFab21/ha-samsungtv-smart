@@ -68,6 +68,13 @@ ART_MODE_BROADCAST_VERIFY_WINDOW = 8.0
 # attempt's pre-write check as a late confirmation.
 ART_MODE_PANEL_READ_BACK_WINDOW = 3.0
 
+# When the panel still disagrees after that window but the TV broadcast the
+# requested state after the write, how long the panel keeps being re-read in
+# the background. A 2023 32" Frame woken from standby broadcast Art Mode ON at
+# +6.7 s while getTVStates still did not report "Ambient" 11 s later (#273
+# follow-up); this decides, in the log, whether that was lag or a real conflict.
+ART_MODE_PANEL_CONFLICT_WINDOW = 20.0
+
 
 class _DeviceLoggerAdapter(logging.LoggerAdapter):
     """Prefix every log line with the TV's host so multi-TV logs can be told apart."""
@@ -270,7 +277,9 @@ class FrameArtModeSwitch(SwitchEntity):
         """True when art mode may use IP Control at all (default: off)."""
         return self._entry.options.get(CONF_IP_CONTROL_ART_MODE, False)
 
-    async def _set_artmode(self, turn_on: bool, after_power_on: bool = False):
+    async def _set_artmode(
+        self, turn_on: bool, after_power_on: bool = False, since: int | None = None
+    ):
         """Set Art Mode via IP Control (primary), WebSocket as fallback.
 
         On a healthy Frame, IP Control ``artModeControl`` reliably flips the
@@ -294,6 +303,11 @@ class FrameArtModeSwitch(SwitchEntity):
         fault really is, "off" must mean no artModeControl traffic at all —
         switching then falls back to the WebSocket art channel, as the
         documentation already claims it does.
+
+        ``since`` is the art-mode broadcast count the caller read before its
+        FIRST attempt. A retry passes it so a broadcast answering an earlier
+        attempt's write still counts: the TV can confirm after that attempt
+        gave up and before the next one starts.
         """
         guard = guard_for(self._hass.data[DOMAIN][self._entry.entry_id])
 
@@ -337,12 +351,23 @@ class FrameArtModeSwitch(SwitchEntity):
             guard.record_verified(turn_on)
             return True
 
+        # An earlier attempt of this request already wrote it and the TV has
+        # since broadcast the requested state; only the panel is behind. Do
+        # not write it again — on a 2023 Frame woken from standby the retry
+        # rewrote ON two seconds after the TV had broadcast it, then reported
+        # the write failed because getTVStates had not caught up.
+        if since is not None and self._broadcast_confirms(turn_on, since):
+            guard.record_unverified(turn_on)
+            self._panel_lags_broadcast(guard, turn_on, since)
+            return True
+
         # 2. Cooldown: refuse to repeat a same-intent write that did not take.
         guard.check(turn_on)  # raises ArtModeWriteSuppressed
 
         # Broadcasts counted before the write: only one of the requested state
-        # that arrives after this point confirms it.
-        mark = self._art_api.art_mode_broadcast_count
+        # that arrives after this point confirms it. A retry keeps the mark of
+        # the request's first attempt (see ``since``).
+        mark = self._art_api.art_mode_broadcast_count if since is None else since
 
         client = self._get_ip_control() if self._ip_control_art_mode() else None
         if client is not None:
@@ -380,6 +405,8 @@ class FrameArtModeSwitch(SwitchEntity):
                     )
                     self._confirm_by_broadcast(guard, turn_on, mark)
                     return True
+                if self._panel_lags_broadcast(guard, turn_on, mark):
+                    return True
                 self._log.warning(
                     "Art Mode %s for %s was accepted via IP Control but the panel "
                     "did not change — not retrying within the cooldown",
@@ -409,6 +436,8 @@ class FrameArtModeSwitch(SwitchEntity):
             after = await self._panel_read_back(turn_on)
             if after is turn_on:
                 guard.record_confirmed(turn_on)
+                return True
+            if after is not None and self._panel_lags_broadcast(guard, turn_on, mark):
                 return True
             if after is not None:
                 self._log.warning(
@@ -448,6 +477,75 @@ class FrameArtModeSwitch(SwitchEntity):
             await asyncio.sleep(0.5)
             after = await self._panel_shows_art()
         return after
+
+    def _broadcast_confirms(self, turn_on: bool, mark: int) -> bool:
+        """The TV broadcast ``turn_on`` after ``mark`` and has not reversed it."""
+        api = self._art_api
+        if not api.art_mode_broadcast_since(mark, turn_on):
+            return False
+        at = api.art_mode_broadcast_at
+        return at.get(turn_on, 0) > at.get(not turn_on, 0)
+
+    def _panel_lags_broadcast(self, guard, turn_on: bool, mark: int) -> bool:
+        """Accept a write the TV broadcast but the panel does not show yet.
+
+        Called when the panel read-back still reports the other state. If the
+        TV broadcast the requested state AFTER the write, the write took on the
+        art app's side: report it accepted, so the caller does not write it
+        again, and re-read the panel in the background to settle it.
+
+        The guard record stays provisional until the panel agrees, so this adds
+        no write and cannot reopen #248's loop: a retry within the cooldown is
+        still refused. What it removes is a redundant write and a false
+        failure — a 2023 Frame woken from standby broadcast ON, answered "on"
+        twice, then was written ON again and reported "panel did not change"
+        while getTVStates had not yet caught up.
+        """
+        if not self._broadcast_confirms(turn_on, mark):
+            return False
+        self._log.debug(
+            "Art Mode %s for %s: the TV broadcast it after the write but the "
+            "panel does not show it yet; re-checking the panel in the background",
+            turn_on,
+            self._device_name,
+        )
+        self._entry.async_create_background_task(
+            self._hass,
+            self._settle_panel_conflict(guard, turn_on),
+            f"samsungtv_smart art mode panel re-check {self._device_name}",
+        )
+        return True
+
+    async def _settle_panel_conflict(self, guard, turn_on: bool) -> None:
+        """Confirm the write once the panel agrees, or say it never did."""
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        deadline = started + ART_MODE_PANEL_CONFLICT_WINDOW
+        after = None
+        while loop.time() < deadline:
+            await asyncio.sleep(1)
+            after = await self._panel_shows_art()
+            if after is turn_on:
+                guard.record_confirmed(turn_on)
+                self._log.debug(
+                    "Art Mode %s for %s: the panel caught up with the TV's "
+                    "broadcast after %.1fs",
+                    turn_on,
+                    self._device_name,
+                    loop.time() - started,
+                )
+                return
+        if after is None:
+            # Unreadable, not contradicting: the broadcast is all there is.
+            return
+        self._log.warning(
+            "Art Mode %s for %s: the TV broadcast it, but the panel still "
+            "reported otherwise %.0fs later — the art channel and IP Control "
+            "disagree on this TV. Not retrying within the cooldown",
+            "ON" if turn_on else "OFF",
+            self._device_name,
+            ART_MODE_PANEL_CONFLICT_WINDOW,
+        )
 
     def _confirm_by_broadcast(self, guard, turn_on: bool, mark: int) -> None:
         """Confirm a write by the TV's broadcast, now or in the background."""
@@ -690,6 +788,7 @@ class FrameArtModeSwitch(SwitchEntity):
         max_retries = 5 if tv_was_off else 3
         retry_delay = 3 if tv_was_off else 2
 
+        since = self._art_api.art_mode_broadcast_count
         for attempt in range(max_retries):
             try:
                 async with asyncio.timeout(10):
@@ -699,7 +798,9 @@ class FrameArtModeSwitch(SwitchEntity):
                         max_retries,
                         self._device_name,
                     )
-                    result = await self._set_artmode(True, after_power_on=tv_was_off)
+                    result = await self._set_artmode(
+                        True, after_power_on=tv_was_off, since=since
+                    )
                     if result:
                         # Set state immediately for responsive UI and hold it
                         # against the lagging media_player reading.
@@ -805,6 +906,7 @@ class FrameArtModeSwitch(SwitchEntity):
         max_retries = 3
         retry_delay = 2
 
+        since = self._art_api.art_mode_broadcast_count
         for attempt in range(max_retries):
             try:
                 async with asyncio.timeout(10):
@@ -814,7 +916,7 @@ class FrameArtModeSwitch(SwitchEntity):
                         max_retries,
                         self._device_name,
                     )
-                    result = await self._set_artmode(False)
+                    result = await self._set_artmode(False, since=since)
                     if result:
                         # Set state immediately for responsive UI and hold it
                         # against the lagging media_player reading.
