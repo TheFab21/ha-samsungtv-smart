@@ -137,6 +137,9 @@ def _switch_methods():
         "async_turn_on",
         "async_turn_off",
         "_verify_art_mode_broadcast",
+        "_panel_lags_broadcast",
+        "_settle_panel_conflict",
+        "_broadcast_confirms",
     }
     namespace = {
         "asyncio": _Asyncio(),
@@ -146,7 +149,9 @@ def _switch_methods():
         "SamsungIPControlError": _IPError,
         "Any": object,
         **_constants(
-            "ART_MODE_BROADCAST_VERIFY_WINDOW", "ART_MODE_PANEL_READ_BACK_WINDOW"
+            "ART_MODE_BROADCAST_VERIFY_WINDOW",
+            "ART_MODE_PANEL_READ_BACK_WINDOW",
+            "ART_MODE_PANEL_CONFLICT_WINDOW",
         ),
     }
     for node in cls.body:
@@ -567,6 +572,96 @@ class PairedOptionOffTest(_Base):
                 await sw._set_artmode(True)
         self.assertEqual(sw._art_api.writes, 1)
         self.assertIsNotNone(sw.guard.pending(True))
+
+
+class PanelLagsBroadcastTest(_Base):
+    """IP Control paired, the TV broadcasts the write, the panel lags behind.
+
+    Frame chambre (QE32LS03C), 2 Oct 17:20, woken by an automation:
+
+      17:20:18.0  set_artmode_status(on)       -> no reply within 5 s
+      17:20:24.75 art_mode_changed 'on', late reply 'on', get_artmode 'on'
+      17:20:26.9  set_artmode_status(on) again  (the retry; already on)
+      17:20:33-36 getTVStates: not "Ambient"   -> "panel did not change"
+      17:20:42.8  next attempt refused: "already written 11s ago"
+
+    The TV said "on" four ways after the first write; the panel read-back
+    overruled all of them. A broadcast of the requested state received after
+    the write now marks it accepted and the panel is re-read in the
+    background. The record stays provisional, so no write is added.
+    """
+
+    async def test_the_logged_wake_succeeds_without_a_refusal(self):
+        # Broadcast + reply +6.7 s after the first write (past its 5 s
+        # timeout), the retry gets nothing. The panel was still not "Ambient"
+        # 18 s after the first write in the log; here it follows at +25 s.
+        tv = _Tv(shows_art=False, moves=True, lag=25.0)
+        sw = _Switch(_ArtChannel(art_mode=False), tv)
+        late = [("broadcast", "on", 6.7), ("reply", "on", 6.7)]
+        await self.toggles(sw, [(0, True, [late, [], []])])
+        self.assertEqual(sw.refused(), [])
+        self.assertEqual(sw._art_api.writes, 1)  # the retry does not rewrite
+        self.assertTrue(sw._attr_is_on)
+        warnings = [m for level, m in sw._log.lines if level == "WARNING"]
+        self.assertFalse(any("did not change" in m for m in warnings), warnings)
+        await self.wait(25)
+        self.assertIsNone(sw.guard.pending(True))  # confirmed once it caught up
+
+    async def test_a_lagging_panel_confirms_the_write_when_it_catches_up(self):
+        tv = _Tv(shows_art=False, moves=True, lag=8.0)
+        sw = _Switch(_ArtChannel(art_mode=False), tv)
+        sw._art_api.scripts = [list(ON)]
+        self.assertTrue(await sw._set_artmode(True))
+        self.assertEqual(sw._art_api.writes, 1)
+        self.assertIsNotNone(sw.guard.pending(True))  # provisional meanwhile
+        await self.wait(10)
+        self.assertIsNone(sw.guard.pending(True))
+        self.assertTrue(any("caught up" in m for _, m in sw._log.lines))
+
+    async def test_a_panel_that_never_follows_is_reported_and_not_rewritten(self):
+        # The broadcast was wrong, or the panel getter is: either way say so,
+        # keep the record, and refuse a rewrite within the cooldown (#248).
+        tv = _Tv(shows_art=False, moves=False)
+        sw = _Switch(_ArtChannel(art_mode=False), tv)
+        sw._art_api.scripts = [list(ON)]
+        self.assertTrue(await sw._set_artmode(True))
+        await self.wait(22)
+        warnings = [m for level, m in sw._log.lines if level == "WARNING"]
+        self.assertTrue(any("disagree" in m for m in warnings), warnings)
+        self.assertIsNotNone(sw.guard.pending(True))
+        sw._art_api.scripts = [list(ON)]
+        await sw.async_turn_on()
+        self.assertEqual(sw._art_api.writes, 1)
+        self.assertEqual(len(sw.refused()), 1)
+
+    async def test_a_broadcast_from_before_the_write_does_not_count(self):
+        # An old 'on' broadcast, then a write the TV only replies to while the
+        # panel stays put: that is the #248 case and must still fail.
+        tv = _Tv(shows_art=False, moves=False)
+        channel = _ArtChannel(art_mode=False)
+        channel.art_mode_broadcast_count = 5
+        channel.art_mode_broadcast_at = {True: 5}
+        sw = _Switch(channel, tv)
+        sw._art_api.scripts = [[("reply", "on", 0.3)]]
+        self.assertFalse(await sw._set_artmode(True))
+        warnings = [m for level, m in sw._log.lines if level == "WARNING"]
+        self.assertTrue(any("did not change" in m for m in warnings), warnings)
+        self.assertEqual(sw.tasks, [])
+
+    async def test_an_unreadable_panel_during_the_re_check_stays_quiet(self):
+        tv = _Tv(shows_art=False, moves=False)
+        sw = _Switch(_ArtChannel(art_mode=False), tv)
+        sw._art_api.scripts = [list(ON)]
+        self.assertTrue(await sw._set_artmode(True))
+
+        class _GoneQuiet(_IpClient):
+            async def async_panel_shows_art(self):
+                raise _IPError("refused")
+
+        sw._ip = _GoneQuiet(tv)
+        await self.wait(22)
+        warnings = [m for level, m in sw._log.lines if level == "WARNING"]
+        self.assertFalse(any("disagree" in m for m in warnings), warnings)
 
 
 if __name__ == "__main__":
