@@ -1381,7 +1381,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # option stopped only the getter and users who turned it off still
         # had every toggle written over JSON-RPC. A getter that wedges 'on' is
         # caught by async_get_art_mode's cross-check against pictureMode.
-        # Until 8.9.11 the option gated the read too, so with it off (the
+        # Until 8.10.0 the option gated the read too, so with it off (the
         # default) this cache stayed None whenever the TV was on.
         read_at = time.monotonic()
         try:
@@ -3028,7 +3028,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             override = self._art_broadcast_overrides(self._ip_art_mode_at)
             return self._ip_art_mode if override is None else override
         # Without an IP reading (not paired, the read failing — or, until
-        # 8.9.11, the art-mode option off, which then gated the getter too)
+        # 8.10.0, the art-mode option off, which then gated the getter too)
         # _ip_art_mode is None, and the value used to come from the WebSocket
         # art channel — which on some Frames never receives the
         # art_mode_changed event and freezes art_mode_status at its

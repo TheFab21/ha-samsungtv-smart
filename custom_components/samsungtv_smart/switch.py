@@ -277,7 +277,7 @@ class FrameArtModeSwitch(SwitchEntity):
         """True when art mode may be WRITTEN over IP Control (default: off).
 
         The artModeControl getter is read by the media player whatever this
-        says (since 8.9.11); only artModeOn/artModeOff depend on it.
+        says (since 8.10.0); only artModeOn/artModeOff depend on it.
         """
         return self._entry.options.get(CONF_IP_CONTROL_ART_MODE, False)
 
@@ -306,7 +306,7 @@ class FrameArtModeSwitch(SwitchEntity):
         every art-mode toggle sent to the TV over JSON-RPC. "Off" means no
         art-mode write over IP Control — switching then falls back to the
         WebSocket art channel. From 8.7.7 to 8.9.10 the option gated the getter
-        as well; since 8.9.11 the media player reads the getter for detection
+        as well; since 8.10.0 the media player reads the getter for detection
         whatever it says (a wedged getter is caught by its cross-check against
         pictureMode).
 

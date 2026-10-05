@@ -5,7 +5,7 @@ that path "can break Art Mode entirely and may need a factory reset" on some
 firmware. Until 8.7.7 the option gated only the artModeControl *getter*, so a
 user following that advice still had every art-mode toggle sent to the TV over
 JSON-RPC. These tests pin the fix: with the option off, no artModeControl
-write is issued. (Since 8.9.11 the getter is read whatever the option;
+write is issued. (Since 8.10.0 the getter is read whatever the option;
 see test_art_mode_getter_read_without_option.py.)
 """
 
