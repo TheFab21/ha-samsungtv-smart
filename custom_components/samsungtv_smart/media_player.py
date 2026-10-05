@@ -2730,7 +2730,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # the stale source (e.g. an HDMI input) the whole time. The local
         # art-mode signal (IP Control / async Art API / WS) flips within ~1s,
         # so trust it for the title too.
-        if self._art_mode_is_on():
+        art_on = self._art_mode_is_on()
+        if art_on:
             return ART_MODE_MEDIA_TITLE
 
         if self._running_app == DEFAULT_APP:
@@ -2752,18 +2753,27 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     # On a Frame TV, SmartThings reports the "running app" as
                     # "art" while Art Mode is displayed. That is not a real app
                     # — surface it as Art Mode (the artwork image is set as the
-                    # media image in _update_media).
+                    # media image in _update_media). But only when nothing local
+                    # knows better: the cloud keeps reporting "art" ~30-45 s
+                    # after the panel has left it, and a definite local False
+                    # has already weighed SmartThings where it is allowed to win
+                    # (_art_mode_is_on). Measured: art off at 22:13:48, title
+                    # still "Art Mode" until 22:14:20 while art_mode_status read
+                    # off. Fall through to the real input instead.
                     if run_app.lower() == "art":
-                        return ART_MODE_MEDIA_TITLE
-                    # the channel name holds the running app ID
-                    # regardless of the self._cloud_source value
-                    # if the app ID is in the configured apps but is not running_app,
-                    # means that this is not the real running app / media title
-                    st_apps = self._app_list_st or {}
-                    if run_app not in list(st_apps.values()):
-                        # Resolve app ID to human-readable name
-                        app_name = self._resolve_app_name(run_app)
-                        return app_name or run_app
+                        if art_on is None:
+                            return ART_MODE_MEDIA_TITLE
+                    else:
+                        # the channel name holds the running app ID
+                        # regardless of the self._cloud_source value
+                        # if the app ID is in the configured apps but is not
+                        # running_app, means that this is not the real running
+                        # app / media title
+                        st_apps = self._app_list_st or {}
+                        if run_app not in list(st_apps.values()):
+                            # Resolve app ID to human-readable name
+                            app_name = self._resolve_app_name(run_app)
+                            return app_name or run_app
 
         media_title = self._get_source()
         if media_title and media_title != DEFAULT_APP:
