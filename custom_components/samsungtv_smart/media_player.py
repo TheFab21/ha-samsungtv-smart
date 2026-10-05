@@ -2832,6 +2832,41 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return False
         return (self._st.channel_name or "").lower() == "art"
 
+    def _art_broadcast_newer_than_panel(self) -> bool | None:
+        """Art state from an art_mode_changed broadcast newer than the panel snapshot.
+
+        The cached getTVStates.pictureMode is only as fresh as the IP Control
+        poll (10 s by default). An art_mode_changed broadcast heard after that
+        snapshot was requested is the newer word on what the panel shows, and
+        must not be overruled by it: measured on an LS03D, art switched on at
+        22:04:14.4, the broadcast confirmed it, yet at 22:04:19.4 the snapshot
+        taken before the switch still read a real picture mode — so
+        art_mode_status said off, the Art Mode number entities went
+        unavailable and _ensure_art_mode_ready logged "the reading is stale"
+        on a write that had just succeeded.
+
+        Returns None (the panel stays the latest word) when there is no such
+        broadcast or the snapshot carries no request time. Only broadcasts
+        count: a get_artmode_status reply can be the stale latch of #273 and
+        never outranks the panel. The next poll after the broadcast restores
+        the panel as the authority, so a wedged channel (#248) can only win
+        until then.
+        """
+        art_api = (
+            self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}).get(DATA_ART_API)
+        )
+        broadcast = getattr(art_api, "art_mode_last_broadcast", None)
+        if broadcast is None:
+            return None
+        data = getattr(self._get_ip_control_state_coordinator(), "data", None)
+        polled_at = data.get("polled_at") if isinstance(data, dict) else None
+        if polled_at is None:
+            return None
+        art_on, heard_at = broadcast
+        if heard_at <= polled_at:
+            return None
+        return art_on
+
     def _art_mode_is_on(self) -> bool | None:
         """Return the authoritative local Art Mode state, or None if unknown.
 
@@ -2897,12 +2932,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # no Art Mode at all (#248). support_art_mode already folds the WS
         # artmode capability and the FrameTVSupport device flag, so it is the
         # right gate; a non-Frame falls through to the previous behaviour.
+        #
+        # The snapshot is as old as the last poll, though: an art_mode_changed
+        # broadcast heard since is newer and wins until the next poll.
         panel_art = self._ip_control_panel_art_cached()
         if (
             panel_art is not None
             and self.support_art_mode != ArtModeSupport.UNSUPPORTED
         ):
-            return panel_art
+            newer = self._art_broadcast_newer_than_panel()
+            return panel_art if newer is None else newer
         if self._get_device_spec("PowerState") == "standby":
             return False
         # Cloud power-off fallback for TVs without IP Control. SmartThings

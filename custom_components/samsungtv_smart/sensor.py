@@ -2797,6 +2797,14 @@ class IPControlStateCoordinator(DataUpdateCoordinator):
             # QN55LS03FAFXZA), so they are not excluded; a panel that does not
             # implement directChannelControl answers -32601 and is then never
             # asked again for the life of the coordinator.
+            #
+            # Stamped BEFORE the request: the snapshot describes the panel as of
+            # roughly when it was asked, and the media player compares this with
+            # the arrival time of art_mode_changed broadcasts to tell which of
+            # the two is the newer word. Taken after, a broadcast landing while
+            # the request was in flight would lose to a pictureMode the TV had
+            # computed before the switch.
+            polled_at = time.monotonic()
             tv_states = await client.async_get_tv_states()
 
             channel_states: dict[str, Any] = {}
@@ -2897,6 +2905,7 @@ class IPControlStateCoordinator(DataUpdateCoordinator):
             "tv": tv_states,
             "channel": channel_states,
             "powered_off": False,
+            "polled_at": polled_at,
         }
 
 

@@ -219,6 +219,13 @@ class SamsungTVAsyncArt:
         # held that value before the write (#290).
         self.art_mode_broadcast_count = 0
         self.art_mode_broadcast_at: dict[bool, int] = {}
+        # The latest art_mode_changed broadcast as (state, time.monotonic() of
+        # arrival). The media player weighs it against the age of its cached
+        # getTVStates.pictureMode snapshot: a broadcast heard AFTER that
+        # snapshot was taken is the newer word on what the panel shows. Only the
+        # broadcast is stamped — a get_artmode_status reply can be the stale
+        # latch of #273, so it must never outrank the panel.
+        self.art_mode_last_broadcast: tuple[bool, float] | None = None
 
         # Async handling
         self._pending_requests: dict[str, asyncio.Future] = {}
@@ -848,8 +855,10 @@ class SamsungTVAsyncArt:
                 # _art_mode_is_on() fall through to the independent power
                 # sources (IP Control / SmartThings / REST PowerState) instead
                 # of pinning a false "on". A reconnect restores the real value
-                # from the first event received.
+                # from the first event received. The last broadcast goes with
+                # it: it described a channel that is now dead.
                 self.art_mode = None
+                self.art_mode_last_broadcast = None
                 # Fail in-flight pending requests immediately rather than
                 # letting their callers block on the per-request timeout;
                 # the response will never arrive on this dead channel.
@@ -906,6 +915,7 @@ class SamsungTVAsyncArt:
             self.art_mode = data.get("status") == "on"
             self.art_mode_broadcast_count += 1
             self.art_mode_broadcast_at[self.art_mode] = self.art_mode_broadcast_count
+            self.art_mode_last_broadcast = (self.art_mode, time.monotonic())
             self._fire_art_event()
             for future in self._art_mode_broadcast_waiters:
                 if not future.done():
