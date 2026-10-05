@@ -9,10 +9,13 @@ same log: "art_mode_status reads off but the panel shows Ambient — the reading
 is stale" on a write that had just succeeded, and the Art Mode number entities
 unavailable to a script 10 s after art came on.
 
-The snapshot now carries when it was requested, the art client remembers when
-the latest broadcast arrived, and the newer of the two wins. Only broadcasts
-count: a get_artmode_status reply can be the 13 h stale latch of #273, so it
-must never outrank the panel.
+The snapshot now carries when it was requested and the art client remembers
+when the latest broadcast arrived. The broadcast wins over a reading taken
+before it, and over one taken less than ART_BROADCAST_GRACE (20 s) after it:
+the panel can trail the broadcast — a 2023 Frame's getTVStates had not reached
+"Ambient" 11 s after it broadcast ON. Only broadcasts count: a
+get_artmode_status reply can be the 13 h stale latch of #273, so it must never
+outrank the panel.
 """
 
 import sys
@@ -84,6 +87,18 @@ def test_a_broadcast_older_than_the_snapshot_does_not_override_the_panel():
     # panel moved to art. The panel, polled since, stays authoritative.
     device = _device(picture_mode="Ambient", polled_at=100.0, broadcast=(False, 40.0))
     assert device._art_mode_is_on() is True
+
+
+def test_a_snapshot_shortly_after_the_broadcast_is_taken_for_panel_lag():
+    # Broadcast ON at t=100, snapshot at t=105 not yet Ambient: the panel trails.
+    device = _device(picture_mode="Dynamic", polled_at=105.0, broadcast=(True, 100.0))
+    assert device._art_mode_is_on() is True
+
+
+def test_a_snapshot_past_the_grace_window_is_the_authority_again():
+    # Still not Ambient 25 s after the broadcast: a real conflict, panel wins.
+    device = _device(picture_mode="Dynamic", polled_at=125.0, broadcast=(True, 100.0))
+    assert device._art_mode_is_on() is False
 
 
 def test_leaving_art_is_reported_from_the_broadcast_before_the_next_poll():

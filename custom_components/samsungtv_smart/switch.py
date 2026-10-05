@@ -274,7 +274,11 @@ class FrameArtModeSwitch(SwitchEntity):
         return self._ip_control
 
     def _ip_control_art_mode(self) -> bool:
-        """True when art mode may use IP Control at all (default: off)."""
+        """True when art mode may be WRITTEN over IP Control (default: off).
+
+        The artModeControl getter is read by the media player whatever this
+        says (since 8.9.11); only artModeOn/artModeOff depend on it.
+        """
         return self._entry.options.get(CONF_IP_CONTROL_ART_MODE, False)
 
     async def _set_artmode(
@@ -292,17 +296,19 @@ class FrameArtModeSwitch(SwitchEntity):
         the result back itself and reports it to the write guard; the callers
         do not.
 
-        ``CONF_IP_CONTROL_ART_MODE`` gates this path, reads AND writes. It
-        used to gate only the ``artModeControl`` getter, on the reasoning that
-        the explicit artModeOn/artModeOff command stays reliable even on a TV
-        whose getter has wedged. That left the setting dishonest: our own
-        documentation tells users to disable it because the IP Control art-mode
-        path "can break Art Mode entirely and may need a factory reset (seen on
-        QE55LS03D fw 2123)", yet a user who did exactly that still had every
-        art-mode toggle sent to the TV over JSON-RPC. Whatever that firmware
-        fault really is, "off" must mean no artModeControl traffic at all —
-        switching then falls back to the WebSocket art channel, as the
-        documentation already claims it does.
+        ``CONF_IP_CONTROL_ART_MODE`` gates this path — the writes. Until 8.7.7
+        it gated only the ``artModeControl`` getter, on the reasoning that the
+        explicit artModeOn/artModeOff command stays reliable even on a TV whose
+        getter has wedged. That left the setting dishonest: our own
+        documentation tells users to disable it because the IP Control
+        art-mode path "can break Art Mode entirely and may need a factory reset
+        (seen on QE55LS03D fw 2123)", yet a user who did exactly that still had
+        every art-mode toggle sent to the TV over JSON-RPC. "Off" means no
+        art-mode write over IP Control — switching then falls back to the
+        WebSocket art channel. From 8.7.7 to 8.9.10 the option gated the getter
+        as well; since 8.9.11 the media player reads the getter for detection
+        whatever it says (a wedged getter is caught by its cross-check against
+        pictureMode).
 
         ``since`` is the art-mode broadcast count the caller read before its
         FIRST attempt. A retry passes it so a broadcast answering an earlier
