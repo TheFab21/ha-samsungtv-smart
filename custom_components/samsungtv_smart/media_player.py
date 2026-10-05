@@ -1700,6 +1700,14 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             else:
                 self._ip_volume_refused_output = None
 
+        # directVolumeControl sits in the TV's none-ambient dispatch map, so
+        # while pictureMode is "Ambient" (art on a Frame) it answers -32601
+        # every time: 45 refused reads in 4 min on a QE32LS03C left in art.
+        # Don't ask. The snapshot is getTVStates, read whatever the IP Control
+        # art-mode option says, so this holds with that option off too.
+        if client is not None and self._ip_control_ambient_mode_active():
+            client = None
+
         if client is not None and self._ip_absolute_volume_supported is not False:
             try:
                 volume = await client.async_get_volume()

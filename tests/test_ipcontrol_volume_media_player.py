@@ -248,15 +248,17 @@ async def test_mute_does_nothing_when_state_already_matches():
     device.async_send_command.assert_not_awaited()
 
 
-async def test_unsupported_volume_probe_in_ambient_mode_is_not_latched():
-    """A -32601 in Ambient mode must not permanently disable volume control."""
+async def test_volume_is_not_read_over_ip_control_in_ambient_mode():
+    """In Ambient mode directVolumeControl always answers -32601: don't ask.
+
+    The method sits in the TV's none-ambient dispatch map; a QE32LS03C left in
+    art answered 45 reads with -32601 in 4 min. Nothing is latched either, so
+    volume control comes back as soon as the TV leaves Ambient mode.
+    """
     device = _device(external=True)
 
     client = AsyncMock()
-    client.async_get_volume.side_effect = [
-        SamsungIPControlUnsupportedError("Method not found"),
-        30,
-    ]
+    client.async_get_volume.return_value = 30
 
     device._get_ip_control_client = MagicMock(
         return_value=client
@@ -270,7 +272,7 @@ async def test_unsupported_volume_probe_in_ambient_mode_is_not_latched():
 
     assert device._ip_absolute_volume_supported is None
     assert device._attr_volume_level == 0.20
-    assert client.async_get_volume.await_count == 1
+    client.async_get_volume.assert_not_awaited()
 
     # After leaving Ambient mode the method must be probed again and can
     # successfully establish support without reloading the integration.
@@ -280,7 +282,29 @@ async def test_unsupported_volume_probe_in_ambient_mode_is_not_latched():
 
     assert device._ip_absolute_volume_supported is True
     assert device._attr_volume_level == 0.30
-    assert client.async_get_volume.await_count == 2
+    assert client.async_get_volume.await_count == 1
+
+
+async def test_a_minus_32601_read_while_the_snapshot_lags_ambient_is_not_latched():
+    """The snapshot can say Ambient only after the read was refused.
+
+    The read goes out (snapshot not yet Ambient), the TV answers -32601, and by
+    the time the error is handled the snapshot reports Ambient: not latched.
+    """
+    device = _device(external=True)
+
+    client = AsyncMock()
+    client.async_get_volume.side_effect = SamsungIPControlUnsupportedError(
+        "Method not found"
+    )
+    device._get_ip_control_client = MagicMock(return_value=client)
+    device._ip_control_ambient_mode_active.side_effect = [False, True]
+    device._upnp.async_get_volume.return_value = 20
+
+    await device._update_volume_info()
+
+    assert client.async_get_volume.await_count == 1
+    assert device._ip_absolute_volume_supported is None
 
 
 async def test_unsupported_volume_set_in_ambient_mode_is_not_latched():
