@@ -254,7 +254,9 @@ class SamsungIPControl:
         result = await self._async_request("powerControl", {"power": "reboot"})
         return result.get("power", "unknown")
 
-    async def async_get_art_mode(self) -> bool | None:
+    async def async_get_art_mode(
+        self, *, power_state: str | None = None
+    ) -> bool | None:
         """Return whether the TV is currently displaying Art Mode.
 
         Returns ``True`` if art is on the panel, ``False`` for normal viewing
@@ -274,8 +276,12 @@ class SamsungIPControl:
         PowerState is checked first and wins: a powered-off TV is never showing
         art (and pictureMode would be a stale ``"Ambient"``), so ``powerOff``
         short-circuits to ``False``. Art Mode itself reports ``powerOn``.
+        ``power_state`` is a powerControl answer the caller has just read, to
+        save asking again.
         """
-        if await self.async_get_power_state() == "powerOff":
+        if power_state is None:
+            power_state = await self.async_get_power_state()
+        if power_state == "powerOff":
             self._art_desync_count = 0
             return False
 

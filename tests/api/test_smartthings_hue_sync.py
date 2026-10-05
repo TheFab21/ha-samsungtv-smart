@@ -8,6 +8,18 @@ import pytest
 
 if "pysmartthings" not in sys.modules:
     pysmartthings = ModuleType("pysmartthings")
+
+    class _Names:
+        """Return arbitrary SmartThings enum-like attributes."""
+
+        def __getattr__(self, name):
+            return name
+
+    # This stub is collected first (tests/api sorts before tests/test_*), so it
+    # must carry what sensor.py imports too, or every later module importing
+    # sensor.py fails collection with "cannot import name 'Attribute'".
+    pysmartthings.Attribute = _Names()
+    pysmartthings.Capability = _Names()
     pysmartthings.SmartThings = object
     sys.modules["pysmartthings"] = pysmartthings
 

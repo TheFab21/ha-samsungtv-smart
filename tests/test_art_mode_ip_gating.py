@@ -1,11 +1,12 @@
-"""The IP Control art-mode option must gate writes, not only reads.
+"""The IP Control art-mode option must gate every art-mode write.
 
-Our documentation tells users to disable "Enable IP Control Art Mode" because
+Our documentation tells users to keep "Switch Art Mode over IP Control" off because
 that path "can break Art Mode entirely and may need a factory reset" on some
 firmware. Until 8.7.7 the option gated only the artModeControl *getter*, so a
 user following that advice still had every art-mode toggle sent to the TV over
 JSON-RPC. These tests pin the fix: with the option off, no artModeControl
-request is issued at all.
+write is issued. (Since 8.10.0 the getter is read whatever the option;
+see test_art_mode_getter_read_without_option.py.)
 """
 
 from pathlib import Path

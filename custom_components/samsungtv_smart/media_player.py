@@ -80,6 +80,7 @@ from .api.ipcontrol import (
     SamsungIPControl,
     SamsungIPControlAuthError,
     SamsungIPControlError,
+    SamsungIPControlModeLockedError,
     SamsungIPControlUnsupportedError,
 )
 from .api.samsungcast import SamsungCastTube
@@ -296,6 +297,11 @@ IP_ART_MODE_REFRESH_INTERVAL = timedelta(seconds=5)
 # art-mode value is considered stale and cleared (TV likely in deep standby
 # with port 1516 closed). 3 × 5s = 15s worst-case staleness.
 IP_ART_MODE_MAX_FAILURES = 3
+# How long after an art_mode_changed broadcast an IP Control reading that
+# disagrees with it is taken for lag rather than a conflict (seconds). A 2023
+# Frame's getTVStates had not reached "Ambient" 11 s after it broadcast ON; the
+# switch gives the panel the same 20 s (ART_MODE_PANEL_CONFLICT_WINDOW).
+ART_BROADCAST_GRACE = 20.0
 # Device identity (model / firmware) is fetched via IP Control once at startup
 # and then re-checked on this cadence, so a firmware upgrade is picked up
 # without re-pairing. It is a get-only LAN call and the value rarely changes,
@@ -588,6 +594,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     _attr_device_class = MediaPlayerDeviceClass.TV
     _attr_name = None
+    # Speaker output on which directVolumeControl was refused; see
+    # _update_volume_info. None = no refusal on record.
+    _ip_volume_refused_output: str | None = None
+    # time.monotonic() at which the cached IP art-mode value was asked for;
+    # None when it came from powerOff (definitive). See _refresh_ip_art_mode.
+    _ip_art_mode_at: float | None = None
+    # Whether this TV's IP Control implements the artModeControl getter: None
+    # = not known yet, False = it answered -32601 outside Ambient mode. Reset
+    # with the client, like _ip_absolute_volume_supported.
+    _ip_art_getter_supported: bool | None = None
 
     def __init__(
         self,
@@ -1249,6 +1265,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 self._ip_control_client = None
                 self._ip_control_token_cached = None
             self._ip_absolute_volume_supported = None
+            self._ip_art_getter_supported = None
             return None
 
         port = ip_control_port(entry.data)
@@ -1263,6 +1280,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             )
             self._ip_control_token_cached = token
             self._ip_absolute_volume_supported = None
+            self._ip_art_getter_supported = None
 
         return self._ip_control_client
 
@@ -1316,16 +1334,14 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         cache independent of the REST device-info ``PowerState``, which 2024+
         Frame models report as 'standby' WHILE actively displaying art.
 
-        Two operating modes depending on the ``CONF_IP_CONTROL_ART_MODE``
-        option (off by default for firmware safety):
-        - Option ON → full read: powerControl + artModeControl, caching the
-          real art state (True/False).
-        - Option OFF → SAFE power-only guard: only powerControl is read. When
-          it reports 'powerOff' the cache is pinned to ``False`` (the TV is off,
-          so art_mode_status must be off, overriding a frozen art-channel
-          WebSocket that keeps reporting 'on'); when it reports 'powerOn' the
-          cache is cleared to ``None`` so the other sources decide. This never
-          touches the firmware-risky artModeControl method.
+        The read does not depend on the ``CONF_IP_CONTROL_ART_MODE`` option,
+        which gates art-mode WRITES only: 'powerOff' pins the cache to
+        ``False`` (overriding a frozen art-channel WebSocket that keeps
+        reporting 'on'), otherwise artModeControl is read, cross-checked
+        against getTVStates.pictureMode (see async_get_art_mode). Each value
+        is stamped with when it was asked for, so an art_mode_changed
+        broadcast can be weighed against it (_art_broadcast_overrides);
+        a 'powerOff' value is not stamped — nothing overrides it.
 
         Failure handling:
         - No paired client (no token) → cache cleared to ``None``; the
@@ -1359,30 +1375,44 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 self._ip_art_mode = None
                 self.async_write_ha_state()
             return
-        # Whether the user opted into the (firmware-risky) Art Mode reads via
-        # artModeControl. Even when this is OFF we still run a SAFE power-only
-        # guard below: powerControl is a harmless getter (the same one already
-        # used for the Power switch), so reading it lets us force art_mode off
-        # whenever the TV is genuinely powered off — without ever touching
-        # artModeControl. This fixes the stale-WebSocket false positive where a
-        # frozen art channel keeps reporting art='on' after the TV is off
-        # (observed on the default config, where CONF_IP_CONTROL_ART_MODE is
-        # off and nothing independently verified the WebSocket signal).
-        art_mode_enabled = self._get_option(CONF_IP_CONTROL_ART_MODE, False)
+        # The artModeControl getter is read whatever "Switch Art Mode over IP
+        # Control" says: that option gates the writes (artModeOn/artModeOff),
+        # which is where the documented damage came from — before 8.7.7 the
+        # option stopped only the getter and users who turned it off still
+        # had every toggle written over JSON-RPC. A getter that wedges 'on' is
+        # caught by async_get_art_mode's cross-check against pictureMode.
+        # Until 8.10.0 the option gated the read too, so with it off (the
+        # default) this cache stayed None whenever the TV was on.
+        read_at = time.monotonic()
         try:
             power = await client.async_get_power_state()
             if power == "powerOff":
                 # TV is really off — art cannot be displayed. Don't query
                 # artModeControl: it would answer with the last mode.
                 value = False
-            elif art_mode_enabled:
-                value = await client.async_get_art_mode()
-            else:
-                # Power-only guard: TV is on but the user hasn't enabled the
-                # art-mode reads, so we can't safely tell art from a real
-                # input. Defer to the other (WebSocket / SmartThings) sources
-                # by clearing the cache rather than pinning a value.
+            elif (
+                self.support_art_mode == ArtModeSupport.UNSUPPORTED
+                or self._ip_art_getter_supported is False
+            ):
+                # Not a Frame (this timer runs for every TV), or one whose IP
+                # Control has no art-mode getter: power-only guard, the other
+                # sources decide.
                 value = None
+            else:
+                try:
+                    value = await client.async_get_art_mode(power_state=power)
+                except SamsungIPControlUnsupportedError as ex:
+                    # -32601 is ambiguous in Ambient mode (see the volume
+                    # getter); outside it, the method is not there.
+                    if not self._ip_control_ambient_mode_active():
+                        self._ip_art_getter_supported = False
+                        self._log.debug(
+                            "IP Control art-mode getter not available on %s "
+                            "(%s); using the other art-mode sources",
+                            self._host,
+                            ex,
+                        )
+                    value = None
         except SamsungIPControlAuthError as ex:
             self._log.warning(
                 "IP Control art-mode read for %s: token rejected (%s) — "
@@ -1425,6 +1455,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # A successful read means the token is valid again.
         self._ip_art_mode_failures = 0
         self._clear_ip_control_token_problem()
+        self._ip_art_mode_at = None if power == "powerOff" else read_at
         if value != self._ip_art_mode:
             self._log.debug(
                 "IP Control art-mode for %s changed: %s -> %s (writing state)",
@@ -1440,6 +1471,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 self._host,
                 value,
             )
+            # Same value, but taken later: it can retire a broadcast that was
+            # outranking it (_art_broadcast_overrides), so publish the outcome.
+            broadcast = self._latest_art_broadcast()
+            if value is not None and broadcast is not None and broadcast[0] != value:
+                self.async_write_ha_state()
 
     async def _refresh_device_information(self, _now=None) -> None:
         """Refresh the TV's model / firmware via IP Control and persist it.
@@ -1682,6 +1718,28 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # This is discovered per device rather than inferred from model/year.
         client = self._get_ip_control_client()
 
+        # A TV whose sound goes to an external receiver has no volume of its
+        # own to report: measured on an LS03D feeding an AVR, every
+        # directVolumeControl read answered -32002 and the TV's own log said
+        # "fail to get volume" (speakerSelect external, volume 0 in
+        # getTVStates) — every 5 s for as long as that output was selected.
+        # Some TVs do report the volume of an eARC soundbar, so this is learnt
+        # per output from the refusal, not assumed; a different output is
+        # asked again.
+        if self._ip_volume_refused_output is not None:
+            if self._ip_volume_refused_on_current_output():
+                client = None
+            else:
+                self._ip_volume_refused_output = None
+
+        # directVolumeControl sits in the TV's none-ambient dispatch map, so
+        # while pictureMode is "Ambient" (art on a Frame) it answers -32601
+        # every time: 45 refused reads in 4 min on a QE32LS03C left in art.
+        # Don't ask. The snapshot is getTVStates, read whatever the IP Control
+        # art-mode option says, so this holds with that option off too.
+        if client is not None and self._ip_control_ambient_mode_active():
+            client = None
+
         if client is not None and self._ip_absolute_volume_supported is not False:
             try:
                 volume = await client.async_get_volume()
@@ -1696,6 +1754,24 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     self._ip_absolute_volume_supported = False
                     self._log.debug(
                         "IP Control absolute volume is not available on this TV: %s",
+                        ex,
+                    )
+            except SamsungIPControlModeLockedError as ex:
+                output = self._speaker_output_state()
+                if output is not None and self._speaker_output_is_internal() is False:
+                    self._ip_volume_refused_output = output
+                    self._log.debug(
+                        "IP Control absolute volume refused while the sound goes "
+                        "to '%s' (%s); the TV cannot report its volume on that "
+                        "output — using UPnP, and asking again only once the "
+                        "output changes",
+                        output,
+                        ex,
+                    )
+                else:
+                    self._log.debug(
+                        "IP Control absolute-volume read failed (%s); "
+                        "falling back to UPnP",
                         ex,
                     )
             except SamsungIPControlError as ex:
@@ -2730,7 +2806,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # the stale source (e.g. an HDMI input) the whole time. The local
         # art-mode signal (IP Control / async Art API / WS) flips within ~1s,
         # so trust it for the title too.
-        if self._art_mode_is_on():
+        art_on = self._art_mode_is_on()
+        if art_on:
             return ART_MODE_MEDIA_TITLE
 
         if self._running_app == DEFAULT_APP:
@@ -2752,18 +2829,27 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     # On a Frame TV, SmartThings reports the "running app" as
                     # "art" while Art Mode is displayed. That is not a real app
                     # — surface it as Art Mode (the artwork image is set as the
-                    # media image in _update_media).
+                    # media image in _update_media). But only when nothing local
+                    # knows better: the cloud keeps reporting "art" ~30-45 s
+                    # after the panel has left it, and a definite local False
+                    # has already weighed SmartThings where it is allowed to win
+                    # (_art_mode_is_on). Measured: art off at 22:13:48, title
+                    # still "Art Mode" until 22:14:20 while art_mode_status read
+                    # off. Fall through to the real input instead.
                     if run_app.lower() == "art":
-                        return ART_MODE_MEDIA_TITLE
-                    # the channel name holds the running app ID
-                    # regardless of the self._cloud_source value
-                    # if the app ID is in the configured apps but is not running_app,
-                    # means that this is not the real running app / media title
-                    st_apps = self._app_list_st or {}
-                    if run_app not in list(st_apps.values()):
-                        # Resolve app ID to human-readable name
-                        app_name = self._resolve_app_name(run_app)
-                        return app_name or run_app
+                        if art_on is None:
+                            return ART_MODE_MEDIA_TITLE
+                    else:
+                        # the channel name holds the running app ID
+                        # regardless of the self._cloud_source value
+                        # if the app ID is in the configured apps but is not
+                        # running_app, means that this is not the real running
+                        # app / media title
+                        st_apps = self._app_list_st or {}
+                        if run_app not in list(st_apps.values()):
+                            # Resolve app ID to human-readable name
+                            app_name = self._resolve_app_name(run_app)
+                            return app_name or run_app
 
         media_title = self._get_source()
         if media_title and media_title != DEFAULT_APP:
@@ -2792,6 +2878,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         unknown (no such entity, or it is unavailable), so callers keep the
         default behaviour instead of guessing.
         """
+        output = self._speaker_output_state()
+        if output is None:
+            return None
+        return "internal" in output.lower()
+
+    def _speaker_output_state(self) -> str | None:
+        """The Speaker Select entity's published state, or None when unknown."""
         registry = er.async_get(self.hass)
         for entity in registry.entities.get_entries_for_config_entry_id(self._entry_id):
             if entity.domain != "select" or not (
@@ -2802,8 +2895,15 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             state = self.hass.states.get(entity.entity_id)
             if state is None or state.state in ("unavailable", "unknown"):
                 return None
-            return "internal" in state.state.lower()
+            return state.state
         return None
+
+    def _ip_volume_refused_on_current_output(self) -> bool:
+        """Whether directVolumeControl was refused on the output selected now."""
+        return (
+            self._ip_volume_refused_output is not None
+            and self._speaker_output_state() == self._ip_volume_refused_output
+        )
 
     @property
     def supported_features(self) -> int:
@@ -2817,10 +2917,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             features |= MediaPlayerEntityFeature.SELECT_SOUND_MODE
 
         # Preserve the 8.7.0 protection for external receivers/soundbars unless
-        # this specific TV has positively demonstrated directVolumeControl.
-        if (
-            self._speaker_output_is_internal() is False
-            and self._ip_absolute_volume_supported is not True
+        # this specific TV has positively demonstrated directVolumeControl — on
+        # the output selected now: support shown on the internal speakers says
+        # nothing about an AVR the TV cannot read the volume of.
+        if self._speaker_output_is_internal() is False and (
+            self._ip_absolute_volume_supported is not True
+            or self._ip_volume_refused_on_current_output()
         ):
             features &= ~MediaPlayerEntityFeature.VOLUME_SET
 
@@ -2832,13 +2934,57 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return False
         return (self._st.channel_name or "").lower() == "art"
 
+    def _latest_art_broadcast(self) -> tuple[bool, float] | None:
+        """The latest art_mode_changed broadcast as (state, arrival time)."""
+        art_api = (
+            self.hass.data.get(DOMAIN, {}).get(self._entry_id, {}).get(DATA_ART_API)
+        )
+        return getattr(art_api, "art_mode_last_broadcast", None)
+
+    def _art_broadcast_overrides(self, observed_at: float | None) -> bool | None:
+        """The broadcast art state, when it outranks a reading taken at observed_at.
+
+        An art_mode_changed broadcast is the TV announcing the transition; the
+        IP Control readings (artModeControl, getTVStates.pictureMode) only
+        describe the panel as of when they were asked for, and can trail it:
+
+        - a reading older than the broadcast is simply out of date. Measured on
+          an LS03D: art on at 22:04:14.4, broadcast received, yet at 22:04:19.4
+          the snapshot taken before the switch still read a real picture mode —
+          art_mode_status said off, the Art Mode sliders went unavailable and
+          _ensure_art_mode_ready logged "the reading is stale" on a write that
+          had just succeeded;
+        - a reading taken soon after can still be behind: a 2023 32" Frame
+          broadcast Art Mode ON while getTVStates had not reached "Ambient" 11 s
+          later (ART_MODE_PANEL_CONFLICT_WINDOW in switch.py, same 20 s).
+
+        So the broadcast wins over any reading taken before
+        ART_BROADCAST_GRACE has elapsed since it. A reading taken after that
+        is the authority again: a channel that froze long ago (#248) or a
+        broadcast the panel never followed loses to it. Returns None — the
+        reading stands — when there is no broadcast or the reading carries no
+        time (a powerOff, which nothing overrides). Only broadcasts count: a
+        get_artmode_status reply can be the stale latch of #273.
+        """
+        if observed_at is None:
+            return None
+        broadcast = self._latest_art_broadcast()
+        if broadcast is None:
+            return None
+        art_on, heard_at = broadcast
+        if observed_at >= heard_at + ART_BROADCAST_GRACE:
+            return None
+        return art_on
+
     def _art_mode_is_on(self) -> bool | None:
         """Return the authoritative local Art Mode state, or None if unknown.
 
         Single source of truth for both the ``art_mode_status`` attribute and
         the media title. Priority order (see extra_state_attributes for the
         full rationale):
-          1. IP Control cache (power-state aware) — wins when this TV is paired
+          1. IP Control cache (power-state aware) — wins when this TV is
+             paired, unless an art_mode_changed broadcast outranks the reading
+             (_art_broadcast_overrides)
           2. device_info PowerState='standby' — TV fully off, art cannot be on
           3. async Art API cache — kept live by art-channel WebSocket events,
              corroborated by SmartThings: on TVs without IP Control, the art
@@ -2879,15 +3025,18 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         ):
             return False
         if self._ip_art_mode is not None:
-            return self._ip_art_mode
-        # With the art-mode option off (the recommended default) _ip_art_mode is
-        # None, so the value used to come from the WebSocket art channel — which
-        # on some Frames never receives the art_mode_changed event and freezes
-        # art_mode_status at its pre-transition value for hours (#248: measured
-        # 4 stretches of 7-10 h, art shown but the attribute stuck at off). The
-        # cached getTVStates.pictureMode is the panel's own truth, refreshed
-        # every IP Control poll and independent of that option, so consult it
-        # before the WS/SmartThings fallbacks. None = not readable -> fall
+            override = self._art_broadcast_overrides(self._ip_art_mode_at)
+            return self._ip_art_mode if override is None else override
+        # Without an IP reading (not paired, the read failing — or, until
+        # 8.10.0, the art-mode option off, which then gated the getter too)
+        # _ip_art_mode is None, and the value used to come from the WebSocket
+        # art channel — which on some Frames never receives the
+        # art_mode_changed event and freezes art_mode_status at its
+        # pre-transition value for hours (#248: measured 4 stretches of 7-10 h,
+        # art shown but the attribute stuck at off). The cached
+        # getTVStates.pictureMode is the panel's own truth, refreshed every IP
+        # Control poll and independent of that option, so consult it before
+        # the WS/SmartThings fallbacks. None = not readable -> fall
         # through unchanged (no IP Control, no snapshot, or TV asleep).
         #
         # Frame TVs only: pictureMode 'Ambient' means artwork on an LS03 Frame,
@@ -2897,12 +3046,19 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # no Art Mode at all (#248). support_art_mode already folds the WS
         # artmode capability and the FrameTVSupport device flag, so it is the
         # right gate; a non-Frame falls through to the previous behaviour.
+        #
+        # The snapshot is as old as the last poll, though, and the panel can
+        # trail an art_mode_changed broadcast: see _art_broadcast_overrides.
         panel_art = self._ip_control_panel_art_cached()
         if (
             panel_art is not None
             and self.support_art_mode != ArtModeSupport.UNSUPPORTED
         ):
-            return panel_art
+            data = getattr(self._get_ip_control_state_coordinator(), "data", None)
+            override = self._art_broadcast_overrides(
+                data.get("polled_at") if isinstance(data, dict) else None
+            )
+            return panel_art if override is None else override
         if self._get_device_spec("PowerState") == "standby":
             return False
         # Cloud power-off fallback for TVs without IP Control. SmartThings
@@ -4301,10 +4457,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # set_artmode times out. Power on first (returns into the last state)
         # then force Art Mode on.
         #
-        # Gated on CONF_IP_CONTROL_ART_MODE like every other art-mode use of
-        # IP Control: with that option off, no artModeControl request is sent
-        # at all, read or write. See the switch's _set_artmode for why the
-        # write path used to escape the setting, and why that was wrong.
+        # Gated on CONF_IP_CONTROL_ART_MODE like every other art-mode write
+        # over IP Control: with that option off, no artModeOn/artModeOff is
+        # sent (the getter is still read, see _refresh_ip_art_mode). See the
+        # switch's _set_artmode for why the write path used to escape the
+        # setting, and why that was wrong.
         ip_client = (
             self._get_ip_control_client()
             if self._get_option(CONF_IP_CONTROL_ART_MODE, False)

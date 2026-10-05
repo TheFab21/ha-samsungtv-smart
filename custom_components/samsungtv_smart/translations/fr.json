@@ -92,7 +92,7 @@
         "data": {
           "pair_now": "Appairer maintenant",
           "enable_ip_control": "Activer IP Control",
-          "ip_control_art_mode": "Utiliser IP Control pour le mode Art"
+          "ip_control_art_mode": "Basculer le mode Art via IP Control"
         }
       },
       "reconfigure_ip_pair": {

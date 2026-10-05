@@ -86,6 +86,8 @@ async def test_tuner_channel_is_added_for_non_frame_tv(hass):
 
     data = await _update(coordinator, client)
 
+    # When the snapshot was requested, for the media player's freshness check.
+    assert isinstance(data.pop("polled_at"), float)
     assert data == {
         "tv": {"inputSource": "TV"},
         "channel": {
@@ -173,6 +175,7 @@ async def test_transient_channel_error_does_not_disable_capability(hass):
 
     first = await _update(coordinator, client)
 
+    assert isinstance(first.pop("polled_at"), float)
     assert first == {
         "tv": {"inputSource": "TV"},
         "channel": {},
