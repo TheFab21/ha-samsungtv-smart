@@ -80,6 +80,7 @@ from .api.ipcontrol import (
     SamsungIPControl,
     SamsungIPControlAuthError,
     SamsungIPControlError,
+    SamsungIPControlModeLockedError,
     SamsungIPControlUnsupportedError,
 )
 from .api.samsungcast import SamsungCastTube
@@ -588,6 +589,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     _attr_device_class = MediaPlayerDeviceClass.TV
     _attr_name = None
+    # Speaker output on which directVolumeControl was refused; see
+    # _update_volume_info. None = no refusal on record.
+    _ip_volume_refused_output: str | None = None
 
     def __init__(
         self,
@@ -1682,6 +1686,20 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # This is discovered per device rather than inferred from model/year.
         client = self._get_ip_control_client()
 
+        # A TV whose sound goes to an external receiver has no volume of its
+        # own to report: measured on an LS03D feeding an AVR, every
+        # directVolumeControl read answered -32002 and the TV's own log said
+        # "fail to get volume" (speakerSelect external, volume 0 in
+        # getTVStates) — every 5 s for as long as that output was selected.
+        # Some TVs do report the volume of an eARC soundbar, so this is learnt
+        # per output from the refusal, not assumed; a different output is
+        # asked again.
+        if self._ip_volume_refused_output is not None:
+            if self._ip_volume_refused_on_current_output():
+                client = None
+            else:
+                self._ip_volume_refused_output = None
+
         if client is not None and self._ip_absolute_volume_supported is not False:
             try:
                 volume = await client.async_get_volume()
@@ -1696,6 +1714,24 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     self._ip_absolute_volume_supported = False
                     self._log.debug(
                         "IP Control absolute volume is not available on this TV: %s",
+                        ex,
+                    )
+            except SamsungIPControlModeLockedError as ex:
+                output = self._speaker_output_state()
+                if output is not None and self._speaker_output_is_internal() is False:
+                    self._ip_volume_refused_output = output
+                    self._log.debug(
+                        "IP Control absolute volume refused while the sound goes "
+                        "to '%s' (%s); the TV cannot report its volume on that "
+                        "output — using UPnP, and asking again only once the "
+                        "output changes",
+                        output,
+                        ex,
+                    )
+                else:
+                    self._log.debug(
+                        "IP Control absolute-volume read failed (%s); "
+                        "falling back to UPnP",
                         ex,
                     )
             except SamsungIPControlError as ex:
@@ -2802,6 +2838,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         unknown (no such entity, or it is unavailable), so callers keep the
         default behaviour instead of guessing.
         """
+        output = self._speaker_output_state()
+        if output is None:
+            return None
+        return "internal" in output.lower()
+
+    def _speaker_output_state(self) -> str | None:
+        """The Speaker Select entity's published state, or None when unknown."""
         registry = er.async_get(self.hass)
         for entity in registry.entities.get_entries_for_config_entry_id(self._entry_id):
             if entity.domain != "select" or not (
@@ -2812,8 +2855,15 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             state = self.hass.states.get(entity.entity_id)
             if state is None or state.state in ("unavailable", "unknown"):
                 return None
-            return "internal" in state.state.lower()
+            return state.state
         return None
+
+    def _ip_volume_refused_on_current_output(self) -> bool:
+        """Whether directVolumeControl was refused on the output selected now."""
+        return (
+            self._ip_volume_refused_output is not None
+            and self._speaker_output_state() == self._ip_volume_refused_output
+        )
 
     @property
     def supported_features(self) -> int:
@@ -2827,10 +2877,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             features |= MediaPlayerEntityFeature.SELECT_SOUND_MODE
 
         # Preserve the 8.7.0 protection for external receivers/soundbars unless
-        # this specific TV has positively demonstrated directVolumeControl.
-        if (
-            self._speaker_output_is_internal() is False
-            and self._ip_absolute_volume_supported is not True
+        # this specific TV has positively demonstrated directVolumeControl — on
+        # the output selected now: support shown on the internal speakers says
+        # nothing about an AVR the TV cannot read the volume of.
+        if self._speaker_output_is_internal() is False and (
+            self._ip_absolute_volume_supported is not True
+            or self._ip_volume_refused_on_current_output()
         ):
             features &= ~MediaPlayerEntityFeature.VOLUME_SET
 
