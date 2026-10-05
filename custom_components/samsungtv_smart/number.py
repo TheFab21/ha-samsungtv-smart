@@ -17,13 +17,21 @@ import logging
 
 from homeassistant.components.number import NumberEntity, NumberMode, RestoreNumber
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_ID, CONF_NAME, CONF_PORT, CONF_TOKEN
-from homeassistant.core import HomeAssistant
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_ID,
+    CONF_NAME,
+    CONF_PORT,
+    CONF_TOKEN,
+    STATE_UNAVAILABLE,
+)
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
@@ -668,6 +676,8 @@ class SamsungTVArtNumberBase(RestoreNumber):
         self._device_unique_id = device_unique_id
         self._attr_native_value: float | None = None
         self._media_player_entity_id: str | None = None
+        self._watched_art_sources: tuple[str, ...] = ()
+        self._unsub_art_sources: CALLBACK_TYPE | None = None
 
     async def async_added_to_hass(self) -> None:
         """Restore the last known value after a restart.
@@ -682,6 +692,66 @@ class SamsungTVArtNumberBase(RestoreNumber):
         last_data = await self.async_get_last_number_data()
         if last_data is not None and last_data.native_value is not None:
             self._attr_native_value = last_data.native_value
+        self._ensure_art_source_listener()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Drop the art-source listener."""
+        await super().async_will_remove_from_hass()
+        if self._unsub_art_sources is not None:
+            self._unsub_art_sources()
+            self._unsub_art_sources = None
+        self._watched_art_sources = ()
+
+    @callback
+    def _ensure_art_source_listener(self) -> None:
+        """Follow the entities availability is derived from.
+
+        ``available`` is computed from the media_player's art_mode_status and
+        the Frame Art sensor, but Home Assistant only republishes it when this
+        entity writes its state — i.e. on the number platform's 30 s poll. So a
+        script setting the brightness 10 s after switching Art Mode on hit an
+        entity still marked unavailable ("Referenced entities
+        number.…_art_mode_brightness are missing or not currently available",
+        twice in one measured session), while the same script worked whenever a
+        poll happened to land in between. The Frame Art switch has followed the
+        media_player for the same reason all along.
+
+        Idempotent, and also called from every poll: on the very first setup
+        the media_player / sensor may register after this entity, so the
+        listener is (re)attached once they exist.
+        """
+        watched = tuple(
+            entity_id
+            for entity_id in (
+                self._resolve_media_player_entity_id(),
+                self._frame_art_sensor_entity_id(),
+            )
+            if entity_id
+        )
+        if not watched or watched == self._watched_art_sources:
+            return
+        if self._unsub_art_sources is not None:
+            self._unsub_art_sources()
+        self._watched_art_sources = watched
+        self._unsub_art_sources = async_track_state_change_event(
+            self.hass, list(watched), self._handle_art_source_change
+        )
+
+    @callback
+    def _handle_art_source_change(self, _event: Event) -> None:
+        """Republish availability as soon as it changes."""
+        if self.hass is None or self.entity_id is None:
+            return
+        state = self.hass.states.get(self.entity_id)
+        was_available = state is not None and state.state != STATE_UNAVAILABLE
+        now_available = self.available
+        if now_available == was_available:
+            return
+        self.async_write_ha_state()
+        if now_available:
+            # Just entered Art Mode: read the live value now rather than
+            # showing the restored one until the next poll.
+            self.async_schedule_update_ha_state(True)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -713,20 +783,11 @@ class SamsungTVArtNumberBase(RestoreNumber):
         window let a bogus standby read (brightness=10 → phantom 100 %)
         through. The sensor state must not contradict the attribute.
         """
-        if self._media_player_entity_id is None:
-            entity_registry = er.async_get(self.hass)
-            for entity in entity_registry.entities.values():
-                if (
-                    entity.config_entry_id == self._entry.entry_id
-                    and entity.domain == "media_player"
-                ):
-                    self._media_player_entity_id = entity.entity_id
-                    break
-
-        if not self._media_player_entity_id:
+        media_player_entity_id = self._resolve_media_player_entity_id()
+        if not media_player_entity_id:
             return False
 
-        state = self.hass.states.get(self._media_player_entity_id)
+        state = self.hass.states.get(media_player_entity_id)
         if state is None:
             return False
 
@@ -753,16 +814,32 @@ class SamsungTVArtNumberBase(RestoreNumber):
         returns False (no veto), so TVs without the sensor keep the
         media_player-based behaviour.
         """
-        registry = er.async_get(self.hass)
-        sensor_id = registry.async_get_entity_id(
-            "sensor", DOMAIN, f"{self._entry.entry_id}_frame_art"
-        )
+        sensor_id = self._frame_art_sensor_entity_id()
         if not sensor_id:
             return False
         state = self.hass.states.get(sensor_id)
         if state is None or state.state in ("unavailable", "unknown"):
             return False
         return state.state != "on"
+
+    def _resolve_media_player_entity_id(self) -> str | None:
+        """The media_player of this config entry (cached once found)."""
+        if self._media_player_entity_id is None:
+            entity_registry = er.async_get(self.hass)
+            for entity in entity_registry.entities.values():
+                if (
+                    entity.config_entry_id == self._entry.entry_id
+                    and entity.domain == "media_player"
+                ):
+                    self._media_player_entity_id = entity.entity_id
+                    break
+        return self._media_player_entity_id
+
+    def _frame_art_sensor_entity_id(self) -> str | None:
+        """The Frame Art sensor of this config entry, if registered."""
+        return er.async_get(self.hass).async_get_entity_id(
+            "sensor", DOMAIN, f"{self._entry.entry_id}_frame_art"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -808,6 +885,7 @@ class SamsungTVArtBrightnessNumber(SamsungTVArtNumberBase):
 
     async def async_update(self) -> None:
         """Read current brightness from TV (TV scale 1-10) and convert to 0-100."""
+        self._ensure_art_source_listener()
         if not self._is_tv_in_art_mode():
             return
         try:
@@ -853,6 +931,7 @@ class SamsungTVArtColorTemperatureNumber(SamsungTVArtNumberBase):
 
     async def async_update(self) -> None:
         """Read current color temperature from TV."""
+        self._ensure_art_source_listener()
         if not self._is_tv_in_art_mode():
             return
         try:
