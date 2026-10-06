@@ -16,14 +16,16 @@ select_picture_mode:
 
 start_hue_sync:
   name: Start Hue Sync
-  description: Start Philips Hue Sync without opening the app on the TV.
+  description: >-
+    Start Philips Hue Sync. Launches the Hue Sync app on the TV first when no
+    sync session is running.
   target:
     entity:
       integration: samsungtv_smart
 
 stop_hue_sync:
   name: Stop Hue Sync
-  description: Stop Philips Hue Sync without opening the app on the TV.
+  description: Stop Philips Hue Sync on the TV.
   target:
     entity:
       integration: samsungtv_smart

@@ -34,37 +34,9 @@ def _load_const():
 const = _load_const()
 
 
-def _session_active(data: dict):
-    """Reproduce async_hue_sync_session_active's detection."""
-    if data.get("supportedModes", {}).get("value"):
-        return True
-    if data.get("streamControl", {}).get("value"):
-        return True
-    if data.get("selectedAppId", {}).get("value"):
-        return True
-    return False
-
-
-class SessionDetectionTest(unittest.TestCase):
-    def test_empty_capability_is_no_session(self):
-        self.assertFalse(_session_active({}))
-        self.assertFalse(_session_active({"supportedModes": {"value": []}}))
-
-    def test_a_running_session_is_detected(self):
-        # megaholti's dump with Hue Sync running on the TV.
-        running = {
-            "supportedModes": {"value": ["TurnOn", "TurnOff", "Video"]},
-            "selectedMode": {"value": "Video"},
-            "streamControl": {"value": True},
-            "selectedAppId": {"value": "com.lighting.HueSyncService"},
-        }
-        self.assertTrue(_session_active(running))
-
-    def test_stream_or_app_alone_counts(self):
-        self.assertTrue(_session_active({"streamControl": {"value": True}}))
-        self.assertTrue(
-            _session_active({"selectedAppId": {"value": "com.lighting.HueSyncService"}})
-        )
+# Session detection (async_hue_sync_session_active) used to be reproduced here
+# from source. It is now tested on the real method, including the placeholder
+# shape of an idle Frame 2024 (#298): tests/api/test_smartthings_hue_sync.py.
 
 
 class ConstTest(unittest.TestCase):
