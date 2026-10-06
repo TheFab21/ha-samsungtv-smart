@@ -8,9 +8,10 @@
                  already shows it — the art-mode reading was stale; not writing
 
 Nothing was stale: the request was redundant. async_turn_on returns early when
-art_mode_status already reads "on"; async_turn_off has no such short-circuit,
-on purpose (under #248 art_mode_status can stay "off" while art is shown), so
-the panel check is where a redundant OFF lands. It now says so at DEBUG; the
+art_mode_status already reads "on"; async_turn_off has no such short-circuit
+while the media_player reads on, on purpose (under #248 art_mode_status can
+stay "off" while art is shown), so the panel check is where a redundant OFF
+lands. It now says so at DEBUG; the
 WARNING stays for a reading that really disagreed with the panel.
 """
 

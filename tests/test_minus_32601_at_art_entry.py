@@ -1,9 +1,10 @@
 """A -32601 at the moment the panel enters art is not a missing method.
 
-directVolumeControl and the artModeControl getter sit in the TV's none-ambient
-dispatch map: while the panel shows art they answer -32601 every time. The
-code told that apart from "not on this model" with the getTVStates snapshot
-alone, which is up to 10 s old and trails the art_mode_changed broadcast.
+directVolumeControl sits in the TV's none-ambient dispatch map: while the
+panel shows art it answers -32601 every time. The code told that apart from
+"not on this model" with the getTVStates snapshot alone, which is up to 10 s
+old, trails the art_mode_changed broadcast, and is the powered-off one after a
+standby until the next poll.
 
 Measured on the 8.10.0 overnight log, 192.168.1.161 (LS03D) woken into art:
 
@@ -12,8 +13,9 @@ Measured on the 8.10.0 overnight log, 192.168.1.161 (LS03D) woken into art:
     05:00:06.830 IP Control absolute volume is not available on this TV: -32601
 
 and no IP Control volume read for the remaining six hours, through four
-stretches of normal viewing. Now a fresh broadcast ON counts, and a capability
-the TV has already shown is not taken away by one refusal.
+stretches of normal viewing. Now a fresh broadcast ON or the artModeControl
+getter reading art counts, an unknown snapshot on a Frame rules nothing out,
+and a capability the TV has already shown is not taken away by one refusal.
 """
 
 import sys
@@ -46,7 +48,7 @@ MONOTONIC = "custom_components.samsungtv_smart.media_player.time.monotonic"
 REFUSED = SamsungIPControlUnsupportedError("-32601 Method not found")
 
 
-def _device(*, supported=None, broadcast=None, ambient=False):
+def _device(*, supported=None, broadcast=None, ambient=False, panel="real"):
     device = object.__new__(SamsungTVDevice)
     device._state = MediaPlayerState.ON
     device._attr_is_volume_muted = False
@@ -56,6 +58,11 @@ def _device(*, supported=None, broadcast=None, ambient=False):
     device._ip_absolute_volume_supported = supported
     device._ip_volume_refused_output = None
     device._ip_control_ambient_mode_active = MagicMock(return_value=ambient)
+    # getTVStates snapshot: True = Ambient, False = a real picture mode,
+    # None = unknown (powered-off snapshot, or none yet).
+    device._ip_control_panel_art_cached = MagicMock(
+        return_value=True if ambient else (False if panel == "real" else None)
+    )
     device._latest_art_broadcast = MagicMock(return_value=broadcast)
     device._log = MagicMock()
     device._upnp = AsyncMock()
@@ -137,6 +144,56 @@ async def test_a_tv_that_never_answered_is_still_ruled_out_once():
     client.async_get_volume.assert_awaited_once()
 
 
+# ── An unknown snapshot rules nothing out on a Frame ─────────────────────────
+
+
+def _frame(is_frame=True):
+    return patch.object(
+        SamsungTVDevice,
+        "support_art_mode",
+        new=property(
+            lambda self: (
+                ArtModeSupport.FULL if is_frame else ArtModeSupport.UNSUPPORTED
+            )
+        ),
+    )
+
+
+async def test_a_wake_into_art_with_no_broadcast_keeps_the_volume_unknown():
+    # 05:18:06 in the log: woken straight into art, no art_mode_changed ON,
+    # snapshot still the powered-off one from standby.
+    device, client = _device(panel="unknown")
+    client.async_get_volume.side_effect = REFUSED
+    with _frame():
+        await _update(device, now=10.0)
+    assert device._ip_absolute_volume_supported is None
+
+    # Normal viewing once the snapshot reads a real picture mode: asked again.
+    device._ip_control_panel_art_cached.return_value = False
+    client.async_get_volume.side_effect = None
+    client.async_get_volume.return_value = 25
+    with _frame():
+        await _update(device, now=30.0)
+    assert device._ip_absolute_volume_supported is True
+    assert device._attr_volume_level == 0.25
+
+
+async def test_an_unknown_snapshot_on_a_tv_without_art_mode_still_rules_out():
+    device, client = _device(panel="unknown")
+    client.async_get_volume.side_effect = REFUSED
+    with _frame(is_frame=False):
+        await _update(device, now=10.0)
+    assert device._ip_absolute_volume_supported is False
+
+
+async def test_the_getter_reading_art_skips_the_read():
+    device, client = _device()
+    device._ip_art_mode = True
+    await _update(device, now=10.0)
+    client.async_get_volume.assert_not_awaited()
+    assert device._ip_absolute_volume_supported is None
+
+
 # ── Volume set ───────────────────────────────────────────────────────────────
 
 
@@ -156,7 +213,9 @@ async def test_a_refused_set_during_a_fresh_broadcast_is_not_latched():
     assert device._ip_absolute_volume_supported is None
 
 
-# ── Art-mode getter (same pattern, new in 8.10.0) ────────────────────────────
+# ── Art-mode getter: never switched off once it has answered ─────────────────
+# artModeControl is in the open dispatch map and answers in art; waiting while
+# art may be on is only a precaution.
 
 
 def _getter_device(*, supported=None, broadcast=None):

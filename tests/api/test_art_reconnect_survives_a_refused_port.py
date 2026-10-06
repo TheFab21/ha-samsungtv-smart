@@ -11,7 +11,12 @@ it left the network:
     06:20:15.944 Art API: Port 8001 failed, trying alternate port 8002
     06:20:15.945 Art API: Connecting to wss://192.168.1.161:8002/...
 
-and nothing more: no failure counted, no backoff, no "reconnect gave up".
+and nothing more: the loop was gone, with no trace of its outcome.
+
+The loop's own attempts are not counted towards open()'s backoff, which
+spaces the pollers: counted, three of them (at +1, +7 and +15 s) put open()
+into a 2-minute backoff, so a TV back after that was refused by the loop's
+later attempts and by any art write.
 """
 
 import asyncio
@@ -89,7 +94,7 @@ async def _run_reconnect(art_client, session, monkeypatch, attempts):
     return task, result
 
 
-async def test_both_ports_refused_is_counted_and_gives_up(
+async def test_both_ports_refused_gives_up_without_arming_the_backoff(
     art_client, monkeypatch, caplog
 ):
     caplog.set_level(logging.DEBUG)
@@ -100,9 +105,52 @@ async def test_both_ports_refused_is_counted_and_gives_up(
     assert not task.cancelled()
     assert result is False
     assert session.ports[:2] == [8001, 8002]
-    assert art_client._connection_failures == 1
-    assert "Connection failure 1/3" in caplog.text
+    assert art_client._connection_failures == 0
+    assert art_client._backoff_until is None
+    assert "Connection failure" not in caplog.text
     assert "reconnect gave up after 3 attempts" in caplog.text
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+async def test_a_tv_back_after_46_s_is_reconnected_by_the_loop(art_client, monkeypatch):
+    # 06:20 replay: the art socket drops as the TV leaves the network; the TV
+    # answers again about 46 s later. Virtual clock: sleeps advance it.
+    clock = [1000.0]
+    start = clock[0]
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(secs, *args):
+        clock[0] += secs
+        await real_sleep(0)
+
+    class _BackAt46(_Session):
+        async def ws_connect(self, url, **kwargs):
+            if clock[0] - start < 46:
+                self.ports.append(url)
+                await real_sleep(0)
+                raise aiohttp.ClientConnectionError("Connection refused")
+            return _WS()
+
+    monkeypatch.setattr(art_module().time, "time", lambda: clock[0])
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    art_client._external_session = _BackAt46(refused=())
+    art_client._port = 8001
+    task = asyncio.create_task(art_client._reconnect_with_backoff())
+    art_client._reconnect_task = task
+    try:
+        assert await task is True
+        assert art_client._backoff_until is None
+        assert art_client._connected is True
+    finally:
+        monkeypatch.setattr(asyncio, "sleep", real_sleep)
+        art_client._reconnect_task = None
+        await art_client.close()
+
+
+def art_module():
+    import art
+
+    return art
 
 
 async def test_the_alternate_port_answering_reconnects(art_client, monkeypatch, caplog):

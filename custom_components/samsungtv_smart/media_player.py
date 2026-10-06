@@ -597,13 +597,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     # Speaker output on which directVolumeControl was refused; see
     # _update_volume_info. None = no refusal on record.
     _ip_volume_refused_output: str | None = None
+    # artModeControl getter cache (True = art); set in __init__, see
+    # _refresh_ip_art_mode.
+    _ip_art_mode: bool | None = None
     # time.monotonic() at which the cached IP art-mode value was asked for;
     # None when it came from powerOff (definitive). See _refresh_ip_art_mode.
     _ip_art_mode_at: float | None = None
     # Whether this TV's IP Control implements the artModeControl getter: None
-    # = not known yet, True = it has answered, False = it answered -32601 when
-    # the panel could not be in Ambient mode and had never answered. Reset with
-    # the client, like _ip_absolute_volume_supported.
+    # = not known yet, True = it has answered, False = it answered -32601
+    # without ever having answered, while nothing suggested art. Reset with the
+    # client, like _ip_absolute_volume_supported.
     _ip_art_getter_supported: bool | None = None
 
     def __init__(
@@ -1403,9 +1406,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 try:
                     value = await client.async_get_art_mode(power_state=power)
                 except SamsungIPControlUnsupportedError as ex:
-                    # -32601 is ambiguous in Ambient mode (see the volume
-                    # getter); outside it, and on a getter that has never
-                    # answered on this client, the method is not there.
+                    # artModeControl is in the open dispatch map and answers
+                    # in art, so a -32601 from a getter that has never
+                    # answered on this client means it is missing. Waiting
+                    # while art may be on is only a precaution; a getter that
+                    # has answered is never switched off by one refusal.
                     if (
                         self._ip_art_getter_supported is None
                         and not self._panel_may_be_ambient()
@@ -1730,12 +1735,22 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Classify a -32601 from directVolumeControl (read or set).
 
         It means "not available on this TV" only when the TV has never
-        answered it on this client and the panel cannot be in Ambient mode,
-        where the method is refused every time (_panel_may_be_ambient). A
+        answered it on this client and art is ruled out: nothing says art
+        (_panel_may_be_ambient) and, on a TV with Art Mode, the snapshot shows
+        a real picture mode. An unknown snapshot rules nothing out: a Frame
+        woken from standby straight into art sends no art_mode_changed ON, and
+        its snapshot stays the powered-off one until the next 10 s poll. A
         volume the TV has already reported is not taken away by one refusal:
         the flag would stay False until IP Control is reconfigured.
         """
-        if self._ip_absolute_volume_supported is True or self._panel_may_be_ambient():
+        if (
+            self._ip_absolute_volume_supported is True
+            or self._panel_may_be_ambient()
+            or (
+                self._ip_control_panel_art_cached() is None
+                and self.support_art_mode != ArtModeSupport.UNSUPPORTED
+            )
+        ):
             self._log.debug(
                 "IP Control absolute volume unavailable right now (Ambient "
                 "mode, or the TV has already reported it); not treating it as "
@@ -2164,19 +2179,20 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         return self._ip_control_panel_art_cached() is True
 
     def _panel_may_be_ambient(self) -> bool:
-        """Whether the panel is, or may already be, in Ambient (art) mode.
+        """Whether something says the panel is, or may already be, in art.
 
-        Methods from the TV's none-ambient dispatch map (directVolumeControl,
-        the artModeControl getter) answer -32601 while the panel shows art, so
-        that refusal only proves a method missing when art can be ruled out.
-        The getTVStates snapshot alone cannot rule it out: it is up to 10 s
-        old and trails the art_mode_changed broadcast. On an LS03D woken into
-        art, a volume read 0.48 s after the broadcast got -32601 while the
-        snapshot still read a real picture mode, and absolute volume was
-        switched off for the rest of the session. A broadcast ON heard less
-        than ART_BROADCAST_GRACE ago counts, as in _art_broadcast_overrides.
+        directVolumeControl sits in the TV's none-ambient dispatch map: while
+        the panel shows art it answers -32601 every time. The getTVStates
+        snapshot alone is a poor witness of art: it is up to 10 s old, trails
+        the art_mode_changed broadcast, and after a standby it is the
+        powered-off one until the next poll. On an LS03D woken into art, a
+        volume read 0.48 s after the broadcast got -32601 before the snapshot
+        read Ambient, and absolute volume was switched off for the rest of the
+        session. So any of these counts: the snapshot reads Ambient, the
+        artModeControl getter (open dispatch map, it answers in art) reads
+        art, or a broadcast ON was heard less than ART_BROADCAST_GRACE ago.
         """
-        if self._ip_control_ambient_mode_active():
+        if self._ip_control_ambient_mode_active() or self._ip_art_mode is True:
             return True
         return self._art_broadcast_overrides(time.monotonic()) is True
 
@@ -4701,11 +4717,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
             if not result:
                 self._log.error("Frame Art: Failed to activate Art Mode")
-                # Hold the intent only against a write that may have reached
-                # the TV. With the channel closed, set_artmode sent nothing
-                # (open() failed or was rate-limited), and recording it would
-                # refuse the next art-on for ART_MODE_WRITE_COOLDOWN.
-                if self._art_api.connected:
+                # Hold the intent unless set_artmode never handed its request
+                # to the socket (the channel could not be opened: failed,
+                # rate-limited, backing off). Recording that would refuse the
+                # next art-on for ART_MODE_WRITE_COOLDOWN although nothing
+                # reached the TV. A write that was sent is held even if the
+                # channel dropped before the TV answered.
+                if self._art_api.last_set_artmode_sent:
                     guard.record_unverified(True)
                 return False
 

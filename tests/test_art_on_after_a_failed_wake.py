@@ -51,7 +51,7 @@ MP = "custom_components.samsungtv_smart.media_player"
 ENTRY = "entry-161"
 
 
-def _device(*, reachable=(True,), art_state=None, written=False, connected=False):
+def _device(*, reachable=(True,), art_state=None, written=False, sent=False):
     device = object.__new__(SamsungTVDevice)
     device._entry_id = ENTRY
     device._host = "192.168.1.161"
@@ -67,7 +67,7 @@ def _device(*, reachable=(True,), art_state=None, written=False, connected=False
     device._art_api = SimpleNamespace(
         get_artmode=AsyncMock(return_value=art_state),
         set_artmode=AsyncMock(return_value=written),
-        connected=connected,
+        last_set_artmode_sent=sent,
     )
     return device
 
@@ -111,7 +111,7 @@ async def test_a_tv_slow_to_come_back_gets_one_more_try():
 
 
 async def test_an_unknown_art_state_is_not_called_off():
-    device = _device(art_state=None, written=False, connected=False)
+    device = _device(art_state=None, written=False, sent=False)
 
     assert await _ensure(device) is False
 
@@ -121,13 +121,14 @@ async def test_an_unknown_art_state_is_not_called_off():
 
 
 async def test_a_write_that_never_left_is_not_held_against_a_retry():
-    device = _device(art_state=None, written=False, connected=False)
+    device = _device(art_state=None, written=False, sent=False)
     await _ensure(device)
     _guard(device).check(True)  # no ArtModeWriteSuppressed
 
 
-async def test_a_write_sent_on_an_open_channel_is_still_held():
-    device = _device(art_state="off", written=False, connected=True)
+async def test_a_write_that_was_sent_is_still_held():
+    # Sent, then no confirmation (or the channel dropped before the reply).
+    device = _device(art_state="off", written=False, sent=True)
     await _ensure(device)
     assert any("Art Mode is OFF" in m for m in _infos(device))
     with pytest.raises(ArtModeWriteSuppressed):

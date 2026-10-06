@@ -348,10 +348,11 @@ class FrameArtModeSwitch(SwitchEntity):
             elif self._published_art_mode_status() == ("on" if turn_on else "off"):
                 # Our own reading already said so: a redundant request, not a
                 # stale reading. async_turn_on returns early on it; turn_off
-                # does not, on purpose — under #248 art_mode_status can stay
-                # "off" while art is shown, and the panel must still be asked.
-                # 8.10.0 log: a turn_off 29 s after art had gone off (getter
-                # False six times in a row) was logged as a stale reading.
+                # does not while the media_player reads on, on purpose — under
+                # #248 art_mode_status can stay "off" while art is shown, and
+                # the panel must still be asked. 8.10.0 log: a turn_off 29 s
+                # after art had gone off (getter False six times in a row) was
+                # logged as a stale reading.
                 self._log.debug(
                     "Art Mode %s requested for %s but it is already %s; "
                     "nothing to write",
