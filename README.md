@@ -562,8 +562,8 @@ These are called on the `media_player` entity.
 | `media_player.select_source` | Switch input source or launch an app |
 | `media_player.play_media` | Send a key command or launch a URL |
 | `samsungtv_smart.select_picture_mode` | Change picture mode |
-| `samsungtv_smart.start_hue_sync` | Start Philips Hue Sync without opening the TV app |
-| `samsungtv_smart.stop_hue_sync` | Stop Philips Hue Sync without opening the TV app |
+| `samsungtv_smart.start_hue_sync` | Start Philips Hue Sync (launches the Hue Sync TV app first if no sync session is running) |
+| `samsungtv_smart.stop_hue_sync` | Stop Philips Hue Sync |
 | `samsungtv_smart.send_text` | Type a text string into a native Tizen text field |
 | `remote.send_command` | Send raw key commands (via remote entity) |
 
@@ -654,8 +654,15 @@ target:
 
 Use `samsungtv_smart.stop_hue_sync` with the same target to stop syncing.
 These services require SmartThings and a Samsung TV with the Philips Hue Sync
-TV app and `samsungvd.lightControl` capability. They do not launch the app or
-change the active input.
+TV app and `samsungvd.lightControl` capability. That capability only steers a
+sync session that is already running, so `start_hue_sync` launches the Hue Sync
+TV app first when none is (since 8.8.12), and `stop_hue_sync` reports that there
+is nothing to stop instead of doing nothing. Neither changes the active input.
+
+When SmartThings refuses the command, the error now says why (HTTP status and
+SmartThings' own reason), instead of *Unknown error*. A **409 Conflict** means
+the TV did not accept the command in its current state; the log line also says
+whether SmartThings can reach the TV (`ONLINE` / `OFFLINE`).
 
 > **Not every TV exposes this capability.** Verified working on an S95C;
 > reported absent on a 2022 Frame (`QE65LS03BAUXXH`). Two things can cause that,

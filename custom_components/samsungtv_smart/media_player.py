@@ -4154,6 +4154,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         try:
             await self._st.async_set_hue_sync(enabled)
+        except ClientResponseError as err:
+            raise await self._hue_sync_refused(enabled, err) from err
         except SmartThingsCapabilityUnsupported as err:
             raise HomeAssistantError(
                 f"This TV does not currently expose the {err} SmartThings "
@@ -4164,12 +4166,46 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 "support this."
             ) from err
 
+    async def _hue_sync_refused(
+        self, enabled: bool, err: ClientResponseError
+    ) -> HomeAssistantError:
+        """A readable error for a Hue Sync command SmartThings refused.
+
+        Anything but the 422 handled in async_set_hue_sync used to escape as a
+        raw ClientResponseError, which Home Assistant shows as "Unknown error"
+        (#298). The message keeps SmartThings' own reason. On a 409 Conflict the
+        TV did not accept the command in its current state; whether SmartThings
+        can reach the TV at all is the first thing to tell apart, so its health
+        is read and logged.
+        """
+        action = "start" if enabled else "stop"
+        message = (
+            f"SmartThings refused to {action} Hue Sync on this TV "
+            f"(HTTP {err.status}: {err.message})."
+        )
+        if err.status == 409:
+            health = await self._st.async_device_health()
+            self._log.warning(
+                "Hue Sync %s refused with 409 Conflict (%s); SmartThings reports "
+                "the TV as %s",
+                action,
+                err.message,
+                health,
+            )
+            message += (
+                " The TV did not accept the command in its current state; "
+                f"SmartThings reports it as {health}. Check whether Hue Sync can "
+                "be controlled from the SmartThings app right now, and whether "
+                "restarting the Hue Sync app on the TV clears it."
+            )
+        return HomeAssistantError(message)
+
     async def async_start_hue_sync(self) -> None:
-        """Start Philips Hue Sync without opening the TV app."""
+        """Start Philips Hue Sync, launching the TV app if no session runs."""
         await self._async_set_hue_sync(True)
 
     async def async_stop_hue_sync(self) -> None:
-        """Stop Philips Hue Sync without opening the TV app."""
+        """Stop Philips Hue Sync."""
         await self._async_set_hue_sync(False)
 
     # ==========================================

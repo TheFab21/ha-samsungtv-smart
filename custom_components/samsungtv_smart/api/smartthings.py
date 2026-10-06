@@ -7,8 +7,9 @@ from collections.abc import Callable
 from datetime import timedelta
 from enum import Enum
 import logging
+from typing import NoReturn
 
-from aiohttp import ClientResponseError, ClientSession
+from aiohttp import ClientResponse, ClientResponseError, ClientSession
 from pysmartthings import SmartThings
 
 from homeassistant.util import Throttle
@@ -39,6 +40,19 @@ class SmartThingsCapabilityUnsupported(Exception):
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _has_content(value) -> bool:
+    """Whether a capability attribute value says anything.
+
+    Empty strings and lists of them are placeholders (see
+    async_hue_sync_session_active), not values.
+    """
+    if isinstance(value, (list, tuple)):
+        return any(_has_content(item) for item in value)
+    if isinstance(value, str):
+        return bool(value.strip())
+    return bool(value)
 
 
 class _STLoggerAdapter(logging.LoggerAdapter):
@@ -342,8 +356,9 @@ class SmartThingsTV:
                 "Accept": "application/json",
             },
             json={"commands": [cmd]},
-            raise_for_status=True,
         ) as resp:
+            if resp.status >= 400:
+                await self._raise_command_refused(resp, capability, command)
             result = await resp.json()
             self._log.debug(
                 "REST command %s/%s sent, status: %s, response: %s",
@@ -370,6 +385,48 @@ class SmartThingsTV:
                     capability,
                     command,
                 )
+
+    async def _raise_command_refused(
+        self, resp: ClientResponse, capability: str, command: str
+    ) -> NoReturn:
+        """Raise a refused command's error, keeping what SmartThings said.
+
+        SmartThings explains a refusal in the body ({"requestId": ..., "error":
+        {"code", "message", "details"}}), but aiohttp's raise_for_status keeps
+        only the status line, so a 409 on Hue Sync reached the log as
+        "409, message='Conflict'" and nothing more (#298). The body's code and
+        message go into the ClientResponseError message, so every caller that
+        logs the error now logs them, and err.status is unchanged for the
+        callers that branch on it.
+        """
+        try:
+            body = await resp.json(content_type=None)
+        except Exception:  # noqa: BLE001 - an unreadable body still raises below
+            body = None
+        error = body.get("error") if isinstance(body, dict) else None
+        request_id = body.get("requestId") if isinstance(body, dict) else None
+        reason = []
+        if isinstance(error, dict):
+            reason = [str(p) for p in (error.get("code"), error.get("message")) if p]
+        message = resp.reason or ""
+        if reason:
+            message = f"{message} ({': '.join(reason)})"
+        if request_id:
+            message = f"{message} [requestId {request_id}]"
+        self._log.debug(
+            "REST command %s/%s refused, status: %s, body: %s",
+            capability,
+            command,
+            resp.status,
+            body,
+        )
+        raise ClientResponseError(
+            resp.request_info,
+            resp.history,
+            status=resp.status,
+            message=message.strip(),
+            headers=resp.headers,
+        )
 
     async def _update_source_list(self, main_comp: dict) -> None:
         """Update source list from device status, with custom name support.
@@ -1028,6 +1085,13 @@ class SmartThingsTV:
         this is the signal for whether setLightControlMode will have any effect.
         Returns True when a session is running, False when the capability is
         empty (no session), and None when it can't be read.
+
+        "Empty" includes placeholders: a 55" Frame 2024 (QE55LS03DAUXXN, the
+        pysmartthings vd_frame_2024 fixture) idles at supportedModes [""],
+        selectedAppId "" and streamControl false. A plain truthiness test read
+        that [""] as a running session, so start_hue_sync never launched the app
+        and stop_hue_sync sent its command instead of reporting nothing to stop
+        (#298).
         """
         if not self._device_id or not self._session:
             return None
@@ -1056,16 +1120,24 @@ class SmartThingsTV:
             self._log.debug("Could not read %s status: %s", CAP_LIGHT_CONTROL, err)
             return None
 
-        if data.get("supportedModes", {}).get("value"):
-            return True
-        if data.get("streamControl", {}).get("value"):
-            return True
-        if data.get("selectedAppId", {}).get("value"):
-            return True
-        return False
+        active = any(
+            _has_content((data.get(attr) or {}).get("value"))
+            for attr in ("supportedModes", "streamControl", "selectedAppId")
+        )
+        self._log.debug(
+            "%s status: %s -> Hue Sync session %s",
+            CAP_LIGHT_CONTROL,
+            data,
+            "running" if active else "not running",
+        )
+        return active
 
     async def async_set_hue_sync(self, enabled: bool) -> None:
-        """Start or stop Philips Hue Sync without opening the TV app."""
+        """Turn a running Hue Sync session on or off (samsungvd.lightControl).
+
+        This does not launch the TV app; the media player does that first when
+        no session is running (#266).
+        """
         mode = HUE_SYNC_MODE_ON if enabled else HUE_SYNC_MODE_OFF
         try:
             await self._send_rest_command(
