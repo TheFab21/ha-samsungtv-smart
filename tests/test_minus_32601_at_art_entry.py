@@ -19,7 +19,7 @@ and a capability the TV has already shown is not taken away by one refusal.
 """
 
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.media_player import MediaPlayerState
@@ -48,7 +48,9 @@ MONOTONIC = "custom_components.samsungtv_smart.media_player.time.monotonic"
 REFUSED = SamsungIPControlUnsupportedError("-32601 Method not found")
 
 
-def _device(*, supported=None, broadcast=None, ambient=False, panel="real"):
+def _device(
+    *, supported=None, broadcast=None, ambient=False, panel="real", pending=False
+):
     device = object.__new__(SamsungTVDevice)
     device._state = MediaPlayerState.ON
     device._attr_is_volume_muted = False
@@ -63,6 +65,9 @@ def _device(*, supported=None, broadcast=None, ambient=False, panel="real"):
     device._ip_control_panel_art_cached = MagicMock(
         return_value=True if ambient else (False if panel == "real" else None)
     )
+    # Unknown snapshot still to come (no poll yet / the powered-off one) vs a
+    # live reply that has no pictureMode.
+    device._ip_control_snapshot_pending = MagicMock(return_value=pending)
     device._latest_art_broadcast = MagicMock(return_value=broadcast)
     device._log = MagicMock()
     device._upnp = AsyncMock()
@@ -178,12 +183,37 @@ async def test_a_wake_into_art_with_no_broadcast_keeps_the_volume_unknown():
     assert device._attr_volume_level == 0.25
 
 
-async def test_an_unknown_snapshot_on_a_tv_without_art_mode_still_rules_out():
-    device, client = _device(panel="unknown")
+async def test_a_live_snapshot_without_picture_mode_rules_out_on_a_non_frame():
+    device, client = _device(panel="unknown", pending=False)
     client.async_get_volume.side_effect = REFUSED
     with _frame(is_frame=False):
         await _update(device, now=10.0)
     assert device._ip_absolute_volume_supported is False
+
+
+async def test_a_snapshot_still_to_come_rules_nothing_out_on_a_non_frame():
+    # A QLED with Samsung's Ambient Mode (#248) woken into it, or right after
+    # a getTVStates transport error: the powered-off snapshot until next poll.
+    device, client = _device(panel="unknown", pending=True)
+    client.async_get_volume.side_effect = REFUSED
+    with _frame(is_frame=False):
+        await _update(device, now=10.0)
+    assert device._ip_absolute_volume_supported is None
+
+
+def test_the_snapshot_is_pending_before_the_first_poll_and_when_powered_off():
+    device = object.__new__(SamsungTVDevice)
+    for data, pending in (
+        (None, True),
+        ({"tv": {}, "powered_off": True}, True),
+        ({"tv": {}, "powered_off": False}, False),
+        ({"tv": {"pictureMode": "Standard"}, "powered_off": False}, False),
+    ):
+        coordinator = SimpleNamespace(data=data)
+        device._get_ip_control_state_coordinator = MagicMock(return_value=coordinator)
+        assert device._ip_control_snapshot_pending() is pending
+    device._get_ip_control_state_coordinator = MagicMock(return_value=None)
+    assert device._ip_control_snapshot_pending() is False
 
 
 async def test_the_getter_reading_art_skips_the_read():

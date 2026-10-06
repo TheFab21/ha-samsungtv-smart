@@ -1735,26 +1735,33 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Classify a -32601 from directVolumeControl (read or set).
 
         It means "not available on this TV" only when the TV has never
-        answered it on this client and art is ruled out: nothing says art
-        (_panel_may_be_ambient) and, on a TV with Art Mode, the snapshot shows
-        a real picture mode. An unknown snapshot rules nothing out: a Frame
-        woken from standby straight into art sends no art_mode_changed ON, and
-        its snapshot stays the powered-off one until the next 10 s poll. A
-        volume the TV has already reported is not taken away by one refusal:
-        the flag would stay False until IP Control is reconfigured.
+        answered it on this client and Ambient mode is ruled out: nothing says
+        art (_panel_may_be_ambient), and the snapshot shows a real picture
+        mode. An unknown snapshot rules nothing out: a Frame woken from
+        standby straight into art sends no art_mode_changed ON, and its
+        snapshot stays the powered-off one until the next poll; a non-Frame
+        with Samsung's Ambient Mode (QN90A, #248) can be woken into it too.
+        On a TV without Art Mode only a snapshot still to come counts (no poll
+        yet, or the powered-off one): a live reply without pictureMode is as
+        good as it gets there. A volume the TV has already reported is not
+        taken away by one refusal: the flag would stay False until IP Control
+        is reconfigured.
         """
         if (
             self._ip_absolute_volume_supported is True
             or self._panel_may_be_ambient()
             or (
                 self._ip_control_panel_art_cached() is None
-                and self.support_art_mode != ArtModeSupport.UNSUPPORTED
+                and (
+                    self.support_art_mode != ArtModeSupport.UNSUPPORTED
+                    or self._ip_control_snapshot_pending()
+                )
             )
         ):
             self._log.debug(
-                "IP Control absolute volume unavailable right now (Ambient "
-                "mode, or the TV has already reported it); not treating it as "
-                "unsupported: %s",
+                "IP Control absolute volume refused, but not ruled out (art or "
+                "Ambient mode may be on, the panel state is unknown, or the TV "
+                "has already reported it): %s",
                 ex,
             )
             return
@@ -2173,6 +2180,19 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if not isinstance(mode, str) or not mode:
             return None
         return mode == "Ambient"
+
+    def _ip_control_snapshot_pending(self) -> bool:
+        """Whether the getTVStates snapshot is still to come.
+
+        No poll yet since startup, or the powered-off snapshot, which the
+        coordinator also returns on a transport error: the next poll replaces
+        it. Not pending without a coordinator: then no snapshot will come.
+        """
+        coordinator = self._get_ip_control_state_coordinator()
+        if coordinator is None:
+            return False
+        data = getattr(coordinator, "data", None)
+        return not isinstance(data, dict) or bool(data.get("powered_off"))
 
     def _ip_control_ambient_mode_active(self) -> bool:
         """Return whether the shared IP Control snapshot reports Ambient mode."""
@@ -4693,6 +4713,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # TV is now on (or was already on), check if Art Mode is active
         self._log.debug("Frame Art: TV is on, checking if Art Mode is active...")
 
+        writing = False
         try:
             # Check current Art Mode status
             async with asyncio.timeout(8):
@@ -4712,19 +4733,14 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 )
             else:
                 self._log.info("Frame Art: Art Mode is OFF, activating it...")
+            writing = True
             async with asyncio.timeout(10):
                 result = await self._art_api.set_artmode(True)
+            writing = False
 
             if not result:
                 self._log.error("Frame Art: Failed to activate Art Mode")
-                # Hold the intent unless set_artmode never handed its request
-                # to the socket (the channel could not be opened: failed,
-                # rate-limited, backing off). Recording that would refuse the
-                # next art-on for ART_MODE_WRITE_COOLDOWN although nothing
-                # reached the TV. A write that was sent is held even if the
-                # channel dropped before the TV answered.
-                if self._art_api.last_set_artmode_sent:
-                    guard.record_unverified(True)
+                self._hold_art_on_if_sent(guard)
                 return False
 
             # Wait a bit, then read back rather than trust the return value —
@@ -4752,10 +4768,27 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         except asyncio.TimeoutError:
             self._log.error("Frame Art: Timeout checking/activating Art Mode")
+            # Cut short by the 10 s timeout after its request went out: held
+            # like a failed write. Not on get_artmode's timeout, where the
+            # flag is left over from an earlier write.
+            if writing:
+                self._hold_art_on_if_sent(guard)
             return False
         except Exception as ex:
             self._log.error("Frame Art: Error ensuring Art Mode: %s", ex)
             return False
+
+    def _hold_art_on_if_sent(self, guard) -> None:
+        """Hold a failed art-on against a retry if its request left HA.
+
+        Not when set_artmode never handed its request to the socket (the
+        channel could not be opened: failed, rate-limited, backing off, or the
+        send itself failed): recording that would refuse the next art-on for
+        ART_MODE_WRITE_COOLDOWN although nothing reached the TV. A write that
+        was sent is held even if the channel dropped before the TV answered.
+        """
+        if self._art_api.last_set_artmode_sent:
+            guard.record_unverified(True)
 
     async def async_art_select_image(
         self,

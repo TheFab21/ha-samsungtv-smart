@@ -135,6 +135,28 @@ async def test_a_write_that_was_sent_is_still_held():
         _guard(device).check(True)
 
 
+async def test_a_write_cut_short_by_the_timeout_after_it_left_is_held():
+    device = _device(art_state="off")
+
+    async def sent_then_timed_out(_on):
+        device._art_api.last_set_artmode_sent = True
+        raise TimeoutError
+
+    device._art_api.set_artmode = AsyncMock(side_effect=sent_then_timed_out)
+    assert await _ensure(device) is False
+    with pytest.raises(ArtModeWriteSuppressed):
+        _guard(device).check(True)
+
+
+async def test_a_read_timeout_does_not_hold_a_leftover_write():
+    # The flag is left over from an earlier write; this call never wrote.
+    device = _device(sent=True)
+    device._art_api.get_artmode = AsyncMock(side_effect=TimeoutError)
+    assert await _ensure(device) is False
+    device._art_api.set_artmode.assert_not_awaited()
+    _guard(device).check(True)  # nothing recorded
+
+
 async def test_a_tv_already_on_is_not_probed():
     device = _device(art_state="on")
     with (

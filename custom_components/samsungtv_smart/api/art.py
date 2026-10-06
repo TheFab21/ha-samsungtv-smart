@@ -805,8 +805,12 @@ class SamsungTVAsyncArt:
             if await self.open(count_failure=False):
                 self._log.debug("Art API: reconnected after %d attempt(s)", attempt + 1)
                 return True
-        # DEBUG: a TV that went into standby is unreachable by design, after
-        # every power-off; the next request retries.
+        # DEBUG: the socket dropped and the TV stayed off the network for the
+        # whole minute this loop covers (network loss, reboot, deep standby).
+        # A normal standby keeps the art socket open and is not seen here:
+        # 4 standbys on a 55" LS03D left it up, it dropped once, when the TV
+        # left the network. Unreachable is expected, not a fault (see open());
+        # the next request retries.
         self._log.debug(
             "Art API: reconnect gave up after %d attempts; the next request "
             "will retry",
@@ -1321,8 +1325,10 @@ class SamsungTVAsyncArt:
             },
         }
 
+        sent = False
         try:
             await self._ws.send_json(command)
+            sent = True
             self._log.debug(
                 "Art API: Sent request '%s'", request_data.get("request", "unknown")
             )
@@ -1333,6 +1339,10 @@ class SamsungTVAsyncArt:
         except Exception as ex:
             self._log.debug("Art API: Error sending request: %s", ex)
             self._pending_requests.pop(request_key, None)
+            if not sent:
+                # Nothing left HA ("Cannot write to closing transport"):
+                # set_artmode reads request_id as "handed to the socket".
+                request_data.pop("request_id", None)
             # Mark as disconnected to force reconnection on next request
             self._connected = False
             return None
@@ -1929,7 +1939,8 @@ class SamsungTVAsyncArt:
             if not request_task.done():
                 request_task.cancel()
             # _send_art_request_locked stamps request_id only once the channel
-            # is open, right before send_json: without it nothing left HA.
+            # is open, right before send_json, and drops it again if send_json
+            # fails: without it nothing left HA.
             self.last_set_artmode_sent = "request_id" in request
 
         # Final fallback: the request timed out and no broadcast arrived in

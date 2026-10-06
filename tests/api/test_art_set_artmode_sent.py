@@ -30,6 +30,13 @@ class _OpenWS:
         self.sent.append(data)
 
 
+class _ResetWS(_OpenWS):
+    """The TV reset the TCP connection; the receive loop has not noticed."""
+
+    async def send_json(self, data):
+        raise aiohttp.ClientConnectionResetError("Cannot write to closing transport")
+
+
 async def test_nothing_sent_when_the_channel_cannot_open(art_client):
     art_client._external_session = _RefusingSession()
     art_client.last_set_artmode_sent = True
@@ -51,3 +58,12 @@ async def test_sent_when_the_request_left_but_no_reply_came(art_client, monkeypa
     assert await art_client.set_artmode(True) is False
     assert art_client.last_set_artmode_sent is True
     assert '"set_artmode_status"' in ws.sent[0]["params"]["data"]
+
+
+async def test_nothing_sent_when_send_json_fails(art_client):
+    art_client._ws = _ResetWS()
+    art_client._connected = True
+
+    assert await art_client.set_artmode(True) is False
+    assert art_client.last_set_artmode_sent is False
+    assert art_client._connected is False
