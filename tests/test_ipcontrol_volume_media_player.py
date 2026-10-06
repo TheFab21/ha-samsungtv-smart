@@ -47,6 +47,7 @@ def _device(*, external=True, muted=False, volume=0.20):
 
     device._ip_absolute_volume_supported = None
     device._ip_control_ambient_mode_active = MagicMock(return_value=False)
+    device._latest_art_broadcast = MagicMock(return_value=None)
 
     device._log = MagicMock()
     device._upnp = AsyncMock()

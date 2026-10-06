@@ -355,6 +355,11 @@ class SamsungTVAsyncArt:
         return self._art_uuid
 
     @property
+    def connected(self) -> bool:
+        """Whether the art channel is open right now."""
+        return bool(self._connected and self._ws is not None and not self._ws.closed)
+
+    @property
     def recovery_remaining(self) -> float:
         """Seconds left in the post-wedge recovery cooldown (0 when requests flow).
 
@@ -516,7 +521,7 @@ class SamsungTVAsyncArt:
             time_since_last = time.time() - self._last_connection_attempt
             if time_since_last < 5:
                 self._log.debug(
-                    "Art API: Too soon since last attempt (%.1fs ago), waiting",
+                    "Art API: Too soon since last attempt (%.1fs ago), skipping",
                     time_since_last,
                 )
                 return False
@@ -680,7 +685,7 @@ class SamsungTVAsyncArt:
                     "Art API: Did not receive connect/ready event on port %d",
                     port,
                 )
-                await self.close()
+                await self._drop_failed_connect()
                 self._port = original_port
                 return False
 
@@ -709,9 +714,26 @@ class SamsungTVAsyncArt:
 
         except Exception as ex:
             self._log.debug("Art API: Connection on port %d failed: %s", port, ex)
-            await self.close()
+            await self._drop_failed_connect()
             self._port = original_port
             return False
+
+    async def _drop_failed_connect(self) -> None:
+        """Close the socket a failed _connect_once opened, and nothing else.
+
+        Not close(): that is the intentional teardown, and it cancels the
+        reconnect loop, which reaches _connect_once through open(). The loop
+        then cancelled itself: the CancelledError surfaced on the alternate
+        port's ws_connect, which ``except Exception`` does not catch, so no
+        failure was counted, no backoff entered and no "reconnect gave up"
+        logged (8.10.0 log: 8001 refused, 8002 tried, then nothing). A failed
+        lazy open() from a poller killed a sleeping reconnect loop the same
+        way. The receive loop and keepalive start only on success, so the
+        half-open socket is all there is to drop.
+        """
+        ws, self._ws = self._ws, None
+        if ws is not None and not ws.closed:
+            await self._close_ws_bounded(ws)
 
     async def close(self) -> None:
         """Close the connection."""
@@ -813,6 +835,7 @@ class SamsungTVAsyncArt:
         if not self._ws:
             return
 
+        ws = self._ws
         cancelled = False
         try:
             async for msg in self._ws:
@@ -844,7 +867,13 @@ class SamsungTVAsyncArt:
                 # drop, transport closed, or a missed heartbeat PONG on a
                 # zombie socket) and nobody else will clean up. Drop stale
                 # references so the next _send_art_request triggers a fresh
-                # open().
+                # open(). aiohttp ends the `async for` on CLOSE without
+                # yielding it, so the CLOSED branch above never logs: say it
+                # here.
+                self._log.debug(
+                    "Art API: receive loop ended (close code %s); reconnecting",
+                    getattr(ws, "close_code", None),
+                )
                 self._connected = False
                 self._ws = None
                 self._recv_task = None

@@ -345,6 +345,20 @@ class FrameArtModeSwitch(SwitchEntity):
                     "%s woke directly into Art Mode; nothing to write",
                     self._device_name,
                 )
+            elif self._published_art_mode_status() == ("on" if turn_on else "off"):
+                # Our own reading already said so: a redundant request, not a
+                # stale reading. async_turn_on returns early on it; turn_off
+                # does not, on purpose — under #248 art_mode_status can stay
+                # "off" while art is shown, and the panel must still be asked.
+                # 8.10.0 log: a turn_off 29 s after art had gone off (getter
+                # False six times in a row) was logged as a stale reading.
+                self._log.debug(
+                    "Art Mode %s requested for %s but it is already %s; "
+                    "nothing to write",
+                    "ON" if turn_on else "OFF",
+                    self._device_name,
+                    "on" if turn_on else "off",
+                )
             else:
                 self._log.warning(
                     "Art Mode %s requested for %s but the panel already shows "
@@ -624,6 +638,12 @@ class FrameArtModeSwitch(SwitchEntity):
                 return entity.entity_id
 
         return None
+
+    def _published_art_mode_status(self) -> str | None:
+        """The media_player's published art_mode_status ("on"/"off"), if any."""
+        entity_id = self._get_media_player_entity_id()
+        state = self._hass.states.get(entity_id) if entity_id else None
+        return state.attributes.get("art_mode_status") if state else None
 
     async def _is_tv_on(self) -> bool:
         """Check if TV is currently on OR already in Art Mode.
