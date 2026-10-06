@@ -661,8 +661,10 @@ is nothing to stop instead of doing nothing. Neither changes the active input.
 
 When SmartThings refuses the command, the error now says why (HTTP status and
 SmartThings' own reason), instead of *Unknown error*. A **409 Conflict** means
-the TV did not accept the command in its current state; the log line also says
-whether SmartThings can reach the TV (`ONLINE` / `OFFLINE`).
+SmartThings refused the command in the TV's current state, often because the TV
+is off or unreachable; the error and the log also give the TV's health in
+SmartThings (`ONLINE`, `OFFLINE`, `UNHEALTHY`, or `UNKNOWN` when it could not be
+read).
 
 > **Not every TV exposes this capability.** Verified working on an S95C;
 > reported absent on a 2022 Frame (`QE65LS03BAUXXH`). Two things can cause that,

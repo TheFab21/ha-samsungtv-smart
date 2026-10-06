@@ -4186,18 +4186,31 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if err.status == 409:
             health = await self._st.async_device_health()
             self._log.warning(
-                "Hue Sync %s refused with 409 Conflict (%s); SmartThings reports "
-                "the TV as %s",
+                "Hue Sync %s refused with 409 Conflict (%s); TV health in "
+                "SmartThings: %s",
                 action,
                 err.message,
                 health,
             )
-            message += (
-                " The TV did not accept the command in its current state; "
-                f"SmartThings reports it as {health}. Check whether Hue Sync can "
-                "be controlled from the SmartThings app right now, and whether "
-                "restarting the Hue Sync app on the TV clears it."
-            )
+            if health == "OFFLINE":
+                message += (
+                    " SmartThings reports the TV as OFFLINE, so the command never "
+                    "reached it. Check that the TV is on and connected to the "
+                    "internet, then try again."
+                )
+            elif health == "UNKNOWN":
+                # async_device_health's own value when the read itself failed.
+                message += (
+                    " The TV's SmartThings health could not be read (see the log), "
+                    "so whether SmartThings can reach it is not known."
+                )
+            else:
+                message += (
+                    " SmartThings refused the command in the TV's current state "
+                    f"(TV health: {health}). Check whether Hue Sync can be "
+                    "controlled from the SmartThings app right now, and whether "
+                    "restarting the Hue Sync app on the TV clears it."
+                )
         return HomeAssistantError(message)
 
     async def async_start_hue_sync(self) -> None:
