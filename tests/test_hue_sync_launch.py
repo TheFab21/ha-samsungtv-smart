@@ -8,9 +8,10 @@ on its own, so start_hue_sync (which only set the mode) silently no-op'd.
 
 Now: async_hue_sync_session_active reads that capability; start_hue_sync launches
 com.lighting.HueSyncService when there is no session, and stop_hue_sync reports a
-clear error instead of a silent success. media_player.py / smartthings.py need
-Home Assistant to import, so the session detection is reproduced from source and
-the orchestration is checked structurally.
+clear error instead of a silent success. The orchestration is checked
+structurally here; the session detection and the error paths run on the real
+code in tests/api/test_smartthings_hue_sync.py and
+tests/test_hue_sync_refused_error.py.
 """
 
 import importlib.util

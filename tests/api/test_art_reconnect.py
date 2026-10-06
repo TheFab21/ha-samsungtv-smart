@@ -14,7 +14,7 @@ def test_backoff_delay_grows_and_caps(art_client):
 async def test_receive_loop_reconnects_on_close(art_client, monkeypatch):
     reopened = {"count": 0}
 
-    async def fake_open():
+    async def fake_open(**_kwargs):
         reopened["count"] += 1
         art_client._connected = True
         return True

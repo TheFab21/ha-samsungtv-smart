@@ -67,9 +67,32 @@ async def test_a_409_is_a_readable_error_with_the_tv_health():
     assert "refused to stop Hue Sync" in text
     assert "HTTP 409" in text
     assert "ConflictError: invalid device state" in text
-    assert "OFFLINE" in text
+    assert "OFFLINE, so the command never reached it" in text
+    # An app restart cannot help a TV the cloud cannot reach.
+    assert "restarting the Hue Sync app" not in text
     device._st.async_device_health.assert_awaited_once()
     device._log.warning.assert_called_once()
+
+
+async def test_a_409_on_a_reachable_tv_points_at_the_tv_state():
+    device = _device(refusal=_refusal(409, "Conflict"), health="ONLINE")
+
+    with pytest.raises(HomeAssistantError) as caught:
+        await device.async_start_hue_sync()
+
+    assert "TV health: ONLINE" in str(caught.value)
+    assert "restarting the Hue Sync app" in str(caught.value)
+
+
+async def test_a_409_with_an_unreadable_health_does_not_blame_smartthings():
+    # async_device_health returns "UNKNOWN" when its own read fails.
+    device = _device(refusal=_refusal(409, "Conflict"), health="UNKNOWN")
+
+    with pytest.raises(HomeAssistantError) as caught:
+        await device.async_stop_hue_sync()
+
+    assert "health could not be read" in str(caught.value)
+    assert "SmartThings reports" not in str(caught.value)
 
 
 async def test_other_refusals_are_readable_without_a_health_read():

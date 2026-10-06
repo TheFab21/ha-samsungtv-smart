@@ -196,3 +196,29 @@ async def test_session_detection(status, expected):
 async def test_an_unreadable_status_is_unknown():
     client = _client(get=_response(500, {}, reason="Server Error"))
     assert await client.async_hue_sync_session_active() is None
+
+
+# ── async_turn_on decides "offline" on the status, not on the text ───────────
+
+
+@pytest.mark.parametrize(
+    ("status", "request_id", "level"),
+    [
+        (409, "11111111-2222-3333-4444-555555555555", "warning"),
+        # A random requestId containing "409" used to pass for a 409.
+        (403, "7b8514e6-4091-41cc-b3c2-512bca15abf0", "error"),
+        (401, "7c3a409e-1111-2222-3333-444455556666", "error"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_turn_on_logs_offline_only_for_a_real_409(status, request_id, level):
+    body = {"requestId": request_id, "error": {"code": "X", "message": "y"}}
+    client = _client(post=_response(status, body, reason="Refused"))
+    client._log = MagicMock()
+
+    with pytest.raises(ClientResponseError):
+        await client.async_turn_on()
+
+    getattr(client._log, level).assert_called_once()
+    other = "error" if level == "warning" else "warning"
+    getattr(client._log, other).assert_not_called()

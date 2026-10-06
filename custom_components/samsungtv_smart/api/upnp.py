@@ -54,7 +54,8 @@ class SamsungUPnP:
                     response = await resp.content.read()
                     self._connected = True
         except Exception as exc:  # pylint: disable=broad-except
-            _LOGGER.debug(exc)
+            # A timeout's str() is empty: this used to log a blank line.
+            _LOGGER.debug("UPnP %s on %s failed: %r", action, self._host, exc)
             self._connected = False
             return None
 

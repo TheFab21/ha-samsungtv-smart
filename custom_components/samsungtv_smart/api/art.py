@@ -234,6 +234,10 @@ class SamsungTVAsyncArt:
         # as that broadcast arrives, instead of always paying the full
         # request timeout.
         self._art_mode_broadcast_waiters: list[asyncio.Future] = []
+        # Whether the last set_artmode handed its request to the socket. False
+        # when the channel could not be opened (failed, rate-limited, backing
+        # off): nothing reached the TV. See set_artmode.
+        self.last_set_artmode_sent = False
         self._recv_task: asyncio.Task | None = None
         self._connected = False
 
@@ -468,8 +472,14 @@ class SamsungTVAsyncArt:
             self._session = aiohttp.ClientSession()
         return self._session
 
-    async def open(self) -> bool:
-        """Open WebSocket connection and start listening."""
+    async def open(self, *, count_failure: bool = True) -> bool:
+        """Open WebSocket connection and start listening.
+
+        ``count_failure=False`` is for the reconnect loop, which spaces and
+        bounds its own attempts. Counted, they put open() into its 2-minute
+        backoff about 15 s after a drop, so the loop's later attempts were
+        refused, and so was any art write once the TV was back.
+        """
         # Acquire lock to prevent concurrent connection attempts (v6.3.5)
         async with self._connection_lock:
             # Reuse the existing connection only if it is genuinely alive.
@@ -516,7 +526,7 @@ class SamsungTVAsyncArt:
             time_since_last = time.time() - self._last_connection_attempt
             if time_since_last < 5:
                 self._log.debug(
-                    "Art API: Too soon since last attempt (%.1fs ago), waiting",
+                    "Art API: Too soon since last attempt (%.1fs ago), skipping",
                     time_since_last,
                 )
                 return False
@@ -570,6 +580,8 @@ class SamsungTVAsyncArt:
                 self._port = alternate_port
                 return True
 
+            if not count_failure:
+                return False
             # Both ports failed: track the failure once for the whole attempt
             # (not once per port), so a temporarily unreachable TV does not
             # reach the backoff threshold twice as fast.
@@ -680,7 +692,7 @@ class SamsungTVAsyncArt:
                     "Art API: Did not receive connect/ready event on port %d",
                     port,
                 )
-                await self.close()
+                await self._drop_failed_connect()
                 self._port = original_port
                 return False
 
@@ -709,9 +721,26 @@ class SamsungTVAsyncArt:
 
         except Exception as ex:
             self._log.debug("Art API: Connection on port %d failed: %s", port, ex)
-            await self.close()
+            await self._drop_failed_connect()
             self._port = original_port
             return False
+
+    async def _drop_failed_connect(self) -> None:
+        """Close the socket a failed _connect_once opened, and nothing else.
+
+        Not close(): that is the intentional teardown, and it cancels the
+        reconnect loop, which reaches _connect_once through open(). The loop
+        then cancelled itself: the CancelledError surfaced on the alternate
+        port's ws_connect, which ``except Exception`` does not catch, so no
+        failure was counted, no backoff entered and no "reconnect gave up"
+        logged (8.10.0 log: 8001 refused, 8002 tried, then nothing). A failed
+        lazy open() from a poller killed a sleeping reconnect loop the same
+        way. The receive loop and keepalive start only on success, so the
+        half-open socket is all there is to drop.
+        """
+        ws, self._ws = self._ws, None
+        if ws is not None and not ws.closed:
+            await self._close_ws_bounded(ws)
 
     async def close(self) -> None:
         """Close the connection."""
@@ -765,16 +794,28 @@ class SamsungTVAsyncArt:
 
         Returns True as soon as open() succeeds. Each attempt sleeps a capped
         delay first (so we never hammer a TV that's simply off), and open()
-        applies its own 5s rate-limit + failure backoff on top, so this can
-        never become a hot loop. Gives up after max_attempts; the next lazy
-        _send_art_request will retry open() later if the TV comes back.
+        applies its own 5s rate-limit on top, so this can never become a hot
+        loop. Its failures are not counted towards open()'s backoff, which is
+        there to space the pollers' attempts. Gives up after max_attempts; the
+        next lazy _send_art_request will retry open() later if the TV comes
+        back.
         """
         for attempt in range(max_attempts):
             await asyncio.sleep(self._backoff_delay(attempt))
-            if await self.open():
+            if await self.open(count_failure=False):
                 self._log.debug("Art API: reconnected after %d attempt(s)", attempt + 1)
                 return True
-        self._log.warning("Art API: reconnect gave up after %d attempts", max_attempts)
+        # DEBUG: the socket dropped and the TV stayed off the network for the
+        # whole minute this loop covers (network loss, reboot, deep standby).
+        # A normal standby keeps the art socket open and is not seen here:
+        # 4 standbys on a 55" LS03D left it up, it dropped once, when the TV
+        # left the network. Unreachable is expected, not a fault (see open());
+        # the next request retries.
+        self._log.debug(
+            "Art API: reconnect gave up after %d attempts; the next request "
+            "will retry",
+            max_attempts,
+        )
         return False
 
     async def _keepalive(self) -> None:
@@ -813,6 +854,7 @@ class SamsungTVAsyncArt:
         if not self._ws:
             return
 
+        ws = self._ws
         cancelled = False
         try:
             async for msg in self._ws:
@@ -844,7 +886,13 @@ class SamsungTVAsyncArt:
                 # drop, transport closed, or a missed heartbeat PONG on a
                 # zombie socket) and nobody else will clean up. Drop stale
                 # references so the next _send_art_request triggers a fresh
-                # open().
+                # open(). aiohttp ends the `async for` on CLOSE without
+                # yielding it, so the CLOSED branch above never logs: say it
+                # here.
+                self._log.debug(
+                    "Art API: receive loop ended (close code %s); reconnecting",
+                    getattr(ws, "close_code", None),
+                )
                 self._connected = False
                 self._ws = None
                 self._recv_task = None
@@ -1277,8 +1325,10 @@ class SamsungTVAsyncArt:
             },
         }
 
+        sent = False
         try:
             await self._ws.send_json(command)
+            sent = True
             self._log.debug(
                 "Art API: Sent request '%s'", request_data.get("request", "unknown")
             )
@@ -1289,6 +1339,10 @@ class SamsungTVAsyncArt:
         except Exception as ex:
             self._log.debug("Art API: Error sending request: %s", ex)
             self._pending_requests.pop(request_key, None)
+            if not sent:
+                # Nothing left HA ("Cannot write to closing transport"):
+                # set_artmode reads request_id as "handed to the socket".
+                request_data.pop("request_id", None)
             # Mark as disconnected to force reconnection on next request
             self._connected = False
             return None
@@ -1855,14 +1909,10 @@ class SamsungTVAsyncArt:
         # wins, instead of always paying the full request timeout.
         broadcast_future = asyncio.get_event_loop().create_future()
         self._art_mode_broadcast_waiters.append(broadcast_future)
+        request = {"request": "set_artmode_status", "value": mode}
+        self.last_set_artmode_sent = False
         request_task = asyncio.ensure_future(
-            self._send_art_request(
-                {
-                    "request": "set_artmode_status",
-                    "value": mode,
-                },
-                bypass_cooldown=True,
-            )
+            self._send_art_request(request, bypass_cooldown=True)
         )
         try:
             done, _ = await asyncio.wait(
@@ -1888,6 +1938,10 @@ class SamsungTVAsyncArt:
                 self._art_mode_broadcast_waiters.remove(broadcast_future)
             if not request_task.done():
                 request_task.cancel()
+            # _send_art_request_locked stamps request_id only once the channel
+            # is open, right before send_json, and drops it again if send_json
+            # fails: without it nothing left HA.
+            self.last_set_artmode_sent = "request_id" in request
 
         # Final fallback: the request timed out and no broadcast arrived in
         # time either. If the TV's state already matches what we asked for

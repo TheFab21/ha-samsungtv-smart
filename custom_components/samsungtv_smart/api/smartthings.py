@@ -970,9 +970,11 @@ class SmartThingsTV:
             # SmartThings cloud (TV in deep sleep, off the network, or
             # hardware unresponsive). This is a normal, expected case —
             # not an integration bug — so we log it as WARNING instead of
-            # ERROR to reduce noise in logs.
-            err_str = str(err)
-            if "409" in err_str or "Conflict" in err_str:
+            # ERROR to reduce noise in logs. Decided on the status, not on
+            # "409" in the text: the text carries the device id and, since
+            # the refusal body is kept, SmartThings' random requestId, and
+            # either can contain "409" on a 401 or 403.
+            if isinstance(err, ClientResponseError) and err.status == 409:
                 self._log.warning(
                     "Cannot turn on device via SmartThings "
                     "(device appears offline): %s",
