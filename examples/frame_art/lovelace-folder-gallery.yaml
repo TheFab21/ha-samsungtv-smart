@@ -90,9 +90,11 @@ cards:
             icon: mdi:palette
             tap_action:
               action: call-service
-              service: samsungtv_smart.set_art_mode
+              service: samsungtv_smart.art_set_artmode
               target:
                 entity_id: media_player.samsung_frame_tv
+              data:
+                enabled: true
           
           - type: button
             name: Random

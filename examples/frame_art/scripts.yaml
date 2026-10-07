@@ -282,32 +282,34 @@ frame_art_slideshow_personal:
   alias: "Frame Art: Start Personal Slideshow"
   description: "Start slideshow with personal photos"
   sequence:
-    - service: samsungtv_smart.art_slideshow
+    - service: samsungtv_smart.art_set_slideshow
       data:
         entity_id: media_player.samsung_frame_tv
-        slideshow_type: MY-C0002  # Personal photos
-        show: true
+        category_id: 2  # 2 = My Photos, 4 = Favourites, 8 = Art Store
+        duration: 15min
+        shuffle: true
 
 # Start slideshow with favorites
 frame_art_slideshow_favorites:
   alias: "Frame Art: Start Favorites Slideshow"
   description: "Start slideshow with favorite artwork"
   sequence:
-    - service: samsungtv_smart.art_slideshow
+    - service: samsungtv_smart.art_set_slideshow
       data:
         entity_id: media_player.samsung_frame_tv
-        slideshow_type: MY-C0004  # Favorites
-        show: true
+        category_id: 4  # Favourites
+        duration: 15min
+        shuffle: true
 
-# Stop slideshow
+# Stop slideshow (keeps Art Mode on)
 frame_art_slideshow_stop:
   alias: "Frame Art: Stop Slideshow"
-  description: "Stop the current slideshow"
+  description: "Stop the current slideshow, leaving Art Mode on"
   sequence:
-    - service: samsungtv_smart.art_slideshow
+    - service: samsungtv_smart.art_set_slideshow
       data:
         entity_id: media_player.samsung_frame_tv
-        show: false
+        duration: "0"  # 0 stops the slideshow; Art Mode stays on
 
 # ============================================
 # UTILITY SCRIPTS
@@ -327,7 +329,7 @@ frame_art_get_current:
   alias: "Frame Art: Get Current Artwork"
   description: "Get information about currently displayed artwork"
   sequence:
-    - service: samsungtv_smart.art_current
+    - service: samsungtv_smart.art_get_current
       data:
         entity_id: media_player.samsung_frame_tv
 
@@ -336,6 +338,8 @@ launch_art_mode:
   alias: "Frame Art: Launch Art Mode"
   description: "Activate Art Mode on Frame TV"
   sequence:
-    - service: samsungtv_smart.set_art_mode
+    - service: samsungtv_smart.art_set_artmode
       target:
         entity_id: media_player.samsung_frame_tv
+      data:
+        enabled: true
