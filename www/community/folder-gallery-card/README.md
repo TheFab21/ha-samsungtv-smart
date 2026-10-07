@@ -251,8 +251,8 @@ template:
 
 ## See Also
 
-- **[Frame Art Guide](../../docs/Frame_Art.md)** - Complete Frame Art documentation
-- **[Gallery Configuration Guide](../../docs/Frame_Art_Gallery.md)** - Alternative gallery methods
+- **[Frame Art Guide](../../../Frame_Art.md)** - Complete Frame Art documentation
+- **[Gallery Configuration Guide](../../../Frame_Art_Gallery.md)** - Alternative gallery methods
 - **[Configuration Examples](../../examples/frame_art/)** - Ready-to-use YAML files
 
 ---

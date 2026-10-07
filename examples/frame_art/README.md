@@ -312,8 +312,8 @@ data:
 
 After installation:
 
-1. 📖 Read [Frame Art Guide](../../docs/Frame_Art.md)
-2. 🖼️ Read [Gallery Guide](../../docs/Frame_Art_Gallery.md)
+1. 📖 Read [Frame Art Guide](../../Frame_Art.md)
+2. 🖼️ Read [Gallery Guide](../../Frame_Art_Gallery.md)
 3. 🎨 Customize to your preferences
 4. 🤖 Add your own automations
 
