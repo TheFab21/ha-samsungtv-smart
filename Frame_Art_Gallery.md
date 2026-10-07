@@ -266,6 +266,43 @@ regenerated only when the source file changes (keyed by path + width + mtime).
 Requires Pillow (bundled with Home Assistant); if it's unavailable the endpoint
 transparently falls back to the original image.
 
+### Switching between folders (folder selector)
+
+When the card has more than one folder, it shows a **dropdown** above the grid
+so you can switch between them — no `input_select` + conditional cards needed
+(added in 8.11). There are two ways to set it up.
+
+**1. An explicit list of folders** — one `platform: folder` sensor per theme
+(the integration auto-creates `sensor.<tv>_personal` / `_store` / `_other`;
+add your own for custom themes):
+
+```yaml
+type: custom:folder-gallery-card
+title: My Art
+folders:
+  - name: Landscapes
+    folder_sensor: sensor.frame_landscapes
+  - name: Abstract
+    folder_sensor: sensor.frame_abstract
+```
+
+Each entry takes the same source keys as the card itself (`folder_sensor`,
+`sensor`, `folder`, `image_list`); `name` is the dropdown label.
+
+**2. Auto-detected sub-folders of one sensor** — point a single folder sensor
+at a tree and let it recurse (set the sensor's `folder` filter to `**/*`), then:
+
+```yaml
+type: custom:folder-gallery-card
+title: My Art
+folder_sensor: sensor.frame_personal
+group_by_subfolder: true
+```
+
+The dropdown then lists **All** plus one entry per sub-folder, built from the
+files' paths. With neither option set the card shows a single folder and no
+dropdown, exactly as before.
+
 ### All Configuration Options
 
 | Option | Type | Default | Description |
@@ -273,6 +310,8 @@ transparently falls back to the original image.
 | `title` | string | - | Card title |
 | `folder_sensor` | string | - | Folder sensor entity ID |
 | `folder` | string | *(auto)* | Base **URL** for thumbnails (e.g., `/local/frame_art/store`). Optional — auto-derived from `folder_sensor`'s `path` when under `/config/www/`. Does **not** provide the image list (a sensor or `image_list` does). A `/config/www/...` value is accepted and mapped to `/local/...`. |
+| `folders` | list | - | A list of selectable folders, shown as a dropdown. Each entry has a `name` (the label) and the same source keys as the card (`folder_sensor` / `sensor` / `folder` / `image_list`). |
+| `group_by_subfolder` | boolean | `false` | With a single (recursive) `folder_sensor`, show a dropdown of its sub-folders (**All** + one per sub-folder) instead of a flat list. |
 | `columns` | number | `4` | Number of columns |
 | `image_height` | string | `150px` | Image height (ignored if `aspect_ratio` set) |
 | `aspect_ratio` | string | - | Aspect ratio (e.g., `1`, `16/9`, `3/4`) |
