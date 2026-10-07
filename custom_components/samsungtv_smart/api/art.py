@@ -168,6 +168,41 @@ def _describe_art_error(error_code: Any) -> str:
     return f"{name} ({error_code})" if name else str(error_code)
 
 
+def _art_api_major(version: str | None) -> int | None:
+    """Major number of an art-app version string ("0.97" -> 0), or None.
+
+    None when the version is unknown or unparseable, so callers default to the
+    current (D2D) behaviour rather than guessing.
+    """
+    if not version:
+        return None
+    head = str(version).strip().split(".", 1)[0]
+    try:
+        return int(head)
+    except ValueError:
+        return None
+
+
+def _art_uses_ws_binary_upload(version: str | None) -> bool:
+    """Whether a Frame on this art-app version needs the WS-binary upload.
+
+    Pre-4.x Frames (e.g. the 2019 Frame's "0.97") reject the D2D socket
+    handshake with SYSTEM_FAIL (-1) and take the image as a binary WebSocket
+    frame instead (#307). 4.x and up use D2D; an unknown version keeps D2D.
+    """
+    major = _art_api_major(version)
+    return major is not None and major < 4
+
+
+def _build_ws_image_frame(envelope: dict, data: bytes) -> bytes:
+    """Frame one WS-binary art upload: 2-byte big-endian header length, then
+    the compact JSON ``art_app_request`` envelope, then the raw image bytes."""
+    header = json.dumps(envelope, separators=(",", ":")).encode("utf-8")
+    if len(header) > 0xFFFF:
+        raise ValueError("Art upload header too large for a 2-byte length")
+    return len(header).to_bytes(2, "big") + header + data
+
+
 def _get_ssl_context() -> ssl.SSLContext:
     """Get SSL context for secure connections without blocking calls."""
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -267,6 +302,9 @@ class SamsungTVAsyncArt:
         # Suspends that breaker while an upload waits for image_added, so
         # unrelated thumbnail timeouts can't tear the socket down mid-upload.
         self._upload_in_progress = False
+        # Cached art-app version (firmware-stable). Decides the upload
+        # transport: pre-4.x Frames need the WS-binary path (#307).
+        self._art_api_version: str | None = None
 
         # The TV's Art app is effectively a single-request protocol.  Several
         # HA platforms share this client and otherwise poll it concurrently,
@@ -1402,6 +1440,17 @@ class SamsungTVAsyncArt:
             data = await self._send_art_request({"request": "api_version"})
         return data.get("version") if data else None
 
+    async def _resolve_api_version(self) -> str | None:
+        """The art-app version, queried once and cached for the client's life.
+
+        Used to pick the upload transport (#307). The version is firmware
+        stable, so a single query is enough; a failed query leaves it None and
+        the caller keeps the default (D2D) transport.
+        """
+        if self._art_api_version is None:
+            self._art_api_version = await self.get_api_version()
+        return self._art_api_version
+
     async def available(
         self, category: str | None = None, *, strict: bool = False
     ) -> list | None:
@@ -2433,6 +2482,18 @@ class SamsungTVAsyncArt:
         """Do the send_image handshake and d2d transfer (breaker suspended)."""
         file_size = len(file)
 
+        # Pre-4.x Frames (e.g. the 2019 Frame's art API "0.97") reject the D2D
+        # socket handshake below with SYSTEM_FAIL (-1) and take the image as a
+        # binary WebSocket frame instead (#307). An unknown version keeps D2D.
+        version = await self._resolve_api_version()
+        if _art_uses_ws_binary_upload(version):
+            self._log.debug(
+                "Art API: version %s uses the WS-binary upload transport", version
+            )
+            return await self._upload_ws_binary(
+                file, matte, portrait_matte, file_type, date, request_id, timeout
+            )
+
         data = await self._send_art_request(
             {
                 "request": "send_image",
@@ -2554,6 +2615,93 @@ class SamsungTVAsyncArt:
 
             self._log.debug("Art API: Upload traceback: %s", traceback.format_exc())
             return None
+
+    async def _upload_ws_binary(  # noqa: PLR0913 - mirrors _upload_locked
+        self,
+        file: bytes,
+        matte: str,
+        portrait_matte: str,
+        file_type: str,
+        date: str,
+        request_id: str,
+        timeout: int,
+    ) -> str | None:
+        """Upload an image as a binary WebSocket frame (pre-4.x Frames, #307).
+
+        The art app takes the image over the existing WebSocket as one binary
+        frame — a 2-byte big-endian header length, the ``art_app_request``
+        envelope, then the raw bytes — and replies under the same id with the
+        new content_id. This is the legacy transport samsung-tv-ws-api uses
+        for these Frames, and the one the #307 reporter verified against a
+        2019 Frame (returning MY_F0096).
+        """
+        ft = file_type.lower()
+        wire_type = "JPEG" if ft in ("jpg", "jpeg") else ft.upper()
+        envelope = {
+            "method": "ms.channel.emit",
+            "params": {
+                "event": "art_app_request",
+                "to": "host",
+                "data": json.dumps(
+                    {
+                        "request": "send_image",
+                        "file_type": wire_type,
+                        "request_id": request_id,
+                        "id": request_id,
+                        "image_date": date,
+                        "matte_id": matte or "none",
+                        "portrait_matte_id": portrait_matte or "none",
+                        "file_size": len(file),
+                    }
+                ),
+            },
+        }
+        try:
+            frame = _build_ws_image_frame(envelope, file)
+        except ValueError as ex:
+            self._log.error("Art API: %s", ex)
+            return None
+
+        # Serialize the send with other art requests (one ws, no concurrent
+        # writes); the reply is awaited after the lock, like the D2D path.
+        async with self._request_lock:
+            if not self._connected or not self._ws or self._ws.closed:
+                if not await self.open() or not self._ws or self._ws.closed:
+                    self._log.error("Art API: not connected for WS-binary upload")
+                    return None
+            # Register before sending so a fast reply isn't missed.
+            self._pending_requests[request_id] = (
+                asyncio.get_event_loop().create_future()
+            )
+            try:
+                await self._ws.send_bytes(frame)
+            except Exception as ex:  # noqa: BLE001 - surfaced; socket recovers
+                self._pending_requests.pop(request_id, None)
+                self._connected = False
+                self._log.error("Art API: failed to send image frame: %s", ex)
+                return None
+
+        self._log.debug(
+            "Art API: sent %d-byte WS-binary upload, waiting for reply", len(frame)
+        )
+        result = await self._wait_for_response(request_id, timeout=timeout)
+        if not result:
+            self._log.error("Art API: no reply to WS-binary upload")
+            return None
+        if result.get("event") == "error":
+            self._log.error(
+                "Art API: WS-binary send_image error: %s",
+                _describe_art_error(result.get("error_code")),
+            )
+            return None
+        content_id = result.get("content_id")
+        if content_id:
+            self._log.info(
+                "Art API: Upload successful (WS-binary), content_id=%s", content_id
+            )
+            return content_id
+        self._log.error("Art API: WS-binary upload returned no content_id")
+        return None
 
     async def upload_batch(
         self,
