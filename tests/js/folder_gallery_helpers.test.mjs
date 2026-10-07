@@ -23,9 +23,15 @@ const region = src.match(
 assert.ok(region, 'the <fgc-pure-helpers> region must exist in the card');
 
 const factory = new Function(
-  `${region[1]}\nreturn { fgcBasename, fgcRelPath, fgcSubfolder, fgcGroupBySubfolder };`
+  `${region[1]}\nreturn { fgcBasename, fgcRelPath, fgcSubfolder, fgcGroupBySubfolder, fgcEscapeHtml };`
 );
-const { fgcBasename, fgcRelPath, fgcSubfolder, fgcGroupBySubfolder } = factory();
+const { fgcBasename, fgcRelPath, fgcSubfolder, fgcGroupBySubfolder, fgcEscapeHtml } =
+  factory();
+
+// fgcEscapeHtml: folder labels go into <option> text unescaped otherwise.
+assert.equal(fgcEscapeHtml('<3 & "Art"'), '&lt;3 &amp; &quot;Art&quot;');
+assert.equal(fgcEscapeHtml('</option></select>'), '&lt;/option&gt;&lt;/select&gt;');
+assert.equal(fgcEscapeHtml('plain'), 'plain');
 
 // fgcBasename
 assert.equal(fgcBasename('/a/b/c.jpg'), 'c.jpg');

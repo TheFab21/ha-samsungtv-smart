@@ -400,6 +400,17 @@ function fgcSubfolder(relPath) {
   return parts.join('/');
 }
 
+// Escape text interpolated into HTML. Folder labels come from config and from
+// filesystem sub-folder names, so a '<' or '&' in one must not break (or inject
+// into) the dropdown markup.
+function fgcEscapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // Group normalized images (each with a `subfolder`) into selectable sets:
 // an "all" set first, then one per distinct sub-folder, sorted. Returns [] when
 // there is nothing to choose between (no sub-folders), so the caller falls back
@@ -667,7 +678,10 @@ class FolderGalleryCard extends HTMLElement {
   _buildFolderSets() {
     if (Array.isArray(this._config.folders) && this._config.folders.length > 0) {
       return this._config.folders.map((entry, i) => {
-        const key = entry.name || entry.sensor || entry.folder_sensor || `folder-${i}`;
+        // Fold in the index so two entries sharing a name don't collide — a
+        // shared key makes the <option> values equal and find() always returns
+        // the first, leaving the second folder unreachable.
+        const key = `${entry.name || entry.sensor || entry.folder_sensor || 'folder'}-${i}`;
         return {
           key,
           label: entry.name || entry.sensor || entry.folder_sensor || `Folder ${i + 1}`,
@@ -1007,12 +1021,12 @@ class FolderGalleryCard extends HTMLElement {
         (s) =>
           `<option value="${encodeURIComponent(s.key)}"${
             s.key === this._activeFolderKey ? ' selected' : ''
-          }>${s.label}</option>`
+          }>${fgcEscapeHtml(s.label)}</option>`
       )
       .join('');
     return `
       <div class="folder-select">
-        <label>${this._t('folder_label')}</label>
+        <label>${fgcEscapeHtml(this._t('folder_label'))}</label>
         <select class="folder-select-input">${options}</select>
       </div>
     `;
