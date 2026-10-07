@@ -5,11 +5,11 @@
  * and triggers actions when clicked.
  * 
  * Installation:
- * 1. Copy this file to /config/www/community/folder-gallery-card/folder-gallery-card.js
- * 2. Add to Lovelace resources:
- *    url: /local/community/folder-gallery-card/folder-gallery-card.js
- *    type: module
- * 
+ * Bundled with the SamsungTV Smart integration and auto-registered as a
+ * Lovelace resource at /api/samsungtv_smart/folder-gallery-card.js — no manual
+ * copy or resource entry is needed. (Restart Home Assistant once if the card
+ * does not appear.)
+ *
  * Usage Example:
  * type: custom:folder-gallery-card
  * title: My Art Gallery
@@ -41,6 +41,8 @@ const TRANSLATIONS = {
     frame_chooser_title: 'Upload to which Frame?',
     no_images: 'No images found',
     configure_sensor: 'Configure a sensor or image_list',
+    folder_label: 'Folder',
+    folder_all: 'All',
     images_count: '{n} images',
     removed_fav: 'Removed from favourites',
     artwork_deleted: 'Artwork deleted',
@@ -93,6 +95,8 @@ const TRANSLATIONS = {
     frame_chooser_title: 'Envoyer vers quelle Frame ?',
     no_images: 'Aucune image trouvée',
     configure_sensor: 'Configurez un capteur ou image_list',
+    folder_label: 'Dossier',
+    folder_all: 'Tous',
     images_count: '{n} images',
     removed_fav: 'Retiré des favoris',
     artwork_deleted: 'Œuvre supprimée',
@@ -145,6 +149,8 @@ const TRANSLATIONS = {
     frame_chooser_title: '¿A qué Frame subir?',
     no_images: 'No se encontraron imágenes',
     configure_sensor: 'Configura un sensor o image_list',
+    folder_label: 'Carpeta',
+    folder_all: 'Todas',
     images_count: '{n} imágenes',
     removed_fav: 'Eliminado de favoritos',
     artwork_deleted: 'Obra eliminada',
@@ -197,6 +203,8 @@ const TRANSLATIONS = {
     frame_chooser_title: 'Su quale Frame caricare?',
     no_images: 'Nessuna immagine trovata',
     configure_sensor: 'Configura un sensore o image_list',
+    folder_label: 'Cartella',
+    folder_all: 'Tutte',
     images_count: '{n} immagini',
     removed_fav: 'Rimosso dai preferiti',
     artwork_deleted: 'Opera eliminata',
@@ -249,6 +257,8 @@ const TRANSLATIONS = {
     frame_chooser_title: 'Enviar para qual Frame?',
     no_images: 'Nenhuma imagem encontrada',
     configure_sensor: 'Configure um sensor ou image_list',
+    folder_label: 'Pasta',
+    folder_all: 'Todas',
     images_count: '{n} imagens',
     removed_fav: 'Removido dos favoritos',
     artwork_deleted: 'Obra excluída',
@@ -301,6 +311,8 @@ const TRANSLATIONS = {
     frame_chooser_title: 'Melyik Frame-re töltsük fel?',
     no_images: 'Nem található kép',
     configure_sensor: 'Állíts be egy szenzort vagy image_list-et',
+    folder_label: 'Mappa',
+    folder_all: 'Mind',
     images_count: '{n} kép',
     removed_fav: 'Eltávolítva a kedvencekből',
     artwork_deleted: 'Kép törölve',
@@ -361,6 +373,53 @@ function fgcTranslate(lang, key, params) {
   return str;
 }
 
+// <fgc-pure-helpers> — pure, no DOM/hass; unit-tested in
+// tests/js/folder_gallery_helpers.test.mjs by extracting this region.
+function fgcBasename(p) {
+  return String(p).match(/[^/]+$/)?.[0] || String(p);
+}
+
+// The path of `fullPath` relative to the folder sensor's base dir, always
+// starting with "/". A recursive `platform: folder` sensor (filter "**/*")
+// lists nested files; keeping the sub-path is what lets the browser fetch
+// /local/<base>/<sub>/file.jpg instead of a flattened (and 404-ing) URL.
+function fgcRelPath(fullPath, base) {
+  const fp = String(fullPath);
+  const b = String(base || '').replace(/\/+$/, '');
+  if (b && fp.startsWith(b)) {
+    const rel = fp.slice(b.length);
+    return rel.startsWith('/') ? rel : '/' + rel;
+  }
+  return '/' + fgcBasename(fp);
+}
+
+// The sub-folder of a "/sub/dir/file.jpg" relative path ("" at the root).
+function fgcSubfolder(relPath) {
+  const parts = String(relPath).replace(/^\//, '').split('/');
+  parts.pop(); // drop the filename
+  return parts.join('/');
+}
+
+// Group normalized images (each with a `subfolder`) into selectable sets:
+// an "all" set first, then one per distinct sub-folder, sorted. Returns [] when
+// there is nothing to choose between (no sub-folders), so the caller falls back
+// to a single implicit set and shows no selector.
+function fgcGroupBySubfolder(images, allLabel) {
+  const subs = [...new Set(images.map((im) => im.subfolder || ''))];
+  const nested = subs.filter((s) => s !== '').sort();
+  if (nested.length === 0) return [];
+  const sets = [{ key: '__all__', label: allLabel, images }];
+  for (const s of nested) {
+    sets.push({
+      key: s,
+      label: s.split('/').pop(),
+      images: images.filter((im) => (im.subfolder || '') === s),
+    });
+  }
+  return sets;
+}
+// </fgc-pure-helpers>
+
 class FolderGalleryCard extends HTMLElement {
 
   constructor() {
@@ -368,6 +427,9 @@ class FolderGalleryCard extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this._images = [];
     this._config = {};
+    // Folder selector state (survives gallery re-renders and hass updates).
+    this._folderSets = [];
+    this._activeFolderKey = null;
     // Double-tap detection state (survives gallery re-renders).
     this._dtIndex = -1;
     this._dtTime = 0;
@@ -387,7 +449,14 @@ class FolderGalleryCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config.folder && !config.sensor && !config.folder_sensor && !config.image_list) {
+    const hasFolders = Array.isArray(config.folders) && config.folders.length > 0;
+    if (
+      !config.folder &&
+      !config.sensor &&
+      !config.folder_sensor &&
+      !config.image_list &&
+      !hasFolders
+    ) {
       throw new Error(fgcTranslate('en', 'err_define_one'));
     }
 
@@ -441,27 +510,26 @@ class FolderGalleryCard extends HTMLElement {
     const oldHass = this._hass;
     this._hass = hass;
 
-    // Anti-flicker: skip re-render if the configured sensor's data hasn't
-    // changed. Considers both `folder_sensor` (YAML) and `sensor` (visual
-    // editor writes here), and compares all attributes the card consumes.
-    const sensorEntity = this._config.folder_sensor || this._config.sensor;
-    if (sensorEntity && oldHass) {
-      const buildKey = (attrs) => attrs ? JSON.stringify({
-        file_list: attrs.file_list,
-        images: attrs.images,
-        thumbnails: attrs.thumbnails,
-        items: attrs.items
-      }) : null;
-
-      const oldKey = buildKey(oldHass.states[sensorEntity]?.attributes);
-      const newKey = buildKey(hass.states[sensorEntity]?.attributes);
+    // Anti-flicker: skip re-render if none of the sensors the card consumes
+    // changed. Considers `folder_sensor` and `sensor` (visual editor writes the
+    // latter) plus every sensor named in a `folders:` entry, and compares all
+    // attributes the card reads.
+    const sensorEntities = this._configuredSensors();
+    if (sensorEntities.length && oldHass) {
+      const buildKey = (states) =>
+        JSON.stringify(
+          sensorEntities.map((e) => {
+            const a = states[e]?.attributes;
+            return a
+              ? [a.file_list, a.images, a.thumbnails, a.items, a.path]
+              : null;
+          })
+        );
 
       // Skip re-render if no relevant attribute changed (prevents flickering)
-      if (oldKey === newKey) {
-        return; // No changes detected, skip expensive re-render
+      if (buildKey(oldHass.states) === buildKey(hass.states)) {
+        return;
       }
-
-      console.log('[FolderGallery] sensor data changed, updating gallery');
     }
 
     this.updateImages();
@@ -471,146 +539,158 @@ class FolderGalleryCard extends HTMLElement {
     return this._hass;
   }
 
-  updateImages() {
-    if (!this._hass) return;
-    
-    // Determine the folder URL once for all branches below.
-    // Priority order:
-    //   1. Explicit `config.folder` (URL path, e.g. /local/...)
-    //   2. Derived from the sensor's `path` attribute when it lives under
-    //      /config/www/ (typical HA `platform: folder` setup), by mapping
-    //      /config/www/... → /local/...
-    // If neither yields a usable URL, `folder` stays empty and per-image
-    // fallbacks may apply below (image_list with absolute URLs, etc.).
-    let folder = (this._config.folder || '').replace(/\/+$/, '');
-    // An explicitly-set folder may be given as a filesystem path
-    // (/config/www/...) rather than the browser URL (/local/...). HA serves
-    // /config/www/ at /local/, so map it — otherwise the <img> src points at a
-    // path the browser can't fetch and every thumbnail breaks.
+  // Every sensor entity the card reads: the top-level sensor plus any named in
+  // a `folders:` entry. Used by the anti-flicker check and nothing else.
+  _configuredSensors() {
+    const out = new Set();
+    const add = (s) => {
+      if (s.folder_sensor) out.add(s.folder_sensor);
+      if (s.sensor) out.add(s.sensor);
+    };
+    add(this._config);
+    if (Array.isArray(this._config.folders)) this._config.folders.forEach(add);
+    return [...out];
+  }
+
+  // The /local/ base URL for a source's thumbnails: explicit `folder`, else
+  // derived from the folder sensor's `path` attribute (/config/www/ → /local/).
+  _folderUrlBase(src) {
+    let folder = (src.folder || '').replace(/\/+$/, '');
     if (folder.startsWith('/config/www/')) {
       folder = folder.replace(/^\/config\/www\//, '/local/');
     }
     if (!folder) {
-      const sensorEntity = this._config.folder_sensor || this._config.sensor;
-      if (sensorEntity) {
-        const sensorPath = this._hass.states[sensorEntity]?.attributes?.path;
-        if (typeof sensorPath === 'string') {
-          const cleaned = sensorPath.replace(/\/+$/, '');
-          if (cleaned.startsWith('/config/www/')) {
-            folder = cleaned.replace(/^\/config\/www\//, '/local/');
-            console.log('[FolderGallery] Auto-derived folder URL from sensor:', folder);
-          }
+      const sensorEntity = src.folder_sensor || src.sensor;
+      const sensorPath =
+        sensorEntity && this._hass.states[sensorEntity]?.attributes?.path;
+      if (typeof sensorPath === 'string') {
+        const cleaned = sensorPath.replace(/\/+$/, '');
+        if (cleaned.startsWith('/config/www/')) {
+          folder = cleaned.replace(/^\/config\/www\//, '/local/');
         }
       }
     }
-    
-    let images = [];
-    
-    // Priority 1: folder_sensor (platform: folder)
-    if (this._config.folder_sensor) {
-      const folderState = this._hass.states[this._config.folder_sensor];
-      if (folderState && folderState.attributes) {
-        let fileList = folderState.attributes.file_list;
-        
-        console.log('[FolderGallery] folder_sensor file_list:', fileList, 'type:', typeof fileList, 'isArray:', Array.isArray(fileList));
-        
-        // Convert to array if needed
-        if (typeof fileList === 'string') {
-          fileList = fileList.split(',').map(f => f.trim()).filter(f => f);
-        }
-        
-        if (Array.isArray(fileList) && fileList.length > 0) {
-          this._images = fileList.map(f => {
-            // f = "/config/www/frame_art/{entry_id}/store/SAM-S100808.jpg"
-            // On veut juste "SAM-S100808.jpg"
-            const fullPath = String(f);
-            const filename = fullPath.match(/[^\/]+$/)?.[0] || fullPath;
-            const content_id = filename.replace(/\.[^/.]+$/, '');
-            
-            console.log('[FolderGallery] Processing:', fullPath, '→', filename);
-            
-            return {
-              path: `${folder}/${filename}`,
-              filename: filename,
-              name: content_id,
-              content_id: content_id
-            };
-          });
-          
-          console.log('[FolderGallery] Processed images:', this._images.slice(0, 2));
-          this.renderGallery();
-          return;
-        }
-      }
-    }
-    
-    // Priority 2: sensor (auto-detect folder platform vs custom attribute)
-    if (this._config.sensor) {
-      const sensorState = this._hass.states[this._config.sensor];
-      if (sensorState && sensorState.attributes) {
-        // First, treat it as a folder platform sensor if file_list exists.
-        // This lets users wire `sensor.<folder>` directly from the visual
-        // editor (which writes to `config.sensor`) without having to know
-        // about the YAML-only `folder_sensor` parameter.
-        let fileList = sensorState.attributes.file_list;
-        if (fileList !== undefined) {
-          if (typeof fileList === 'string') {
-            fileList = fileList.split(',').map(f => f.trim()).filter(f => f);
-          }
-          if (Array.isArray(fileList) && fileList.length > 0) {
-            this._images = fileList.map(f => {
-              const fullPath = String(f);
-              const filename = fullPath.match(/[^\/]+$/)?.[0] || fullPath;
-              const content_id = filename.replace(/\.[^/.]+$/, '');
-              return {
-                path: `${folder}/${filename}`,
-                filename: filename,
-                name: content_id,
-                content_id: content_id
-              };
-            });
-            console.log('[FolderGallery] sensor (folder platform) processed', this._images.length, 'images');
-            this.renderGallery();
-            return;
-          }
-        }
-        // Fallback: generic sensor with images/thumbnails/items attribute
-        images = sensorState.attributes.images ||
-                 sensorState.attributes.thumbnails ||
-                 sensorState.attributes.items ||
-                 [];
-      }
-    }
-    
-    // Priority 3: static image_list in config
-    if (this._config.image_list && this._config.image_list.length > 0) {
-      images = this._config.image_list;
-    }
+    return folder;
+  }
 
-    // Normalize image format for methods 2 & 3 (uses the outer `folder`
-    // computed at the top of updateImages, which may be explicit or derived)
-    
-    this._images = images.map(img => {
+  // The folder sensor's filesystem base dir, for turning absolute file_list
+  // paths into sub-paths relative to the /local/ base.
+  _sensorBasePath(src) {
+    const sensorEntity = src.folder_sensor || src.sensor;
+    const p =
+      sensorEntity && this._hass.states[sensorEntity]?.attributes?.path;
+    return typeof p === 'string' ? p.replace(/\/+$/, '') : '';
+  }
+
+  // Normalize one source ({folder|folder_sensor|sensor|image_list}) into the
+  // image objects the gallery renders. Sub-paths are preserved so nested
+  // folders resolve (and so group_by_subfolder has something to group on).
+  _imagesForSource(src) {
+    const folder = this._folderUrlBase(src);
+    const base = this._sensorBasePath(src);
+    const fromFileList = (fileList) => {
+      if (typeof fileList === 'string') {
+        fileList = fileList.split(',').map((f) => f.trim()).filter(Boolean);
+      }
+      if (!Array.isArray(fileList) || fileList.length === 0) return null;
+      return fileList.map((f) => {
+        const rel = fgcRelPath(f, base); // "/sub/file.jpg" or "/file.jpg"
+        const filename = fgcBasename(rel);
+        const content_id = filename.replace(/\.[^/.]+$/, '');
+        return {
+          path: `${folder}${rel}`,
+          filename,
+          name: content_id,
+          content_id,
+          subfolder: fgcSubfolder(rel),
+        };
+      });
+    };
+
+    if (src.folder_sensor) {
+      const st = this._hass.states[src.folder_sensor];
+      const imgs = st && st.attributes ? fromFileList(st.attributes.file_list) : null;
+      if (imgs) return imgs;
+    }
+    if (src.sensor) {
+      const st = this._hass.states[src.sensor];
+      if (st && st.attributes) {
+        if (st.attributes.file_list !== undefined) {
+          const imgs = fromFileList(st.attributes.file_list);
+          if (imgs) return imgs;
+        }
+        const generic =
+          st.attributes.images ||
+          st.attributes.thumbnails ||
+          st.attributes.items ||
+          [];
+        if (generic.length) return this._normalizeGeneric(generic, folder);
+      }
+    }
+    if (src.image_list && src.image_list.length > 0) {
+      return this._normalizeGeneric(src.image_list, folder);
+    }
+    return [];
+  }
+
+  _normalizeGeneric(images, folder) {
+    return images.map((img) => {
       if (typeof img === 'string') {
-        const parts = img.split('/');
-        const filename = parts[parts.length - 1];
+        const filename = fgcBasename(img);
         const content_id = filename.replace(/\.[^/.]+$/, '');
         return {
           path: img.startsWith('/local') ? img : `${folder}/${filename}`,
-          filename: filename,
+          filename,
           name: content_id,
-          content_id: content_id
+          content_id,
+          subfolder: '',
         };
       }
       return {
         path: img.path || img.url || img.thumbnail || '',
         filename: img.filename || img.name || 'unknown',
-        name: img.name || img.title || img.filename?.replace(/\.[^/.]+$/, '').replace(/_/g, ' ') || 'Unknown',
+        name:
+          img.name ||
+          img.title ||
+          img.filename?.replace(/\.[^/.]+$/, '').replace(/_/g, ' ') ||
+          'Unknown',
         content_id: img.content_id || img.id || null,
-        ...img
+        subfolder: img.subfolder || '',
+        ...img,
       };
     });
+  }
 
+  // Build the selectable folder sets. One per `folders:` entry; otherwise, when
+  // group_by_subfolder is on, one per sub-folder (plus "All"); otherwise a
+  // single implicit set (no selector shown).
+  _buildFolderSets() {
+    if (Array.isArray(this._config.folders) && this._config.folders.length > 0) {
+      return this._config.folders.map((entry, i) => {
+        const key = entry.name || entry.sensor || entry.folder_sensor || `folder-${i}`;
+        return {
+          key,
+          label: entry.name || entry.sensor || entry.folder_sensor || `Folder ${i + 1}`,
+          images: this._imagesForSource(entry),
+        };
+      });
+    }
+    const images = this._imagesForSource(this._config);
+    if (this._config.group_by_subfolder) {
+      const grouped = fgcGroupBySubfolder(images, this._t('folder_all'));
+      if (grouped.length) return grouped;
+    }
+    return [{ key: '__single__', label: '', images }];
+  }
+
+  updateImages() {
+    if (!this._hass) return;
+    this._folderSets = this._buildFolderSets();
+    const active =
+      this._folderSets.find((s) => s.key === this._activeFolderKey) ||
+      this._folderSets[0];
+    this._activeFolderKey = active ? active.key : null;
+    this._images = active ? active.images : [];
     this.renderGallery();
   }
 
@@ -626,6 +706,26 @@ class FolderGalleryCard extends HTMLElement {
           overflow: hidden;
         }
         
+        .folder-select {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px 0;
+        }
+        .folder-select label {
+          font-size: 0.9em;
+          color: var(--secondary-text-color);
+        }
+        .folder-select-input {
+          flex: 1;
+          padding: 6px 8px;
+          border-radius: 6px;
+          border: 1px solid var(--divider-color, #e0e0e0);
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          font: inherit;
+        }
+
         .card-header {
           font-size: 1.2em;
           font-weight: 500;
@@ -899,6 +999,36 @@ class FolderGalleryCard extends HTMLElement {
     return `/api/samsungtv_smart/thumbnail?path=${encodeURIComponent(path)}&w=${w}`;
   }
 
+  _folderSelectorHtml() {
+    // Only shown when there is more than one folder to choose between.
+    if (!this._folderSets || this._folderSets.length < 2) return '';
+    const options = this._folderSets
+      .map(
+        (s) =>
+          `<option value="${encodeURIComponent(s.key)}"${
+            s.key === this._activeFolderKey ? ' selected' : ''
+          }>${s.label}</option>`
+      )
+      .join('');
+    return `
+      <div class="folder-select">
+        <label>${this._t('folder_label')}</label>
+        <select class="folder-select-input">${options}</select>
+      </div>
+    `;
+  }
+
+  _wireFolderSelector(container) {
+    const select = container.querySelector('.folder-select-input');
+    if (!select) return;
+    select.addEventListener('change', (e) => {
+      this._activeFolderKey = decodeURIComponent(e.target.value);
+      const set = this._folderSets.find((s) => s.key === this._activeFolderKey);
+      this._images = set ? set.images : [];
+      this.renderGallery();
+    });
+  }
+
   renderGallery() {
     const container = this.shadowRoot.querySelector('.gallery-container');
     const countEl = this.shadowRoot.querySelector('.image-count');
@@ -909,8 +1039,11 @@ class FolderGalleryCard extends HTMLElement {
       countEl.textContent = this._t('images_count', { n: this._images.length });
     }
 
+    const selector = this._folderSelectorHtml();
+
     if (this._images.length === 0) {
       container.innerHTML = `
+        ${selector}
         <div class="empty-state">
           <ha-icon icon="mdi:image-off"></ha-icon>
           <div>${this._t('no_images')}</div>
@@ -919,10 +1052,12 @@ class FolderGalleryCard extends HTMLElement {
           </div>
         </div>
       `;
+      this._wireFolderSelector(container);
       return;
     }
 
     container.innerHTML = `
+      ${selector}
       <div class="gallery-grid">
         ${this._images.map((img, index) => `
           <div class="gallery-item" data-index="${index}" data-path="${img.path}" data-content-id="${img.content_id || ''}">
@@ -938,6 +1073,8 @@ class FolderGalleryCard extends HTMLElement {
         `).join('')}
       </div>
     `;
+
+    this._wireFolderSelector(container);
 
     // Add click + long-press handlers.
     // Long-press is detected with a pointer timer rather than the `contextmenu`
@@ -1809,7 +1946,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c FOLDER-GALLERY-CARD %c v1.5.0 ',
+  '%c FOLDER-GALLERY-CARD %c v1.6.0 ',
   'color: white; background: #03a9f4; font-weight: bold;',
   'color: #03a9f4; background: white; font-weight: bold;'
 );

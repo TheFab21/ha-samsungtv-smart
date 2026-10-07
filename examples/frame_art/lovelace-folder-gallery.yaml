@@ -29,15 +29,41 @@
 # ============================================
 
 # ============================================
-# RESOURCE CONFIGURATION (legacy / manual installs only)
+# RESOURCE CONFIGURATION (fallback only)
 # ============================================
-# Not required in v7 — the card auto-registers. Only needed if you install
-# the card manually outside the integration:
+# Not required — the card auto-registers. Only add this if auto-registration
+# ever fails; point it at the URL the integration already serves:
 #
 # lovelace:
 #   resources:
-#     - url: /local/community/folder-gallery-card/folder-gallery-card.js
+#     - url: /api/samsungtv_smart/folder-gallery-card.js
 #       type: module
+
+# ============================================
+# FOLDER SELECTOR (8.11)
+# ============================================
+# The card can show a dropdown to switch between folders, instead of a manual
+# input_select + conditional cards. Two ways:
+#
+#  1. An explicit list of folders (one platform: folder sensor per theme):
+#
+#      - type: custom:folder-gallery-card
+#        title: "🎨 Themes"
+#        folders:
+#          - name: Landscapes
+#            folder_sensor: sensor.samsung_frame_landscapes
+#          - name: Abstract
+#            folder_sensor: sensor.samsung_frame_abstract
+#
+#  2. Auto-detected from one recursive sensor's sub-folders. Set the folder
+#     sensor to recurse (filter: "**/*") so file_list carries sub-paths, then:
+#
+#      - type: custom:folder-gallery-card
+#        title: "🎨 My Art"
+#        folder_sensor: sensor.samsung_frame_personal
+#        group_by_subfolder: true
+#
+# The selector appears only when there is more than one folder.
 
 # ============================================
 # COMPLETE DASHBOARD
