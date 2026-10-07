@@ -2499,11 +2499,47 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             marker in text for marker in ("forbidden", "unauthorized", "401", "403")
         )
 
+    def _allow_st_refresh(self) -> bool:
+        """Return whether the active SmartThings refresh command should run.
+
+        Home Assistant reports a Frame displaying Art Mode as OFF even though
+        the panel and its network services are still active, so the
+        media_player state alone cannot be the gate: it would stop refreshing
+        a Frame that is perfectly awake.
+
+        A pending power-off wins outright — we asked for standby, so stop
+        talking to the panel at once, before the cloud or any cache catches up.
+        Otherwise normal viewing refreshes, and anything else defers to
+        ``_art_mode_is_on()``, the integration's single source of truth for
+        "is this panel actually doing something".
+
+        That delegation is the whole point: ``_art_mode_is_on()`` already
+        consults device_info ``PowerState='standby'``, but only *after* the IP
+        Control reading, because a 2025 Frame reports ``standby`` while Art
+        Mode is ON (see ``SamsungTVAsyncArt.in_artmode``). Testing PowerState
+        here instead would invert that order and suppress the refresh on
+        exactly the awake Frame this gate is meant to keep refreshing.
+
+        Unknown (``None``) counts as "do not refresh": the throttle does not
+        advance on a skipped call, so the next poll that knows better sends it
+        immediately.
+        """
+        if self._power_off_in_progress():
+            return False
+
+        if self._state == MediaPlayerState.ON:
+            return True
+
+        return self._art_mode_is_on() is True
+
     async def _async_st_update(self, **kwargs) -> bool | None:
         """Update SmartThings state of device."""
         try:
             async with async_timeout.timeout(ST_UPDATE_TIMEOUT):
-                await self._st.async_device_update(self._use_channel_info)
+                await self._st.async_device_update(
+                    self._use_channel_info,
+                    allow_refresh=self._allow_st_refresh(),
+                )
         except (
             asyncio.TimeoutError,
             ClientConnectionError,
