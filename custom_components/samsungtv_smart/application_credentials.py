@@ -13,18 +13,41 @@ from homeassistant.components.application_credentials import (
     ClientCredential,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.config_entry_oauth2_flow import AbstractOAuth2Implementation
 
 from .const import DOMAIN
 
-# Placeholders used in application_credentials translation strings
+# The "My Home Assistant" OAuth redirect, used when the live redirect URI
+# cannot be read (no "my" integration and no request in context).
+_MY_REDIRECT_URL = "https://my.home-assistant.io/redirect/oauth"
+
+# The two static links in the credentials-dialog setup instructions.
 DESCRIPTION_PLACEHOLDERS = {
     "smartthings_portal": "https://developer.smartthings.com/",
     "oauth_docs": "https://developer.smartthings.com/docs/connected-services/oauth-integrations",
 }
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def async_get_description_placeholders(hass: HomeAssistant) -> dict[str, str]:
+    """Return the placeholders for the "Add application credential" dialog.
+
+    Home Assistant interpolates the credentials-dialog description with these.
+    Without them the frontend raised "formatjs Error: MISSING_VALUE" and the
+    two links resolved to the dialog's own page (#302). ``callback_url`` is the
+    redirect URI this OAuth flow actually uses, so the value the user registers
+    in the SmartThings portal matches the one the handshake sends.
+    """
+    try:
+        callback_url = config_entry_oauth2_flow.async_get_redirect_uri(hass)
+    except RuntimeError:
+        # No "my" integration and no request context (e.g. outside the dialog).
+        callback_url = _MY_REDIRECT_URL
+    return {**DESCRIPTION_PLACEHOLDERS, "callback_url": callback_url}
+
 
 # SmartThings OAuth endpoints
 AUTHORIZE_URL = "https://api.smartthings.com/oauth/authorize"

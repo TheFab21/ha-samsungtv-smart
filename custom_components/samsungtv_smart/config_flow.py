@@ -1224,7 +1224,14 @@ class SamsungTVSmartOAuth2FlowHandler(
             options = {CONF_PING_PORT: self._ping_port}
 
         _LOGGER.info("Configured new entity %s with host %s", title, self._host)
-        return self.async_create_entry(title=title, data=data, options=options)
+        # create_entry.default is "Successfully configured {name}"; without the
+        # placeholder the frontend showed a formatjs MISSING_VALUE error (#302).
+        return self.async_create_entry(
+            title=title,
+            data=data,
+            options=options,
+            description_placeholders={"name": self._name},
+        )
 
     # =========================================================================
     # Form helpers
