@@ -1,38 +1,14 @@
-"""Pre-4.x Frames upload over a binary WebSocket frame, not D2D (#307).
+"""A 2019 Frame falls back to a binary WebSocket upload on SYSTEM_FAIL (#307).
 
-A 2019 Frame (art API "0.97") answers the D2D ``send_image`` handshake with
-SYSTEM_FAIL (-1). Those Frames take the image as one binary WS frame instead.
-The transport is version-gated: 4.x and up (and unknown versions) keep D2D.
+The 2019 Frame (art API "0.97") answers the D2D ``send_image`` handshake with
+SYSTEM_FAIL (-1). The upload then retries over the legacy binary-WS transport
+the reporter verified on-device. Every other refusal, and every TV that
+accepts D2D, is untouched — there is no version guessing.
 """
 
-import asyncio
 import json
 
 import pytest
-
-
-def test_art_api_major(art_client):
-    import art
-
-    assert art._art_api_major("0.97") == 0
-    assert art._art_api_major("4.3.4.0") == 4
-    assert art._art_api_major("2.03") == 2
-    assert art._art_api_major(None) is None
-    assert art._art_api_major("") is None
-    assert art._art_api_major("weird") is None
-
-
-def test_which_versions_use_ws_binary(art_client):
-    import art
-
-    assert art._art_uses_ws_binary_upload("0.97") is True
-    assert art._art_uses_ws_binary_upload("2.03") is True
-    assert art._art_uses_ws_binary_upload("3.1.0") is True
-    assert art._art_uses_ws_binary_upload("4.3.4.0") is False
-    assert art._art_uses_ws_binary_upload("4.0") is False
-    # Unknown -> keep the current (D2D) transport.
-    assert art._art_uses_ws_binary_upload(None) is False
-    assert art._art_uses_ws_binary_upload("junk") is False
 
 
 def test_build_ws_image_frame(art_client):
@@ -63,29 +39,21 @@ class _FakeWS:
 
     async def send_bytes(self, frame):
         self.sent = frame
-        # The TV echoes the request id with the result; resolve it like the
-        # receive loop would.
         req_id = self._reply.get("id")
         fut = self._client._pending_requests.get(req_id)
         if fut and not fut.done():
-            fut.set_result(self._reply)
+            fut.set_result(dict(self._reply))
 
 
 async def _run_ws_binary(art_client, reply):
     art_client._connected = True
     art_client._ws = _FakeWS(art_client, reply)
     return await art_client._upload_ws_binary(
-        b"IMAGEDATA",
-        "shadowbox_polar",
-        "none",
-        "jpg",
-        "2026:10:07 00:00:00",
-        reply["id"],
-        5,
+        b"IMAGEDATA", "shadowbox_polar", "jpg", reply["id"], 5
     )
 
 
-async def test_ws_binary_upload_returns_content_id(art_client):
+async def test_ws_binary_payload_is_the_verified_minimal_set(art_client):
     reply = {"id": "req-1", "event": "image_added", "content_id": "MY_F0096"}
     result = await _run_ws_binary(art_client, reply)
 
@@ -95,75 +63,66 @@ async def test_ws_binary_upload_returns_content_id(art_client):
     envelope = json.loads(frame[2 : 2 + header_len])
     inner = json.loads(envelope["params"]["data"])
     assert envelope["params"]["event"] == "art_app_request"
-    assert inner["request"] == "send_image"
-    assert inner["file_type"] == "JPEG"  # jpg is sent as JPEG
-    assert inner["id"] == "req-1"
-    assert "conn_info" not in inner  # the D2D socket handshake is NOT used
+    # Exactly the four fields the reporter verified on the 2019 Frame — no
+    # conn_info, portrait_matte_id, file_size or image_date.
+    assert inner == {
+        "request": "send_image",
+        "file_type": "JPEG",
+        "matte_id": "shadowbox_polar",
+        "id": "req-1",
+    }
     assert frame[2 + header_len :] == b"IMAGEDATA"
 
 
-async def test_ws_binary_upload_error_reply_returns_none(art_client):
+async def test_ws_binary_error_reply_returns_none(art_client):
     reply = {"id": "req-2", "event": "error", "error_code": "-1"}
     assert await _run_ws_binary(art_client, reply) is None
 
 
-async def test_upload_locked_routes_old_api_to_ws_binary(art_client, monkeypatch):
-    calls = {}
+async def _run_upload_locked(art_client, monkeypatch, send_image_reply):
+    """Drive _upload_locked with a scripted send_image response and a fake ws
+    that answers the WS-binary fallback with a content_id."""
+    sent = {}
 
-    async def fake_version():
-        return "0.97"
+    async def fake_send_art_request(payload, timeout=15):
+        sent["d2d"] = payload
+        return send_image_reply
 
-    async def fake_ws_binary(*args, **kwargs):
-        calls["ws_binary"] = True
-        return "MY_F0001"
+    monkeypatch.setattr(art_client, "_send_art_request", fake_send_art_request)
+    art_client._connected = True
 
-    async def fail_send(*a, **k):
-        calls["d2d"] = True
-        return None
+    # The fallback resolves its own fresh request id; capture it from the frame.
+    class _WS:
+        closed = False
 
-    monkeypatch.setattr(art_client, "_resolve_api_version", fake_version)
-    monkeypatch.setattr(art_client, "_upload_ws_binary", fake_ws_binary)
-    monkeypatch.setattr(art_client, "_send_art_request", fail_send)
+        async def send_bytes(self, frame):
+            header_len = int.from_bytes(frame[:2], "big")
+            inner = json.loads(json.loads(frame[2 : 2 + header_len])["params"]["data"])
+            sent["ws_binary"] = inner
+            fut = art_client._pending_requests.get(inner["id"])
+            if fut and not fut.done():
+                fut.set_result({"id": inner["id"], "content_id": "MY_F0096"})
 
+    art_client._ws = _WS()
     out = await art_client._upload_locked(
-        b"IMG", "none", "none", "jpg", "2026:10:07 00:00:00", 5, "req-3"
+        b"IMG", "none", "none", "jpg", "2026:10:07 00:00:00", 5, "req-d2d"
     )
-    assert out == "MY_F0001"
-    assert calls == {"ws_binary": True}  # D2D send_image never attempted
+    return out, sent
 
 
-async def test_upload_locked_keeps_d2d_for_new_api(art_client, monkeypatch):
-    calls = {}
-
-    async def fake_version():
-        return "4.3.4.0"
-
-    async def fake_ws_binary(*a, **k):
-        calls["ws_binary"] = True
-        return "X"
-
-    async def fake_send(*a, **k):
-        calls["d2d"] = True
-        return None  # no conn_info -> upload returns None, fine for this test
-
-    monkeypatch.setattr(art_client, "_resolve_api_version", fake_version)
-    monkeypatch.setattr(art_client, "_upload_ws_binary", fake_ws_binary)
-    monkeypatch.setattr(art_client, "_send_art_request", fake_send)
-
-    await art_client._upload_locked(
-        b"IMG", "none", "none", "jpg", "2026:10:07 00:00:00", 5, "req-4"
+async def test_d2d_system_fail_falls_back_to_ws_binary(art_client, monkeypatch):
+    out, sent = await _run_upload_locked(
+        art_client, monkeypatch, {"event": "error", "error_code": "-1"}
     )
-    assert calls == {"d2d": True}  # WS-binary not used on 4.x
+    assert out == "MY_F0096"
+    assert "d2d_mode" in sent["d2d"]["conn_info"]  # D2D was tried first
+    assert sent["ws_binary"]["request"] == "send_image"  # then WS-binary
+    assert sent["ws_binary"]["id"] != "req-d2d"  # a fresh id for the retry
 
 
-async def test_resolve_api_version_is_cached(art_client, monkeypatch):
-    n = {"calls": 0}
-
-    async def one_version():
-        n["calls"] += 1
-        return "0.97"
-
-    monkeypatch.setattr(art_client, "get_api_version", one_version)
-    assert await art_client._resolve_api_version() == "0.97"
-    assert await art_client._resolve_api_version() == "0.97"
-    assert n["calls"] == 1  # queried once, then cached
+async def test_other_d2d_errors_do_not_fall_back(art_client, monkeypatch):
+    out, sent = await _run_upload_locked(
+        art_client, monkeypatch, {"event": "error", "error_code": "7"}
+    )
+    assert out is None
+    assert "ws_binary" not in sent  # only SYSTEM_FAIL (-1) triggers the retry

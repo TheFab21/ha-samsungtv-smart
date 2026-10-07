@@ -168,32 +168,6 @@ def _describe_art_error(error_code: Any) -> str:
     return f"{name} ({error_code})" if name else str(error_code)
 
 
-def _art_api_major(version: str | None) -> int | None:
-    """Major number of an art-app version string ("0.97" -> 0), or None.
-
-    None when the version is unknown or unparseable, so callers default to the
-    current (D2D) behaviour rather than guessing.
-    """
-    if not version:
-        return None
-    head = str(version).strip().split(".", 1)[0]
-    try:
-        return int(head)
-    except ValueError:
-        return None
-
-
-def _art_uses_ws_binary_upload(version: str | None) -> bool:
-    """Whether a Frame on this art-app version needs the WS-binary upload.
-
-    Pre-4.x Frames (e.g. the 2019 Frame's "0.97") reject the D2D socket
-    handshake with SYSTEM_FAIL (-1) and take the image as a binary WebSocket
-    frame instead (#307). 4.x and up use D2D; an unknown version keeps D2D.
-    """
-    major = _art_api_major(version)
-    return major is not None and major < 4
-
-
 def _build_ws_image_frame(envelope: dict, data: bytes) -> bytes:
     """Frame one WS-binary art upload: 2-byte big-endian header length, then
     the compact JSON ``art_app_request`` envelope, then the raw image bytes."""
@@ -302,9 +276,6 @@ class SamsungTVAsyncArt:
         # Suspends that breaker while an upload waits for image_added, so
         # unrelated thumbnail timeouts can't tear the socket down mid-upload.
         self._upload_in_progress = False
-        # Cached art-app version (firmware-stable). Decides the upload
-        # transport: pre-4.x Frames need the WS-binary path (#307).
-        self._art_api_version: str | None = None
 
         # The TV's Art app is effectively a single-request protocol.  Several
         # HA platforms share this client and otherwise poll it concurrently,
@@ -1440,17 +1411,6 @@ class SamsungTVAsyncArt:
             data = await self._send_art_request({"request": "api_version"})
         return data.get("version") if data else None
 
-    async def _resolve_api_version(self) -> str | None:
-        """The art-app version, queried once and cached for the client's life.
-
-        Used to pick the upload transport (#307). The version is firmware
-        stable, so a single query is enough; a failed query leaves it None and
-        the caller keeps the default (D2D) transport.
-        """
-        if self._art_api_version is None:
-            self._art_api_version = await self.get_api_version()
-        return self._art_api_version
-
     async def available(
         self, category: str | None = None, *, strict: bool = False
     ) -> list | None:
@@ -2482,18 +2442,6 @@ class SamsungTVAsyncArt:
         """Do the send_image handshake and d2d transfer (breaker suspended)."""
         file_size = len(file)
 
-        # Pre-4.x Frames (e.g. the 2019 Frame's art API "0.97") reject the D2D
-        # socket handshake below with SYSTEM_FAIL (-1) and take the image as a
-        # binary WebSocket frame instead (#307). An unknown version keeps D2D.
-        version = await self._resolve_api_version()
-        if _art_uses_ws_binary_upload(version):
-            self._log.debug(
-                "Art API: version %s uses the WS-binary upload transport", version
-            )
-            return await self._upload_ws_binary(
-                file, matte, portrait_matte, file_type, date, request_id, timeout
-            )
-
         data = await self._send_art_request(
             {
                 "request": "send_image",
@@ -2520,7 +2468,20 @@ class SamsungTVAsyncArt:
             return None
 
         if data.get("event") == "error":
-            self._log.error("Art API: send_image error: %s", data.get("error_code"))
+            error_code = data.get("error_code")
+            self._log.error("Art API: send_image error: %s", error_code)
+            # A 2019 Frame (art API "0.97") rejects the D2D socket handshake
+            # with SYSTEM_FAIL (-1) and takes the image as a binary WebSocket
+            # frame instead (#307). Fall back to that transport only on this
+            # exact refusal, so every TV that accepts D2D is untouched.
+            if str(error_code) == "-1":
+                self._log.debug(
+                    "Art API: D2D refused with SYSTEM_FAIL; retrying over the "
+                    "WS-binary transport"
+                )
+                return await self._upload_ws_binary(
+                    file, matte, file_type, self._get_uuid(), timeout
+                )
             return None
 
         try:
@@ -2616,24 +2577,23 @@ class SamsungTVAsyncArt:
             self._log.debug("Art API: Upload traceback: %s", traceback.format_exc())
             return None
 
-    async def _upload_ws_binary(  # noqa: PLR0913 - mirrors _upload_locked
+    async def _upload_ws_binary(
         self,
         file: bytes,
         matte: str,
-        portrait_matte: str,
         file_type: str,
-        date: str,
         request_id: str,
         timeout: int,
     ) -> str | None:
-        """Upload an image as a binary WebSocket frame (pre-4.x Frames, #307).
+        """Upload an image as a binary WebSocket frame (2019 Frames, #307).
 
         The art app takes the image over the existing WebSocket as one binary
         frame — a 2-byte big-endian header length, the ``art_app_request``
         envelope, then the raw bytes — and replies under the same id with the
-        new content_id. This is the legacy transport samsung-tv-ws-api uses
-        for these Frames, and the one the #307 reporter verified against a
-        2019 Frame (returning MY_F0096).
+        new content_id. The inner payload is exactly the one the #307 reporter
+        verified on a 2019 Frame (returning MY_F0096): a richer payload risks
+        re-triggering the SYSTEM_FAIL this path exists to avoid, and the frame
+        boundary already delimits the bytes, so no file_size is sent.
         """
         ft = file_type.lower()
         wire_type = "JPEG" if ft in ("jpg", "jpeg") else ft.upper()
@@ -2646,12 +2606,8 @@ class SamsungTVAsyncArt:
                     {
                         "request": "send_image",
                         "file_type": wire_type,
-                        "request_id": request_id,
-                        "id": request_id,
-                        "image_date": date,
                         "matte_id": matte or "none",
-                        "portrait_matte_id": portrait_matte or "none",
-                        "file_size": len(file),
+                        "id": request_id,
                     }
                 ),
             },
