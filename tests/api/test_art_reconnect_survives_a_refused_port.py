@@ -109,7 +109,14 @@ async def test_both_ports_refused_gives_up_without_arming_the_backoff(
     assert art_client._backoff_until is None
     assert "Connection failure" not in caplog.text
     assert "reconnect gave up after 3 attempts" in caplog.text
-    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    # The give-up is DEBUG, not WARNING. Scope to the art client's own records:
+    # a bare caplog scan picks up warnings a concurrent test's task may emit.
+    art_warnings = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and r.name.endswith(".art")
+    ]
+    assert not art_warnings
 
 
 async def test_a_tv_back_after_46_s_is_reconnected_by_the_loop(art_client, monkeypatch):

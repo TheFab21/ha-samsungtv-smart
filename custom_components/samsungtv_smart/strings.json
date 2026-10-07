@@ -255,6 +255,19 @@
       "reboot": {
         "name": "Reboot TV"
       }
+    },
+    "sensor": {
+      "illuminance": {
+        "name": "Illuminance"
+      },
+      "brightness_intensity": {
+        "name": "Brightness intensity"
+      }
+    },
+    "switch": {
+      "power": {
+        "name": "Power"
+      }
     }
   }
 }
