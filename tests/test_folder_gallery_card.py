@@ -38,6 +38,14 @@ def test_the_card_declares_the_folder_selector():
         assert needle in src, f"folder-selector code missing: {needle}"
 
 
+def test_the_editor_exposes_group_by_subfolder():
+    src = CARD.read_text()
+    # The visual editor must render the checkbox and persist it.
+    assert 'id="group_by_subfolder"' in src
+    assert "cfg.group_by_subfolder" in src
+    assert "ed_group_sub" in src
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 def test_pure_helpers_behaviour():
     result = subprocess.run(
