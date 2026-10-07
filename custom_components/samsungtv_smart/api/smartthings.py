@@ -841,15 +841,30 @@ class SmartThingsTV:
     # ──────────────────────────────────────────────────────────────────────────
 
     @Throttle(timedelta(seconds=1))
-    async def async_device_update(self, use_channel_info: bool = True):
-        """Update device status using pysmartthings."""
+    async def async_device_update(
+        self,
+        use_channel_info: bool = True,
+        allow_refresh: bool = True,
+    ):
+        """Update device status using pysmartthings.
+
+        ``allow_refresh`` controls only the active SmartThings refresh command.
+        Status polling still runs when it is false. The media player uses its
+        locally detected power state for this flag so a stale cloud ON state
+        cannot keep sending refresh commands to a sleeping TV.
+        """
         self._get_api_key()
 
         # Periodically send a refresh command to force the TV to report
         # its actual state to SmartThings cloud. Without this, values like
         # pictureMode remain stale (e.g. always "Standard") until the
         # SmartThings app is opened. Throttled to once per 60 seconds.
-        if self._state == STStatus.STATE_ON:
+        #
+        # SmartThings can keep reporting switch=on after the panel has already
+        # powered down. In that case refresh returns FAILED every minute. Gate
+        # the active command on the caller's local power verdict, while still
+        # allowing the normal read-only status poll below.
+        if allow_refresh and self._state == STStatus.STATE_ON:
             await self._periodic_refresh()
 
         try:

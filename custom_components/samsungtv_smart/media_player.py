@@ -2499,11 +2499,35 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             marker in text for marker in ("forbidden", "unauthorized", "401", "403")
         )
 
+    def _allow_st_refresh(self) -> bool:
+        """Return whether the active SmartThings refresh command should run.
+
+        Home Assistant reports a Frame displaying Art Mode as OFF even though
+        the panel and its network services are still active. Do not therefore
+        use the media_player state alone as the refresh gate.
+
+        A pending power-off command and a locally confirmed standby state take
+        precedence. Otherwise normal viewing and confirmed Art Mode may refresh.
+        """
+        if self._power_off_in_progress():
+            return False
+
+        if self._state == MediaPlayerState.ON:
+            return True
+
+        if self._get_device_spec("PowerState") == "standby":
+            return False
+
+        return self._art_mode_is_on() is True
+
     async def _async_st_update(self, **kwargs) -> bool | None:
         """Update SmartThings state of device."""
         try:
             async with async_timeout.timeout(ST_UPDATE_TIMEOUT):
-                await self._st.async_device_update(self._use_channel_info)
+                await self._st.async_device_update(
+                    self._use_channel_info,
+                    allow_refresh=self._allow_st_refresh(),
+                )
         except (
             asyncio.TimeoutError,
             ClientConnectionError,
