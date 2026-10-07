@@ -74,6 +74,8 @@ const TRANSLATIONS = {
     gt_upload: 'Upload — Upload',
     ed_gallery_type_hint: 'Forces which action buttons appear in the fullscreen preview for the whole gallery.',
     ed_thumbnails: 'Thumbnails',
+    ed_group_sub: 'Group by sub-folder',
+    ed_group_sub_hint: 'Show a dropdown of the folder sensor\'s sub-folders. Set the sensor filter to <code>**/*</code> so it recurses. For an explicit list of folders, use the <code>folders:</code> option in YAML.',
     ed_server_thumbs: 'Server-side resized thumbnails',
     ed_server_thumbs_hint: 'Recommended for folders of full-size originals — sends small thumbnails to the browser instead of the multi-MB files. The full image is still used on click.',
     ed_thumb_width: 'Thumbnail width (px)',
@@ -128,6 +130,8 @@ const TRANSLATIONS = {
     gt_upload: 'Envoi — Envoyer',
     ed_gallery_type_hint: 'Force les boutons d\'action affichés dans l\'aperçu plein écran pour toute la galerie.',
     ed_thumbnails: 'Miniatures',
+    ed_group_sub: 'Grouper par sous-dossier',
+    ed_group_sub_hint: 'Affiche un menu des sous-dossiers du capteur. Mettez le filtre du capteur à <code>**/*</code> pour qu\'il soit récursif. Pour une liste explicite de dossiers, utilisez l\'option <code>folders:</code> en YAML.',
     ed_server_thumbs: 'Miniatures redimensionnées côté serveur',
     ed_server_thumbs_hint: 'Recommandé pour les dossiers d\'originaux pleine taille — envoie de petites miniatures au navigateur au lieu des fichiers de plusieurs Mo. L\'image complète est toujours utilisée au clic.',
     ed_thumb_width: 'Largeur des miniatures (px)',
@@ -182,6 +186,8 @@ const TRANSLATIONS = {
     gt_upload: 'Subida — Subir',
     ed_gallery_type_hint: 'Fuerza qué botones de acción aparecen en la vista previa a pantalla completa para toda la galería.',
     ed_thumbnails: 'Miniaturas',
+    ed_group_sub: 'Agrupar por subcarpeta',
+    ed_group_sub_hint: 'Muestra un desplegable con las subcarpetas del sensor. Usa el filtro <code>**/*</code> para que sea recursivo. Para una lista explícita de carpetas, usa la opción <code>folders:</code> en YAML.',
     ed_server_thumbs: 'Miniaturas redimensionadas en el servidor',
     ed_server_thumbs_hint: 'Recomendado para carpetas de originales a tamaño completo — envía miniaturas pequeñas al navegador en lugar de los archivos de varios MB. La imagen completa se sigue usando al hacer clic.',
     ed_thumb_width: 'Ancho de miniatura (px)',
@@ -236,6 +242,8 @@ const TRANSLATIONS = {
     gt_upload: 'Caricamento — Carica',
     ed_gallery_type_hint: 'Forza quali pulsanti azione appaiono nell\'anteprima a schermo intero per l\'intera galleria.',
     ed_thumbnails: 'Miniature',
+    ed_group_sub: 'Raggruppa per sottocartella',
+    ed_group_sub_hint: 'Mostra un menu a tendina delle sottocartelle del sensore. Imposta il filtro su <code>**/*</code> per la ricorsione. Per un elenco esplicito di cartelle, usa l\'opzione <code>folders:</code> in YAML.',
     ed_server_thumbs: 'Miniature ridimensionate lato server',
     ed_server_thumbs_hint: 'Consigliato per cartelle di originali a piena risoluzione — invia piccole miniature al browser invece dei file da diversi MB. L\'immagine completa è comunque usata al clic.',
     ed_thumb_width: 'Larghezza miniatura (px)',
@@ -290,6 +298,8 @@ const TRANSLATIONS = {
     gt_upload: 'Envio — Enviar',
     ed_gallery_type_hint: 'Força quais botões de ação aparecem na prévia em tela cheia para toda a galeria.',
     ed_thumbnails: 'Miniaturas',
+    ed_group_sub: 'Agrupar por subpasta',
+    ed_group_sub_hint: 'Mostra um menu com as subpastas do sensor. Defina o filtro como <code>**/*</code> para recursão. Para uma lista explícita de pastas, use a opção <code>folders:</code> em YAML.',
     ed_server_thumbs: 'Miniaturas redimensionadas no servidor',
     ed_server_thumbs_hint: 'Recomendado para pastas de originais em tamanho completo — envia miniaturas pequenas ao navegador em vez dos arquivos de vários MB. A imagem completa ainda é usada ao clicar.',
     ed_thumb_width: 'Largura da miniatura (px)',
@@ -344,6 +354,8 @@ const TRANSLATIONS = {
     gt_upload: 'Feltöltés — Feltöltés',
     ed_gallery_type_hint: 'Meghatározza, mely műveleti gombok jelenjenek meg a teljes képernyős előnézetben az egész galériára.',
     ed_thumbnails: 'Bélyegképek',
+    ed_group_sub: 'Csoportosítás almappa szerint',
+    ed_group_sub_hint: 'Legördülő menüt jelenít meg a szenzor almappáiból. Állítsd a szűrőt <code>**/*</code> értékre a rekurzióhoz. Kifejezett mappalistához használd a <code>folders:</code> opciót YAML-ben.',
     ed_server_thumbs: 'Szerveroldalon átméretezett bélyegképek',
     ed_server_thumbs_hint: 'Teljes méretű eredetiket tartalmazó mappákhoz ajánlott — kis bélyegképeket küld a böngészőnek a több MB-os fájlok helyett. A teljes kép kattintáskor továbbra is használatban marad.',
     ed_thumb_width: 'Bélyegkép szélessége (px)',
@@ -724,7 +736,7 @@ class FolderGalleryCard extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 8px 16px 0;
+          padding: 8px 16px 12px;
         }
         .folder-select label {
           font-size: 0.9em;
@@ -1792,6 +1804,11 @@ class FolderGalleryCardEditor extends HTMLElement {
       </div>
 
       <div class="form-row">
+        <label><input type="checkbox" id="group_by_subfolder" ${this._config.group_by_subfolder ? 'checked' : ''}>${this._t('ed_group_sub')}</label>
+        <span class="hint">${this._t('ed_group_sub_hint')}</span>
+      </div>
+
+      <div class="form-row">
         <label>${this._t('ed_columns')}</label>
         <input type="number" id="columns" value="${this._config.columns || 4}" min="1" max="10">
       </div>
@@ -1861,6 +1878,7 @@ class FolderGalleryCardEditor extends HTMLElement {
       'columns',
       'image_height',
       'gallery_type',
+      'group_by_subfolder',
       'server_thumbnails',
       'thumbnail_width',
       '_tv_entity',
@@ -1888,6 +1906,7 @@ class FolderGalleryCardEditor extends HTMLElement {
     cfg.columns = parseInt(g('columns').value, 10) || 4;
     cfg.image_height = g('image_height').value || '150px';
     cfg.server_thumbnails = g('server_thumbnails').checked;
+    cfg.group_by_subfolder = g('group_by_subfolder').checked || undefined;
     cfg.thumbnail_width = parseInt(g('thumbnail_width').value, 10) || 400;
     const gt = g('gallery_type').value;
     cfg.gallery_type = gt && gt !== 'auto' ? gt : undefined;
