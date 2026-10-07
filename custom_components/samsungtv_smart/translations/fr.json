@@ -242,6 +242,19 @@
       "reboot": {
         "name": "Redémarrer le téléviseur"
       }
+    },
+    "sensor": {
+      "illuminance": {
+        "name": "Luminosité ambiante"
+      },
+      "brightness_intensity": {
+        "name": "Intensité de luminosité"
+      }
+    },
+    "switch": {
+      "power": {
+        "name": "Alimentation"
+      }
     }
   }
 }

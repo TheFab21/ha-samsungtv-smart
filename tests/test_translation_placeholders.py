@@ -114,3 +114,49 @@ def test_create_entry_supplies_the_name_placeholder():
     assert _placeholders(CONFIG["create_entry"]["default"]) == {"name"}
     assert result["description_placeholders"] == {"name": name}
     assert result["title"] == name
+
+
+# ── Entity names ─────────────────────────────────────────────────────────────
+
+# The platform an _attr_translation_key belongs to, by the file it lives in.
+_ENTITY_PLATFORM = {
+    "button.py": "button",
+    "switch.py": "switch",
+    "sensor.py": "sensor",
+    "number.py": "number",
+    "binary_sensor.py": "binary_sensor",
+}
+
+
+def _entity_translation_keys() -> set[tuple[str, str]]:
+    """(platform, translation_key) for every entity that declares one.
+
+    An entity with _attr_has_entity_name and _attr_translation_key but no
+    entity.<platform>.<key>.name ends up unnamed unless its device class names
+    it: switch.power and sensor.brightness_intensity did (#302).
+    """
+    found = set()
+    for filename, platform in _ENTITY_PLATFORM.items():
+        path = ROOT / filename
+        if not path.exists():
+            continue
+        for key in re.findall(
+            r'_attr_translation_key\s*=\s*["\']([a-z_0-9]+)["\']', path.read_text()
+        ):
+            found.add((platform, key))
+    return found
+
+
+def test_every_entity_translation_key_has_a_name():
+    entity = STRINGS["entity"]
+    missing = [
+        f"entity.{platform}.{key}.name"
+        for platform, key in sorted(_entity_translation_keys())
+        if key not in entity.get(platform, {}) or "name" not in entity[platform][key]
+    ]
+    assert not missing, f"missing entity names in strings.json: {missing}"
+
+
+def test_strings_and_en_entity_sections_match():
+    en = json.loads((ROOT / "translations" / "en.json").read_text())
+    assert STRINGS["entity"] == en["entity"]
