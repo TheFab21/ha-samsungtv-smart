@@ -6,6 +6,10 @@ That stale cloud state must not keep sending refresh/refresh to a sleeping TV.
 A Frame displaying Art Mode is different: Home Assistant reports its
 media_player as OFF while the panel and network services are still active, so
 Art Mode must continue to allow the periodic SmartThings refresh.
+
+The gate therefore defers to ``_art_mode_is_on()`` rather than re-deriving the
+panel state: that helper consults device_info ``PowerState`` only after the IP
+Control reading, because a 2025 Frame reports ``standby`` while Art Mode is ON.
 """
 
 import sys
@@ -92,27 +96,27 @@ async def test_st_status_poll_continues_while_periodic_refresh_is_power_gated(
     (
         "media_state",
         "power_off_in_progress",
-        "power_state",
         "art_mode",
         "expected",
     ),
     [
         # Normal viewing.
-        (MediaPlayerState.ON, False, None, False, True),
-        # A power-off requested by HA must suppress refresh immediately.
-        (MediaPlayerState.ON, True, None, False, False),
-        # Local device info confirming real standby wins over stale signals.
-        (MediaPlayerState.OFF, False, "standby", True, False),
+        (MediaPlayerState.ON, False, False, True),
+        # A power-off requested by HA must suppress refresh immediately: we
+        # asked for standby, so stop before the cloud or any cache catches up.
+        (MediaPlayerState.ON, True, False, False),
         # Frame Art Mode is HA OFF but the panel is still active.
-        (MediaPlayerState.OFF, False, None, True, True),
+        (MediaPlayerState.OFF, False, True, True),
         # Plain OFF with no evidence of Art Mode stays suppressed.
-        (MediaPlayerState.OFF, False, None, False, False),
+        (MediaPlayerState.OFF, False, False, False),
+        # Nothing local knows yet: stay quiet. The 60 s throttle does not
+        # advance on a skipped call, so the next informed poll refreshes at once.
+        (MediaPlayerState.OFF, False, None, False),
     ],
 )
-def test_refresh_gate_distinguishes_standby_from_art_mode(
+def test_refresh_gate_distinguishes_a_sleeping_panel_from_an_active_one(
     media_state,
     power_off_in_progress,
-    power_state,
     art_mode,
     expected,
 ):
@@ -128,16 +132,59 @@ def test_refresh_gate_distinguishes_standby_from_art_mode(
         ),
         patch.object(
             SamsungTVDevice,
-            "_get_device_spec",
-            return_value=power_state,
-        ),
-        patch.object(
-            SamsungTVDevice,
             "_art_mode_is_on",
             return_value=art_mode,
         ),
     ):
         assert device._allow_st_refresh() is expected
+
+
+def _panel_reporting_standby(ip_art_mode):
+    """A panel whose device_info says standby, with an IP Control verdict.
+
+    Only the attributes the real ``_art_mode_is_on()`` reads on this path are
+    set, so the gate is exercised through it rather than around it.
+    """
+    device = object.__new__(SamsungTVDevice)
+    device._state = MediaPlayerState.OFF  # a Frame showing art reads OFF in HA
+    device._end_of_power_off = None
+    device._device_info = {"device": {"PowerState": "standby"}}
+    device._running_app = None
+    device._ip_art_mode = ip_art_mode
+    device._ip_art_mode_at = None
+    device._latest_art_broadcast = lambda: None
+    # No getTVStates coordinator registered: the cached-snapshot layer reads as
+    # "cannot tell" and the lookup reaches device_info PowerState.
+    device.hass = SimpleNamespace(data={})
+    device._entry_id = "entry"
+    return device
+
+
+def test_powerstate_standby_does_not_outrank_a_frame_that_is_showing_art():
+    """A 2025 Frame reports PowerState='standby' *while* Art Mode is ON.
+
+    ``SamsungTVAsyncArt.in_artmode`` documents the quirk, and
+    ``_art_mode_is_on()`` encodes the resulting priority: the IP Control
+    reading is consulted before device_info. Reading PowerState in the gate
+    itself would invert that and stop refreshing the very panel this gate
+    exists to keep refreshing.
+    """
+    device = _panel_reporting_standby(ip_art_mode=True)
+
+    assert device._art_mode_is_on() is True  # the panel is awake, showing art
+    assert device._allow_st_refresh() is True  # ...so the gate must agree
+
+
+def test_powerstate_standby_still_suppresses_a_genuinely_sleeping_panel():
+    """With no art reading to outrank it, standby suppresses the refresh.
+
+    This is the case the gate is for: SmartThings still reports switch=on, the
+    panel is really asleep, and refresh/refresh would fail once a minute.
+    """
+    device = _panel_reporting_standby(ip_art_mode=None)
+
+    assert device._art_mode_is_on() is False
+    assert device._allow_st_refresh() is False
 
 
 @pytest.mark.parametrize("allow_refresh", [True, False])
