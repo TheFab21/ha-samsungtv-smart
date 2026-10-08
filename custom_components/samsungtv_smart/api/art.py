@@ -131,6 +131,19 @@ ART_WS_RECOVERY_BACKOFF_MAX_DOUBLINGS = 3
 # 4-8 min, with no backing-off line, on two consecutive mornings; #273).
 ART_WS_WEDGE_RECURRENCE_WINDOW = 900.0
 
+# The wedge breaker above exists for a zombie art app (#153): socket alive,
+# app dead, EVERY request times out AND nothing is ever pushed. But a 2019
+# Frame (art API 0.97, #315) keeps pushing art_mode_changed broadcasts while
+# never answering request/response reads (get_current_artwork,
+# get_artmode_settings, …). Those reads time out and trip the breaker, which
+# force-closes and backs off — and during the backoff the channel is down, so
+# the broadcasts the Art Mode switch depends on are lost, which is the >5 min
+# switch lag. Reconnecting does not help (the reads still won't answer) and
+# only drops events. So an unsolicited event within this window proves the app
+# is alive and suppresses the forced reconnect. A true zombie pushes nothing,
+# so it still recovers — within this window of its last event.
+ART_WS_EVENT_LIVENESS_WINDOW = 180.0
+
 # Samsung firmware can leave a WebSocket transport half-open indefinitely.
 # Integration unload (and therefore Home Assistant shutdown/restart) must not
 # wait forever for aiohttp's close handshake.
@@ -273,6 +286,10 @@ class SamsungTVAsyncArt:
         # times out. When a wedge trips with this still False, the port is a
         # zombie and _note_request_timeout flips to the alternate one (#12).
         self._got_response_since_connect = False
+        # When the TV last pushed us any art message (a broadcast or a request
+        # reply). Proof the art app is alive even when request/response reads
+        # time out, used to hold off the wedge breaker on a 0.97 Frame (#315).
+        self._last_event_at: float | None = None
         # Suspends that breaker while an upload waits for image_added, so
         # unrelated thumbnail timeouts can't tear the socket down mid-upload.
         self._upload_in_progress = False
@@ -965,6 +982,18 @@ class SamsungTVAsyncArt:
         except json.JSONDecodeError:
             return
 
+        # The TV pushed us a parseable art message: the app is alive right now,
+        # whatever the request/response reads are doing. Record it so the wedge
+        # breaker can tell a genuinely dead app (#153) from a 0.97 Frame that
+        # only speaks in broadcasts (#315). An event is also the app proving the
+        # port works, so clear the wedge streak and mark the connection
+        # productive: an interleaved broadcast keeps active toggling from ever
+        # tripping the breaker, and a channel heard from is not the "port never
+        # becomes ready" zombie the unproductive-backoff escalation is for (#12).
+        self._last_event_at = time.monotonic()
+        self._timeout_streak = 0
+        self._got_response_since_connect = True
+
         sub_event = data.get("event", "")
 
         # Update art mode status from events. Exclude set_artmode_status: it is
@@ -1187,6 +1216,26 @@ class SamsungTVAsyncArt:
             return
         if not self._connected or not self._ws or self._ws.closed:
             # Already disconnected — lazy open()/auto-reconnect owns recovery.
+            self._timeout_streak = 0
+            return
+        # A channel that is still pushing unsolicited events is not the dead app
+        # this breaker exists for (#153): the 0.97 Frame broadcasts
+        # art_mode_changed while never answering request/response reads (#315).
+        # Reconnecting would not make those reads answer, and the backoff that
+        # follows drops the broadcasts the Art Mode switch relies on. Hold off
+        # while the app is proving itself alive; a truly dead app pushes nothing
+        # and still trips once this window of silence elapses.
+        last_event = self._last_event_at
+        if (
+            last_event is not None
+            and time.monotonic() - last_event <= ART_WS_EVENT_LIVENESS_WINDOW
+        ):
+            self._log.debug(
+                "Art API: %d request timeouts but the channel is still pushing "
+                "events (%.0fs ago) — not reconnecting",
+                self._timeout_streak,
+                time.monotonic() - last_event,
+            )
             self._timeout_streak = 0
             return
         self._log.warning(
