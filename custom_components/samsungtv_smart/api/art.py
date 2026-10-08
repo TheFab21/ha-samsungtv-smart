@@ -874,6 +874,16 @@ class SamsungTVAsyncArt:
                         await self._process_event(event, response)
                     except json.JSONDecodeError:
                         self._log.debug("Art API: Failed to decode message")
+                elif msg.type == aiohttp.WSMsgType.BINARY:
+                    # API 0.97 Frames (e.g. the 2019 QN55LS03R, #311) answer a
+                    # get_thumbnail over a binary WebSocket frame instead of
+                    # handing back conn_info for a separate socket. The frame is
+                    # the same 2-byte-length + JSON-header + raw-bytes envelope
+                    # the 0.97 upload path uses (#307); _process_binary resolves
+                    # the waiting request with the bytes attached. Newer Frames
+                    # never send one, so this is dead weight for them, not a
+                    # behaviour change.
+                    self._process_binary(msg.data)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     self._log.debug("Art API: WebSocket error")
                     break
@@ -1036,6 +1046,69 @@ class SamsungTVAsyncArt:
             if future and not future.done():
                 self._log.debug("Art API: Matched by sub_event '%s'", sub_event)
                 future.set_result(data)
+
+    def _process_binary(self, raw: bytes) -> None:
+        """Resolve a request answered over a binary WebSocket frame (#311).
+
+        API 0.97 Frames return thumbnail bytes as a binary frame rather than
+        the conn_info-plus-socket handshake newer Frames use. The frame mirrors
+        the 0.97 upload envelope (#307): a 2-byte big-endian header length, a
+        JSON header, then the raw bytes. The header is a d2d_service_message
+        whose ``data`` is the JSON we would otherwise have received as text —
+        for a thumbnail, ``{"event": "thumbnail", "content_id": ..., ...}``.
+
+        The decoded payload is attached under ``binary`` and the pending request
+        is resolved by whichever identifier the frame carries — the echoed
+        request_id/id if present, else the content_id — so the normal
+        request_id keying is never disturbed and get_thumbnail can also listen
+        on a content_id alias. Anything undecodable or not a thumbnail is
+        ignored rather than allowed to break the receive loop (its failure would
+        tear down and reconnect the channel).
+        """
+        try:
+            if len(raw) < 2:
+                return
+            header_len = int.from_bytes(raw[:2], "big")
+            if header_len <= 0 or 2 + header_len > len(raw):
+                self._log.debug(
+                    "Art API: binary frame header length %d out of range (%d bytes)",
+                    header_len,
+                    len(raw),
+                )
+                return
+            header = json.loads(raw[2 : 2 + header_len])
+            payload = raw[2 + header_len :]
+            data_str = header.get("data") if isinstance(header, dict) else None
+            data = json.loads(data_str) if isinstance(data_str, str) else data_str
+        except (ValueError, json.JSONDecodeError) as ex:
+            self._log.debug("Art API: undecodable binary frame: %s", ex)
+            return
+
+        if not isinstance(data, dict):
+            return
+        if data.get("event") != "thumbnail":
+            # Nothing else is expected over a binary frame today; don't guess.
+            self._log.debug(
+                "Art API: ignoring binary frame for event '%s'", data.get("event")
+            )
+            return
+
+        result = {**data, "binary": payload}
+        for key in (data.get("request_id"), data.get("id"), data.get("content_id")):
+            if key and key in self._pending_requests:
+                future = self._pending_requests.get(key)
+                if future and not future.done():
+                    self._log.debug(
+                        "Art API: thumbnail binary frame (%d bytes) matched '%s'",
+                        len(payload),
+                        key,
+                    )
+                    future.set_result(result)
+                return
+        self._log.debug(
+            "Art API: thumbnail binary frame for '%s' had no waiter",
+            data.get("content_id"),
+        )
 
     async def _wait_for_response(
         self,
@@ -1266,6 +1339,7 @@ class SamsungTVAsyncArt:
         wait_for_event: str | None = None,
         timeout: float = 5.0,
         bypass_cooldown: bool = False,
+        alias_keys: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """Serialize Art requests and suppress bursts during socket recovery.
 
@@ -1290,7 +1364,7 @@ class SamsungTVAsyncArt:
                 )
                 return None
             return await self._send_art_request_locked(
-                request_data, wait_for_event, timeout
+                request_data, wait_for_event, timeout, alias_keys
             )
 
     async def _send_art_request_locked(
@@ -1298,6 +1372,7 @@ class SamsungTVAsyncArt:
         request_data: dict[str, Any],
         wait_for_event: str | None,
         timeout: float,
+        alias_keys: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """Send one request while the per-TV request lock is held."""
         # Ensure connected - also reconnect if WebSocket was closed by TV
@@ -1322,7 +1397,15 @@ class SamsungTVAsyncArt:
         request_key = wait_for_event or request_data["id"]
 
         # Create future before sending
-        self._pending_requests[request_key] = asyncio.get_event_loop().create_future()
+        future = asyncio.get_event_loop().create_future()
+        self._pending_requests[request_key] = future
+        # Point each alias at the SAME future so an answer that arrives under a
+        # different identifier (e.g. a 0.97 thumbnail binary frame keyed by
+        # content_id, #311) still resolves this one await, with the normal
+        # request_id keying left untouched. Never shadow the primary key.
+        alias_keys = [k for k in (alias_keys or []) if k and k != request_key]
+        for alias in alias_keys:
+            self._pending_requests[alias] = future
 
         # Build command
         command = {
@@ -1342,7 +1425,7 @@ class SamsungTVAsyncArt:
                 "Art API: Sent request '%s'", request_data.get("request", "unknown")
             )
 
-            # Wait for response
+            # Wait for response (_wait_for_response pops its own request_key)
             return await self._wait_for_response(request_key, timeout)
 
         except Exception as ex:
@@ -1355,6 +1438,12 @@ class SamsungTVAsyncArt:
             # Mark as disconnected to force reconnection on next request
             self._connected = False
             return None
+        finally:
+            # Drop the aliases we added; _wait_for_response only pops the
+            # primary key, so an orphaned alias would otherwise linger (and
+            # could catch a later, unrelated frame).
+            for alias in alias_keys:
+                self._pending_requests.pop(alias, None)
 
     # ==================== REST API Methods ====================
 
@@ -1576,7 +1665,7 @@ class SamsungTVAsyncArt:
             self._log.debug("Art API: Traceback: %s", traceback.format_exc())
             return {}
 
-    async def get_thumbnail(self, content_id: str) -> bytes | None:
+    async def get_thumbnail(self, content_id: str, timeout: float = 10) -> bytes | None:
         """Get thumbnail for a specific piece of art.
 
         Strategy (learned once per session via _supports_thumbnail_list):
@@ -1631,7 +1720,10 @@ class SamsungTVAsyncArt:
 
         self._log.debug("Art API: Using get_thumbnail direct for %s", content_id)
 
-        # Send the request and get connection info
+        # Send the request and get connection info. Listen on the content_id
+        # alias too: a 0.97 Frame answers over a binary frame keyed by
+        # content_id rather than returning conn_info (#311), and _process_binary
+        # resolves this same await with the bytes under "binary".
         data = await self._send_art_request(
             {
                 "request": "get_thumbnail",
@@ -1642,12 +1734,29 @@ class SamsungTVAsyncArt:
                     "id": self._get_uuid(),
                 },
             },
-            timeout=10,
+            timeout=timeout,
+            alias_keys=[content_id],
         )
 
         if not data:
             self._log.debug("Art API: No response for get_thumbnail either")
             return None
+
+        # API 0.97: the bytes came back on the WebSocket itself, no socket hop.
+        binary = data.get("binary")
+        if binary is not None:
+            self._log.debug(
+                "Art API: get_thumbnail for %s returned over a binary frame (%d bytes)",
+                content_id,
+                len(binary),
+            )
+            # This TV serves thumbnails over the binary frame, so the
+            # get_thumbnail_list probe at the top is pure waste on it: learn to
+            # skip straight to this path on the next fetch (same flag the
+            # 2024-2025 Tizen direct-only Frames use).
+            if self._supports_thumbnail_list is not False:
+                self._supports_thumbnail_list = False
+            return binary
 
         # Check for error
         if data.get("event") == "error":
