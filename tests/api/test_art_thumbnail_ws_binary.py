@@ -127,6 +127,17 @@ async def test_get_thumbnail_binary_frame_keyed_by_request_id(art_client):
     assert result == b"THUMBNAILBYTES"
 
 
+async def test_get_thumbnail_accepts_a_timeout_argument(art_client):
+    # sensor.async_get_thumbnail calls get_thumbnail(content_id, timeout=30);
+    # the parameter must exist (it was a latent TypeError) and not change the
+    # result.
+    art_client._connected = True
+    art_client._supports_thumbnail_list = False
+    art_client._ws = _ThumbnailWS(art_client, b"BYTES", echo_request_id=False)
+
+    assert await art_client.get_thumbnail("MY_F0096", timeout=30) == b"BYTES"
+
+
 async def test_alias_does_not_disturb_normal_request_id_resolution(art_client):
     """A conn_info-style answer (newer Frames) still resolves by request_id,
     and the content_id alias is cleaned up afterwards."""

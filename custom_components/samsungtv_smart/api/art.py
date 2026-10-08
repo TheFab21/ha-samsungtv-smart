@@ -1665,7 +1665,7 @@ class SamsungTVAsyncArt:
             self._log.debug("Art API: Traceback: %s", traceback.format_exc())
             return {}
 
-    async def get_thumbnail(self, content_id: str) -> bytes | None:
+    async def get_thumbnail(self, content_id: str, timeout: float = 10) -> bytes | None:
         """Get thumbnail for a specific piece of art.
 
         Strategy (learned once per session via _supports_thumbnail_list):
@@ -1734,7 +1734,7 @@ class SamsungTVAsyncArt:
                     "id": self._get_uuid(),
                 },
             },
-            timeout=10,
+            timeout=timeout,
             alias_keys=[content_id],
         )
 
