@@ -209,8 +209,11 @@ async def async_setup_entry(
 
     # ── Background tasks ──────────────────────────────────────────────────
     if matte_type_select and matte_color_select:
-        hass.async_create_background_task(
-            _load_matte_options(hass, art_api, matte_type_select, matte_color_select),
+        entry.async_create_background_task(
+            hass,
+            _load_matte_options(
+                hass, entry, art_api, matte_type_select, matte_color_select
+            ),
             f"samsungtv_matte_options_{entry.entry_id}",
         )
 
@@ -221,7 +224,8 @@ async def async_setup_entry(
         )
 
     if is_frame_supported:
-        hass.async_create_background_task(
+        entry.async_create_background_task(
+            hass,
             _load_motion_options(
                 hass, art_api, device_name, device_unique_id, async_add_entities, entry
             ),
@@ -234,14 +238,50 @@ async def async_setup_entry(
 # ══════════════════════════════════════════════════════════════════════════
 
 
+def _frame_art_api_asleep(hass: HomeAssistant, entry_id: str) -> bool:
+    """Return True when local state says the Frame Art API is asleep.
+
+    A Frame reports its media player as off while Art Mode is displaying, so
+    art_mode_status=on must win over the media-player state. During startup,
+    missing or unknown state is treated as asleep and retried later instead of
+    probing a TV that may be in deep standby.
+    """
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry_id):
+        if entity.domain != "media_player":
+            continue
+        state = hass.states.get(entity.entity_id)
+        if state is None:
+            return True
+        if state.attributes.get("art_mode_status") == "on":
+            return False
+        return state.state in (STATE_OFF, "unavailable", "unknown")
+    return True
+
+
 async def _load_matte_options(
     hass: HomeAssistant,
+    entry: ConfigEntry,
     art_api: SamsungTVAsyncArt,
     type_select: "SamsungTVMatteTypeSelect",
     color_select: "SamsungTVMatteColorSelect",
 ) -> None:
-    """Fetch matte list from TV and populate select options, with retries."""
-    for attempt in range(_MAX_RETRIES):
+    """Fetch matte options once the Frame is locally known to be awake."""
+    attempt = 0
+    deferred_logged = False
+    while attempt < _MAX_RETRIES:
+        if _frame_art_api_asleep(hass, entry.entry_id):
+            if not deferred_logged:
+                _LOGGER.debug(
+                    "Deferring matte option discovery for %s while TV is off",
+                    entry.title,
+                )
+                deferred_logged = True
+            await asyncio.sleep(_RETRY_INTERVAL)
+            continue
+
+        deferred_logged = False
+        attempt += 1
         try:
             async with asyncio.timeout(10):
                 matte_types, matte_colors = await art_api.get_matte_list(
@@ -266,14 +306,14 @@ async def _load_matte_options(
                 color_options,
             )
 
-            # Now that the option lists are known, re-read the TV's current
-            # matte so the selects reflect the real state. The initial refresh
-            # in async_added_to_hass can run before these options are loaded,
-            # in which case _parse_matte_id cannot match the actual matte and
-            # the selects stay on their default ("none"/first colour). Leaving
-            # them wrong is not just cosmetic: an automation that re-applies the
-            # selects' value would push that bogus "none" back to the TV and
-            # wipe the real matte on every restart.
+            # Now that the option lists are known, read the TV's current matte
+            # so the selects reflect the real state. Their normal async_update
+            # can run before these options are loaded, in which case
+            # _parse_matte_id cannot match the actual matte and the selects stay
+            # on their default ("none"/first colour). Leaving them wrong is not
+            # just cosmetic: an automation that re-applies the selects' value
+            # would push that bogus "none" back to the TV and wipe the real matte
+            # on every restart.
             await type_select.async_refresh_current()
             await color_select.async_refresh_current()
             return
@@ -281,14 +321,14 @@ async def _load_matte_options(
         except asyncio.TimeoutError:
             _LOGGER.debug(
                 "Timeout fetching matte list (attempt %d/%d), retrying in %ds",
-                attempt + 1,
+                attempt,
                 _MAX_RETRIES,
                 _RETRY_INTERVAL,
             )
         except Exception as ex:
             _LOGGER.debug(
                 "Error fetching matte list (attempt %d/%d): %s",
-                attempt + 1,
+                attempt,
                 _MAX_RETRIES,
                 ex,
             )
@@ -382,7 +422,22 @@ async def _load_motion_options(
     "supported" flag for it — the only way to know is to ask
     get_artmode_settings and see whether the TV reports the item.
     """
-    for attempt in range(_MAX_RETRIES):
+    attempt = 0
+    deferred_logged = False
+    while attempt < _MAX_RETRIES:
+        if _frame_art_api_asleep(hass, entry.entry_id):
+            if not deferred_logged:
+                _LOGGER.debug(
+                    "Deferring Art Mode motion option discovery for %s while "
+                    "TV is off",
+                    device_name,
+                )
+                deferred_logged = True
+            await asyncio.sleep(_RETRY_INTERVAL)
+            continue
+
+        deferred_logged = False
+        attempt += 1
         try:
             async with asyncio.timeout(10):
                 sensitivity_item = await art_api.get_artmode_settings(
@@ -465,14 +520,14 @@ async def _load_motion_options(
         except asyncio.TimeoutError:
             _LOGGER.debug(
                 "Timeout fetching motion settings (attempt %d/%d), retrying in %ds",
-                attempt + 1,
+                attempt,
                 _MAX_RETRIES,
                 _RETRY_INTERVAL,
             )
         except Exception as ex:
             _LOGGER.debug(
                 "Error fetching motion settings (attempt %d/%d): %s",
-                attempt + 1,
+                attempt,
                 _MAX_RETRIES,
                 ex,
             )
@@ -1191,10 +1246,6 @@ class SamsungTVMatteTypeSelect(SamsungTVMatteSelectBase):
         except Exception as ex:
             raise HomeAssistantError(f"Error changing matte type: {ex}") from ex
 
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        await self.async_refresh_current()
-
 
 class SamsungTVMatteColorSelect(SamsungTVMatteSelectBase):
     """Select entity for matte color (e.g. polar, black, apricot...)."""
@@ -1255,10 +1306,6 @@ class SamsungTVMatteColorSelect(SamsungTVMatteSelectBase):
             raise
         except Exception as ex:
             raise HomeAssistantError(f"Error changing matte color: {ex}") from ex
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        await self.async_refresh_current()
 
 
 # ══════════════════════════════════════════════════════════════════════════
