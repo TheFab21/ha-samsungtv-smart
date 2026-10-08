@@ -56,9 +56,10 @@ from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_p
 
 _LOGGER = logging.getLogger(__name__)
 
-# Retry settings when TV is off at startup
-_RETRY_INTERVAL = 30  # seconds between retries
-_MAX_RETRIES = 10  # give up after 5 minutes
+# Discovery retry settings. Time spent waiting for a sleeping Frame does not
+# consume the active-TV retry budget.
+_RETRY_INTERVAL = 30  # seconds between checks/retries
+_MAX_RETRIES = 10  # give up after 10 failed requests while the TV is reachable
 
 # Matte catalogue to fall back on when the TV never answers get_matte_list.
 # A 2019 Frame (art API 0.97, #315) does not serve that enumeration, so the
@@ -247,8 +248,11 @@ async def async_setup_entry(
 
     # ── Background tasks ──────────────────────────────────────────────────
     if matte_type_select and matte_color_select:
-        hass.async_create_background_task(
-            _load_matte_options(hass, art_api, matte_type_select, matte_color_select),
+        entry.async_create_background_task(
+            hass,
+            _load_matte_options(
+                hass, entry, art_api, matte_type_select, matte_color_select
+            ),
             f"samsungtv_matte_options_{entry.entry_id}",
         )
 
@@ -272,14 +276,65 @@ async def async_setup_entry(
 # ══════════════════════════════════════════════════════════════════════════
 
 
+def _frame_art_api_active(hass: HomeAssistant, entry_id: str) -> bool:
+    """Return True when local state says the Frame Art API should be reachable.
+
+    Normal viewing reports media_player=on. Frame models differ in Art Mode:
+    some remain media_player=on, while 2025 Frames may report media_player=off
+    with ``art_mode_status=on``.
+
+    Trust the published Art Mode verdict before treating media_player=off as
+    a sleeping panel. Do not re-derive this from device_info PowerState here:
+    a 2025 Frame may report PowerState="standby" while Art Mode is actually ON.
+
+    Missing, unknown and unavailable entities are not evidence that the panel
+    is reachable. Scan all media_player entities for the config entry so a
+    stale duplicate cannot veto a live one.
+    """
+    registry = er.async_get(hass)
+
+    for entity in registry.entities.get_entries_for_config_entry_id(entry_id):
+        if entity.domain != "media_player":
+            continue
+
+        state = hass.states.get(entity.entity_id)
+        if state is None or state.state in ("unavailable", "unknown"):
+            continue
+
+        if state.attributes.get("art_mode_status") == "on":
+            return True
+
+        if state.state != STATE_OFF:
+            return True
+
+    return False
+
+
 async def _load_matte_options(
     hass: HomeAssistant,
+    entry: ConfigEntry,
     art_api: SamsungTVAsyncArt,
     type_select: "SamsungTVMatteTypeSelect",
     color_select: "SamsungTVMatteColorSelect",
 ) -> None:
-    """Fetch matte list from TV and populate select options, with retries."""
-    for attempt in range(_MAX_RETRIES):
+    """Fetch matte options after the Frame is locally known to be awake."""
+    attempt = 0
+    deferred_logged = False
+
+    while attempt < _MAX_RETRIES:
+        if not _frame_art_api_active(hass, entry.entry_id):
+            if not deferred_logged:
+                _LOGGER.debug(
+                    "Deferring matte option discovery for %s while Frame is asleep",
+                    entry.title,
+                )
+                deferred_logged = True
+            await asyncio.sleep(_RETRY_INTERVAL)
+            continue
+
+        deferred_logged = False
+        attempt += 1
+
         try:
             async with asyncio.timeout(10):
                 matte_types, matte_colors = await art_api.get_matte_list(
@@ -304,14 +359,10 @@ async def _load_matte_options(
                 color_options,
             )
 
-            # Now that the option lists are known, re-read the TV's current
-            # matte so the selects reflect the real state. The initial refresh
-            # in async_added_to_hass can run before these options are loaded,
-            # in which case _parse_matte_id cannot match the actual matte and
-            # the selects stay on their default ("none"/first colour). Leaving
-            # them wrong is not just cosmetic: an automation that re-applies the
-            # selects' value would push that bogus "none" back to the TV and
-            # wipe the real matte on every restart.
+            # Now that the option lists are known, read the TV's current
+            # matte so the selects reflect the real state. Before the option
+            # lists exist, _parse_matte_id cannot match the actual matte and
+            # the selects would remain on their defaults.
             await type_select.async_refresh_current()
             await color_select.async_refresh_current()
             return
@@ -319,14 +370,14 @@ async def _load_matte_options(
         except asyncio.TimeoutError:
             _LOGGER.debug(
                 "Timeout fetching matte list (attempt %d/%d), retrying in %ds",
-                attempt + 1,
+                attempt,
                 _MAX_RETRIES,
                 _RETRY_INTERVAL,
             )
         except Exception as ex:
             _LOGGER.debug(
                 "Error fetching matte list (attempt %d/%d): %s",
-                attempt + 1,
+                attempt,
                 _MAX_RETRIES,
                 ex,
             )
@@ -1241,10 +1292,6 @@ class SamsungTVMatteTypeSelect(SamsungTVMatteSelectBase):
         except Exception as ex:
             raise HomeAssistantError(f"Error changing matte type: {ex}") from ex
 
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        await self.async_refresh_current()
-
 
 class SamsungTVMatteColorSelect(SamsungTVMatteSelectBase):
     """Select entity for matte color (e.g. polar, black, apricot...)."""
@@ -1305,10 +1352,6 @@ class SamsungTVMatteColorSelect(SamsungTVMatteSelectBase):
             raise
         except Exception as ex:
             raise HomeAssistantError(f"Error changing matte color: {ex}") from ex
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        await self.async_refresh_current()
 
 
 # ══════════════════════════════════════════════════════════════════════════
