@@ -25,5 +25,5 @@
     "casttube>=0.2.1",
     "pillow-heif>=0.13.0"
   ],
-  "version": "8.11.3"
+  "version": "8.11.4"
 }

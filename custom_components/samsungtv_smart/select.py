@@ -60,6 +60,44 @@ _LOGGER = logging.getLogger(__name__)
 _RETRY_INTERVAL = 30  # seconds between retries
 _MAX_RETRIES = 10  # give up after 5 minutes
 
+# Matte catalogue to fall back on when the TV never answers get_matte_list.
+# A 2019 Frame (art API 0.97, #315) does not serve that enumeration, so the
+# Matte Type / Matte Color selects would otherwise stay stuck on a single
+# option ("none"/"polar") and be unusable. The matte set is effectively a
+# Samsung constant across Frames — this is the exact list newer Frames return
+# from get_matte_list. The TV still validates an applied matte via change_matte,
+# so an option its firmware does not support is simply a no-op there.
+_MATTE_TYPES_FALLBACK = [
+    "none",
+    "modernthin",
+    "modern",
+    "modernwide",
+    "flexible",
+    "shadowbox",
+    "panoramic",
+    "triptych",
+    "mix",
+    "squares",
+]
+_MATTE_COLORS_FALLBACK = [
+    "black",
+    "neutral",
+    "antique",
+    "warm",
+    "polar",
+    "sand",
+    "seafoam",
+    "sage",
+    "burgandy",
+    "navy",
+    "apricot",
+    "byzantine",
+    "lavender",
+    "redorange",
+    "skyblue",
+    "turquoise",
+]
+
 # SmartThings REST API
 _API_DEVICES = "https://api.smartthings.com/v1/devices"
 
@@ -295,7 +333,19 @@ async def _load_matte_options(
 
         await asyncio.sleep(_RETRY_INTERVAL)
 
-    _LOGGER.warning("Could not populate matte options after %d attempts", _MAX_RETRIES)
+    # The TV never answered get_matte_list (e.g. a 0.97 Frame that does not
+    # implement the enumeration, #315). Seed the selects from the known Samsung
+    # matte catalogue so they are usable instead of stuck on a single option,
+    # then read back the current matte against it.
+    _LOGGER.warning(
+        "Could not populate matte options after %d attempts; "
+        "falling back to the built-in matte catalogue",
+        _MAX_RETRIES,
+    )
+    type_select.set_options(list(_MATTE_TYPES_FALLBACK))
+    color_select.set_options(list(_MATTE_COLORS_FALLBACK))
+    await type_select.async_refresh_current()
+    await color_select.async_refresh_current()
 
 
 async def _load_picture_mode_options(

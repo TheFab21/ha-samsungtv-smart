@@ -1,17 +1,22 @@
-# Release notes — 8.11.3
+# Release notes — 8.11.4
 
 If this project is useful to you, you can support its development:
 
 # <a href="https://buymeacoffee.com/thefab21" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-black.png" alt="Buy Me A Coffee" height="41" width="174"></a>
 
 > **Status: stable release.** This note covers everything since **8.10.0**
-> (8.10.1 → 8.11.2 plus this release). Nothing to reconfigure, and the new
+> (8.10.1 → 8.11.3 plus this release). Nothing to reconfigure, and the new
 > Gallery card options are opt-in — a card that sets neither behaves exactly as
 > before. Two entities gain a proper name, and some log lines are new or
 > reworded — see [What may look different](#what-may-look-different).
 
 ## Highlights
 
+- **A local-only 2019 Frame keeps its Art Mode switch in sync**
+  ([#315](https://github.com/TheFab21/ha-samsungtv-smart/issues/315)). Without
+  SmartThings or IP Control, the switch could lag several minutes; it now tracks
+  the TV within about a second again. The matte selects on these Frames are
+  usable again too.
 - **Switch between folders in the Gallery card**
   ([#303](https://github.com/TheFab21/ha-samsungtv-smart/issues/303)). A
   dropdown, from either an explicit list of folder sensors or one recursive
@@ -109,6 +114,36 @@ for the image transfers, which the integration did not read.
 *(Both paths verified on a 2019 Frame by
 [@bcsteeve](https://github.com/bcsteeve); not retested here against a physical
 Frame.)*
+
+## 2019 Frame, local only: the Art Mode switch keeps up
+
+From [#315](https://github.com/TheFab21/ha-samsungtv-smart/issues/315): a 2019
+Frame (QE65LS03R, art API `0.97`) run **local only** — no SmartThings, no IP
+Control — showed its Art Mode switch minutes behind the TV.
+
+With no cloud or IP fallback, the only source of Art Mode state is the art
+WebSocket's `art_mode_changed` broadcasts, which arrive instantly. But this
+Frame never answers the request/response reads the integration polls
+(`get_current_artwork`, `get_artmode_settings`, …); those timed out, tripped the
+"channel wedged" breaker, and forced a reconnect with an escalating back-off.
+While the socket was down during that back-off, the broadcasts were lost — so
+the switch only caught up minutes later.
+
+- **An unsolicited event now counts as proof the art app is alive.** The breaker
+  exists for a crashed art app that answers nothing at all; a Frame still
+  pushing `art_mode_changed` is not that. While events are arriving, the timeout
+  breaker no longer force-reconnects and the back-off no longer escalates, so the
+  channel stays up and the broadcasts land — the switch tracks within about a
+  second. A genuinely dead channel pushes nothing and still recovers as before.
+- **The matte selects fall back to the built-in catalogue.** `get_matte_list` is
+  the only way to enumerate matte types/colours, and this Frame does not serve
+  it, so the Matte Type / Matte Color selects were stuck on a single option. When
+  the enumeration keeps failing, the selects are now seeded from the known
+  Samsung matte catalogue so they are usable; a TV that does answer is unchanged.
+  (Applying a matte always worked — only listing the choices was missing.)
+
+*(Diagnosed from the reporter's debug log; not retested here against a physical
+0.97 Frame.)*
 
 ## Hue Sync
 
@@ -278,6 +313,10 @@ Both are covered by guards in the test suite, so neither can drift again.
   [#311](https://github.com/TheFab21/ha-samsungtv-smart/issues/311) — the 2019
   Frame's binary-frame upload and thumbnail dialect, diagnosed and verified
   on-device.
+- [@IonasElate](https://github.com/IonasElate) for
+  [#315](https://github.com/TheFab21/ha-samsungtv-smart/issues/315) — the
+  local-only 2019 Frame's lagging Art Mode switch, with the debug log that
+  pinned the cause.
 - The reporters of
   [#298](https://github.com/TheFab21/ha-samsungtv-smart/issues/298),
   [#302](https://github.com/TheFab21/ha-samsungtv-smart/issues/302) and
@@ -285,4 +324,4 @@ Both are covered by guards in the test suite, so neither can drift again.
   ran their Frame overnight with debug logging on so 8.10.0 could be read line by
   line.
 
-**Full Changelog**: https://github.com/TheFab21/ha-samsungtv-smart/compare/8.10.0...8.11.3
+**Full Changelog**: https://github.com/TheFab21/ha-samsungtv-smart/compare/8.10.0...8.11.4
