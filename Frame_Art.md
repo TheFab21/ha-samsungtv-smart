@@ -561,10 +561,11 @@ data:
 
 ### Storage Locations
 
-Thumbnails are saved to organized directories:
+Thumbnails are saved to a **per-TV** directory keyed by the config-entry ID
+(since v7), which the integration creates for you:
 
 ```
-/config/www/frame_art/
+/config/www/frame_art/<entry_id>/
 ├── current.jpg          # Currently displayed artwork
 ├── personal/            # User-uploaded images (MY_F*)
 │   ├── MY_F0001.jpg
@@ -575,39 +576,75 @@ Thumbnails are saved to organized directories:
 └── other/               # Other content types
 ```
 
-**Access URLs:**
-- Current: `/local/frame_art/current.jpg`
-- Store: `/local/frame_art/store/SAM-S1234567.jpg`
-- Personal: `/local/frame_art/personal/MY_F0001.jpg`
+**Finding your `<entry_id>`:** open the `sensor.<tv_name>_frame_art` entity
+(Developer Tools → States). Its `entry_id` attribute is the value, and
+`thumbnail_folder` gives you the ready-to-use `/local/...` base — so you rarely
+need to type the path by hand. (It looks like `01KVZ1PYM5B1K2Q1YJWC22K929`.)
 
-### Local File Entity (Optional)
+**Access URLs** (replace `<entry_id>` with yours):
+- Current: `/local/frame_art/<entry_id>/current.jpg`
+- Store: `/local/frame_art/<entry_id>/store/SAM-S1234567.jpg`
+- Personal: `/local/frame_art/<entry_id>/personal/MY_F0001.jpg`
 
-The **Local File** integration lets you expose `current.jpg` as a camera entity in Home Assistant, which can then be used in dashboards or automations.
+### Show the current artwork on a dashboard (Local File camera)
 
-To set it up, go to **Settings → Devices & Services → Add Integration → Local File** and configure it with:
+A plain Picture card pointed at `current.jpg` will look stuck: browsers cache
+the URL, so it won't refresh when the artwork changes. The reliable way to show
+what's on the Frame right now is Home Assistant's built-in **Local File**
+integration, which wraps the file as a `camera` entity that updates on its own.
 
-| Field | Value |
-|-------|-------|
-| File path | `/config/www/frame_art/current.jpg` |
+**Local File is an integration you add, not a YAML sensor.** Set it up in the UI:
 
-This creates a `camera.frame_art_thumbnail` entity (name is yours to choose) that always shows the currently displayed artwork thumbnail. Useful for Lovelace cards that expect a camera entity rather than a URL.
+1. **Settings → Devices & Services → Add Integration**, search for **Local File**.
+2. Give it a name (e.g. *Frame art current*).
+3. For **File path**, enter your per-TV `current.jpg`:
 
-> **Note:** The file must exist before the entity is created. Run `art_get_thumbnails_batch` at least once first, or ensure your sync automation has run.
+   ```
+   /config/www/frame_art/<entry_id>/current.jpg
+   ```
+
+   Replace `<entry_id>` with your TV's — see **Finding your `<entry_id>`** under
+   [Storage Locations](#storage-locations) above. The full path looks like
+   `/config/www/frame_art/01KVZ1PYM5B1K2Q1YJWC22K929/current.jpg`.
+
+That creates a camera entity (e.g. `camera.frame_art_current`, the name is
+yours) that always shows the current artwork. Use it in any card that takes a
+camera — for example a `picture-glance`:
+
+```yaml
+type: picture-glance
+title: Currently displayed
+camera_image: camera.frame_art_current
+camera_view: auto
+fit_mode: cover
+entities: []
+```
+
+> **Notes**
+> - The file must exist before the Local File integration will accept the path.
+>   Run `art_get_thumbnails_batch` once first (or let your sync automation run),
+>   so `current.jpg` is present.
+> - `/config/www/...` may need to be in `allowlist_external_dirs` for the Local
+>   File integration to read it.
 
 ### Folder Sensor Setup
 
-Create folder sensors to monitor thumbnails:
+The integration already registers `sensor.<tv_name>_personal`, `…_store` and
+`…_other` for each Frame (since v7), so you usually don't need to declare any
+folder sensor yourself — point the gallery card's `folder_sensor` at one of
+those. Only add a manual one to watch a directory the integration doesn't
+manage, and use your per-TV `<entry_id>` path:
 
 ```yaml
-# configuration.yaml
+# configuration.yaml — optional / legacy only
 sensor:
   - platform: folder
-    folder: /config/www/frame_art/personal
+    folder: /config/www/frame_art/<entry_id>/personal
     filter: "*.jpg"
     scan_interval: 30
-  
+
   - platform: folder
-    folder: /config/www/frame_art/store
+    folder: /config/www/frame_art/<entry_id>/store
     filter: "*.jpg"
     scan_interval: 30
 ```

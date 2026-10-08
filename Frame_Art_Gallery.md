@@ -97,13 +97,17 @@ Frame Art Gallery transforms your Home Assistant dashboard into an interactive a
 
 ## Quick Start
 
-### Step 1: Create Directory Structure
+### Step 1: Directory Structure (created for you)
 
-```bash
-mkdir -p /config/www/frame_art/personal
-mkdir -p /config/www/frame_art/store
-mkdir -p /config/www/frame_art/other
-```
+Since v7 the integration creates its per-TV directory
+(`/config/www/frame_art/<entry_id>/` with `personal/`, `store/`, `other/`)
+automatically on startup — **you do not need to `mkdir` anything.** Just make
+sure the thumbnail download in Step 2 has run at least once so the folders are
+populated.
+
+*(Creating a flat `/config/www/frame_art/personal` by hand is the old pre-v7
+layout and will leave your gallery empty — the real files live under the
+`<entry_id>` subfolder. See the path note at the top of this guide.)*
 
 ### Step 2: Download Thumbnails
 
