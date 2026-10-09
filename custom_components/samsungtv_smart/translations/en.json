@@ -254,6 +254,9 @@
     "button": {
       "reboot": {
         "name": "Reboot TV"
+      },
+      "art_brightness_reset": {
+        "name": "Art Mode Brightness Reset"
       }
     },
     "sensor": {
@@ -262,6 +265,13 @@
       },
       "brightness_intensity": {
         "name": "Brightness intensity"
+      },
+      "art_orientation": {
+        "name": "Art orientation",
+        "state": {
+          "landscape": "Landscape",
+          "portrait": "Portrait"
+        }
       }
     },
     "switch": {

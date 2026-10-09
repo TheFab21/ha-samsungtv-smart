@@ -181,6 +181,9 @@ def _describe_art_error(error_code: Any) -> str:
     return f"{name} ({error_code})" if name else str(error_code)
 
 
+# get_current_rotation / get_device_info current_rotation_status values.
+_ROTATION_STATUS = {"1": "landscape", "2": "portrait"}
+
 # get_content_list categories served from the "recently set" list.
 _RECENT_CATEGORIES = ("MY-C0008", "MY-C0009")
 
@@ -2443,6 +2446,62 @@ class SamsungTVAsyncArt:
         )
         if data is not None:
             self._invalidate_artmode_settings_cache()
+        return data is not None
+
+    async def reset_brightness(self) -> dict | None:
+        """Reset the Art Mode brightness to its default.
+
+        The reply carries ``brightness_value``, read back after the reset
+        (decompiled 3.50.106, MobileResetBrightnessCommand). None when the TV
+        did not answer.
+        """
+        data = await self._send_art_request({"request": "reset_brightness"})
+        if data is not None:
+            self._invalidate_artmode_settings_cache()
+        return data
+
+    async def get_device_info(self) -> dict | None:
+        """Read the art-app's capability flags.
+
+        Returns e.g. ``support_motion_sensor`` / ``support_brightness_sensor`` /
+        ``support_color_tone`` ("TRUE"/"FALSE"), ``resolution_type``,
+        ``tv_flash_size``, ``current_rotation_status``.
+        """
+        data = await self._send_art_request({"request": "get_device_info"})
+        if not isinstance(data, dict):
+            return None
+        return {
+            key: value
+            for key, value in data.items()
+            if key not in ("id", "request_id", "event", "target")
+        }
+
+    async def get_current_rotation(self) -> str | None:
+        """Return ``"landscape"`` or ``"portrait"`` (current_rotation_status 1/2)."""
+        data = await self._send_art_request({"request": "get_current_rotation"})
+        if not isinstance(data, dict):
+            return None
+        return _ROTATION_STATUS.get(str(data.get("current_rotation_status")))
+
+    async def get_art_picture_mode(self) -> int | None:
+        """Return the Art Mode picture type (platform value, 0 when unreadable)."""
+        data = await self._send_art_request({"request": "get_art_picture_mode"})
+        if not isinstance(data, dict):
+            return None
+        try:
+            return int(data.get("art_picture_mode"))
+        except (TypeError, ValueError):
+            return None
+
+    async def set_art_picture_mode(self, value: int) -> bool:
+        """Set the Art Mode picture type.
+
+        The TV defers the write while its picture-setting menu is open and
+        applies it when the menu closes; either way it answers ``value``.
+        """
+        data = await self._send_art_request(
+            {"request": "set_art_picture_mode", "art_picture_mode": int(value)}
+        )
         return data is not None
 
     async def get_auto_rotation_status(self) -> dict | None:

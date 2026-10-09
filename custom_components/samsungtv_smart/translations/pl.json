@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Tryb Sztuka"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Resetowanie jasności"
+      }
     }
   }
 }

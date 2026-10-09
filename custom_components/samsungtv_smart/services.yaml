@@ -436,6 +436,36 @@ art_get_matte_list:
     entity:
       integration: samsungtv_smart
 
+art_get_device_info:
+  name: Get Art Device Info
+  description: >-
+    Read the art app's capability flags (motion sensor, brightness sensor,
+    colour tone, resolution, flash size), the panel orientation and the Art
+    Mode picture type. Returns response data.
+  target:
+    entity:
+      integration: samsungtv_smart
+
+art_set_picture_mode:
+  name: Set Art Picture Mode
+  description: >-
+    Set the Art Mode picture type (the art app's art_picture_mode). The value
+    is the TV platform's own number: read the current one with
+    art_get_device_info, or from the Frame Art sensor's art_picture_mode
+    attribute, before changing it.
+  target:
+    entity:
+      integration: samsungtv_smart
+  fields:
+    art_picture_mode:
+      name: Art picture mode
+      description: Picture type value as reported by the TV
+      required: true
+      selector:
+        number:
+          min: 0
+          mode: box
+
 art_set_favourite:
   name: Set Favourite Status
   description: Add or remove artwork from favourites.

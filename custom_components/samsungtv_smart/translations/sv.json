@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Konstläge"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Återställa ljusstyrka"
+      }
     }
   }
 }

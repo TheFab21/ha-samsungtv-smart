@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Λειτουργία τέχνης"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Επαναφορά φωτεινότητας"
+      }
     }
   }
 }

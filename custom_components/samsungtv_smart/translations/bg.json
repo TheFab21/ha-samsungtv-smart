@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Режим „Изкуство“"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Нулиране на яркостта"
+      }
     }
   }
 }

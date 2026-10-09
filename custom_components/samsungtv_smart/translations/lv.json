@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Mākslas režīms"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Spilgtuma atiestatīšana"
+      }
     }
   }
 }

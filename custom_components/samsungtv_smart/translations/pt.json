@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Modo Artístico"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Repor Brilho"
+      }
     }
   }
 }

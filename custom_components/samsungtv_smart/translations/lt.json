@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "„Meno“ režimas"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Šviesumo nustatymas iš naujo"
+      }
     }
   }
 }

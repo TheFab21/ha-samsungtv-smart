@@ -196,6 +196,9 @@
     "button": {
       "reboot": {
         "name": "TV újraindítása"
+      },
+      "art_brightness_reset": {
+        "name": "Fényerő visszaállítása"
       }
     },
     "select": {
@@ -253,6 +256,15 @@
     "switch": {
       "art_mode": {
         "name": "Művészet üzemmód"
+      }
+    },
+    "sensor": {
+      "art_orientation": {
+        "name": "Art tájolás",
+        "state": {
+          "landscape": "Fekvő",
+          "portrait": "Álló"
+        }
       }
     }
   }

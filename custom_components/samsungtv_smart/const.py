@@ -308,6 +308,8 @@ SERVICE_ART_GET_MATTE_LIST = "art_get_matte_list"
 SERVICE_ART_SET_FAVOURITE = "art_set_favourite"
 SERVICE_ART_SET_SLIDESHOW = "art_set_slideshow"
 SERVICE_ART_SET_AUTO_ROTATION = "art_set_auto_rotation"
+SERVICE_ART_GET_DEVICE_INFO = "art_get_device_info"
+SERVICE_ART_SET_PICTURE_MODE = "art_set_picture_mode"
 SERVICE_SEND_TEXT = "send_text"
 
 # Frame Art Service Attributes
@@ -326,6 +328,7 @@ ATTR_DURATION = "duration"
 ATTR_SHUFFLE = "shuffle"
 ATTR_ENABLED = "enabled"
 ATTR_STATUS = "status"
+ATTR_ART_PICTURE_MODE = "art_picture_mode"
 
 SIGNAL_CONFIG_ENTITY = f"{DOMAIN}_config"
 

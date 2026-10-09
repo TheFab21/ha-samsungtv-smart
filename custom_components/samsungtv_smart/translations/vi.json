@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Chế độ tranh nghệ thuật"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Đặt lại độ sáng"
+      }
     }
   }
 }

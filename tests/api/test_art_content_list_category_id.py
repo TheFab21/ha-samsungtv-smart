@@ -61,9 +61,7 @@ async def test_unfiltered_list_drops_recent_duplicates(art_client, monkeypatch):
     ]
 
 
-async def test_recents_honoured_by_the_tv_are_not_filtered_out(
-    art_client, monkeypatch
-):
+async def test_recents_honoured_by_the_tv_are_not_filtered_out(art_client, monkeypatch):
     # With category_id=MY-C0008 the TV labels each recent with its real
     # category, so filtering on MY-C0008 would empty the list.
     async def fake_send(request_data, *a, **k):

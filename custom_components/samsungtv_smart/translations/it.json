@@ -196,6 +196,9 @@
     "button": {
       "reboot": {
         "name": "Riavvia il televisore"
+      },
+      "art_brightness_reset": {
+        "name": "Ripristino luminosità"
       }
     },
     "select": {
@@ -253,6 +256,15 @@
     "switch": {
       "art_mode": {
         "name": "Modalità Arte"
+      }
+    },
+    "sensor": {
+      "art_orientation": {
+        "name": "Orientamento Art",
+        "state": {
+          "landscape": "Orizzontale",
+          "portrait": "Verticale"
+        }
       }
     }
   }

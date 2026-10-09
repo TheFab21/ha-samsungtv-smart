@@ -241,6 +241,9 @@
     "button": {
       "reboot": {
         "name": "Redémarrer le téléviseur"
+      },
+      "art_brightness_reset": {
+        "name": "Réinitialiser luminosité"
       }
     },
     "sensor": {
@@ -249,6 +252,13 @@
       },
       "brightness_intensity": {
         "name": "Intensité de luminosité"
+      },
+      "art_orientation": {
+        "name": "Orientation Art",
+        "state": {
+          "landscape": "Paysage",
+          "portrait": "Portrait"
+        }
       }
     },
     "switch": {

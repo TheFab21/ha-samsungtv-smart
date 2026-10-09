@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Sanat Modu"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Parlaklık Sıfırlama"
+      }
     }
   }
 }

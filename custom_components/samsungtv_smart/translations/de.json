@@ -56,6 +56,20 @@
       "art_mode": {
         "name": "Kunstmodus"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Helligkeits-Reset"
+      }
+    },
+    "sensor": {
+      "art_orientation": {
+        "name": "Art-Ausrichtung",
+        "state": {
+          "landscape": "Querformat",
+          "portrait": "Hochformat"
+        }
+      }
     }
   }
 }

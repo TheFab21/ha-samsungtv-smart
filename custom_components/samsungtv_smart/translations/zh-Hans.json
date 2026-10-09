@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "艺术模式"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "亮度重设"
+      }
     }
   }
 }

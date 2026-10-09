@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Režim Umenie"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Obnoviť jas"
+      }
     }
   }
 }

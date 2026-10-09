@@ -196,6 +196,9 @@
     "button": {
       "reboot": {
         "name": "Reiniciar el televisor"
+      },
+      "art_brightness_reset": {
+        "name": "Restablecer brillo"
       }
     },
     "select": {
@@ -253,6 +256,15 @@
     "switch": {
       "art_mode": {
         "name": "Modo artístico"
+      }
+    },
+    "sensor": {
+      "art_orientation": {
+        "name": "Orientación Art",
+        "state": {
+          "landscape": "Horizontal",
+          "portrait": "Vertical"
+        }
       }
     }
   }

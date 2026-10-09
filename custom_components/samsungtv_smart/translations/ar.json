@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "وضع الفن"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "إعادة ضبط السطوع"
+      }
     }
   }
 }

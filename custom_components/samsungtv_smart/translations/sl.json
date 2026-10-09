@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Način Umetnost"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Ponastavitev svetlosti"
+      }
     }
   }
 }

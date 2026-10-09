@@ -453,6 +453,8 @@ The **Requires** column below says what each one needs.
 | `select.<tv_name>_matte_type` / `_matte_color` | Select | Frame TV | Art Mode matte style and colour |
 | `select.<tv_name>_motion_sensitivity` / `_motion_timer` / `_brightness_sensor` | Select | Frame TV | Frame motion detector and ambient light sensor settings |
 | `number.<tv_name>_art_mode_brightness` / `_art_mode_color_temperature` | Number | Frame TV | Art Mode panel brightness and colour temperature |
+| `button.<tv_name>_art_mode_brightness_reset` | Button | Frame TV | Reset the Art Mode brightness to the TV default (same as the Art Mode menu entry) |
+| `sensor.<tv_name>_art_orientation` | Sensor | Frame TV | Panel orientation reported by the art app: `landscape` / `portrait` (diagnostic) |
 | `sensor.<tv_name>_art_metadata` | Sensor | Frame TV + [Artwork Identification](#artwork-identification) | Title, artist and description of the current artwork |
 
 Where:
@@ -543,6 +545,11 @@ the rise only keeps "turned off" instantaneous.
 - `content_id` — artwork content ID
 - `content_type` — artwork category
 - `thumbnail_url` — local URL to the thumbnail (if downloaded)
+- `art_rotation` — `landscape` / `portrait`
+- `art_picture_mode` — Art Mode picture type (raw value from the TV, see `art_set_picture_mode`)
+- `art_device_info` — the art app's capability flags (`support_motion_sensor`, `support_brightness_sensor`, `support_color_tone`, `resolution_type`, `tv_flash_size`…)
+
+Entity names, matte type/colour states and motion-timer durations use the TV's own labels, taken from the art app's translations (36 languages).
 
 ---
 
@@ -726,6 +733,8 @@ These services require a Samsung **Frame TV** with Art Mode. They are called on 
 | `samsungtv_smart.art_get_photo_filter_list` | List available photo filters |
 | `samsungtv_smart.art_get_matte_list` | List available matte styles |
 | `samsungtv_smart.art_set_favourite` | Add/remove artwork from favourites |
+| `samsungtv_smart.art_get_device_info` | Return the art app's capability flags, the panel orientation and the Art Mode picture type |
+| `samsungtv_smart.art_set_picture_mode` | Set the Art Mode picture type (raw TV value; read the current one first with `art_get_device_info`) |
 | `samsungtv_smart.art_set_slideshow` | Configure slideshow (duration, shuffle, category). Alias of `art_set_auto_rotation` — auto-routed to whichever API the TV speaks |
 | `samsungtv_smart.art_set_auto_rotation` | Configure auto-rotation (duration, shuffle, category). Alias of `art_set_slideshow` — works on older Frames that don't support the slideshow API |
 

@@ -109,3 +109,13 @@ Defaults: `shadowbox_polar` (landscape) and `flexible_polar`.
 `bin/<locale>/ArtAppTextResources.resources.dll`: 91 locales × 676 strings (`ArtAppTextResources.Resources.<locale>.resources`).
 The entity translations for the matte selects, the motion-timer durations and the Art Mode switch are
 generated from them by `tools/art_app_resources/gen_translations.py` (see the README there).
+
+## Used by the integration
+
+| Request | Where |
+|---|---|
+| `get_content_list` with `category_id` | `SamsungTVAsyncArt.available()` (de-duplicates the unfiltered reply) |
+| `get_device_info` | read once by the Frame Art coordinator → `art_device_info` attribute; `art_get_device_info` service |
+| `get_current_rotation` | Frame Art coordinator (throttled with the artwork count, re-read on any art broadcast) → *Art orientation* sensor, `art_rotation` attribute |
+| `get_art_picture_mode` / `set_art_picture_mode` | `art_picture_mode` attribute; `art_set_picture_mode` service. The value is `ScreenManagerGetAmbientScreenPictureType`'s platform enum, whose names are not in the art app — hence a raw number, not a select. `0` is also what the TV answers when the read fails. |
+| `reset_brightness` | *Art Mode Brightness Reset* button; the reply's `brightness_value` is the value after the reset |

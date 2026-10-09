@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "アート モード"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "明るさのリセット"
+      }
     }
   }
 }

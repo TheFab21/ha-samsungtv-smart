@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "아트 모드"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "밝기 초기화"
+      }
     }
   }
 }

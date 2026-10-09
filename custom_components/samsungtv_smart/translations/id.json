@@ -53,6 +53,11 @@
       "art_mode": {
         "name": "Mode Seni"
       }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Pengaturan Ulang Kecerahan"
+      }
     }
   }
 }

@@ -401,6 +401,9 @@ async def async_setup_entry(  # noqa: C901
         entities.append(
             FrameArtSensor(coordinator, entry, art_api, device_name, device_unique_id)
         )
+        entities.append(
+            FrameArtOrientationSensor(coordinator, entry, device_name, device_unique_id)
+        )
 
         # Art metadata sensor (opt-in): auto-identifies each artwork.
         if entry.data.get(CONF_ART_IDENTIFY_ENABLE):
@@ -688,6 +691,19 @@ class FrameArtCoordinator(DataUpdateCoordinator):
         # in the Options screen, which nothing read until now.
         self._artwork_count: int | None = None
         self._artwork_count_at: float | None = None
+        # Art-app extras published as attributes / the orientation sensor:
+        # capability flags (get_device_info, read once — they never change),
+        # the Art Mode picture type and the panel orientation. Re-read on the
+        # same throttle as the artwork count, and on every art-content
+        # broadcast (rotation_changed is one of them).
+        self._art_device_info: dict | None = None
+        self._art_picture_mode: int | None = None
+        self._art_rotation: str | None = None
+        self._art_extras_at: float | None = None
+        # Windows in a row where none of the extras answered: older firmware
+        # may not know these requests and stay silent, and silent requests
+        # feed the art channel's wedge breaker. Stop asking after two.
+        self._art_extras_misses = 0
         # Enabled by default - thumbnails are fetched for current artwork
         self._thumbnail_fetch_enabled = True
         self._thumbnail_failures = 0
@@ -723,6 +739,52 @@ class FrameArtCoordinator(DataUpdateCoordinator):
         reflected immediately rather than at the end of the throttle window.
         """
         self._artwork_count_at = None
+        self._art_extras_at = None
+
+    async def _refresh_art_extras(self) -> None:
+        """Re-read the art-app extras when the throttle window has expired."""
+        if self._art_extras_misses >= 2:
+            return
+        if (
+            self._art_extras_at is not None
+            and time.time() - self._art_extras_at < self._content_list_interval()
+        ):
+            return
+        # One attempt per window, answered or not.
+        self._art_extras_at = time.time()
+        answered = False
+        try:
+            async with asyncio.timeout(8):
+                if self._art_device_info is None:
+                    self._art_device_info = await self._art_api.get_device_info()
+                    answered = self._art_device_info is not None
+                rotation = await self._art_api.get_current_rotation()
+                if rotation is not None:
+                    self._art_rotation = rotation
+                    answered = True
+                picture_mode = await self._art_api.get_art_picture_mode()
+                if picture_mode is not None:
+                    self._art_picture_mode = picture_mode
+                    answered = True
+        except asyncio.TimeoutError:
+            self._log.debug("Timeout reading art device info / rotation")
+        except Exception as ex:  # noqa: BLE001
+            self._log.debug("Error reading art device info / rotation: %s", ex)
+        if answered:
+            self._art_extras_misses = 0
+        else:
+            self._art_extras_misses += 1
+            if self._art_extras_misses >= 2:
+                self._log.debug(
+                    "Art device info / rotation unanswered twice; not asking "
+                    "again until the integration reloads"
+                )
+
+    def _publish_art_extras(self, data: dict[str, Any]) -> None:
+        """Copy the cached art-app extras into the coordinator data."""
+        data["art_device_info"] = self._art_device_info
+        data["art_picture_mode"] = self._art_picture_mode
+        data["art_rotation"] = self._art_rotation
 
     async def _async_update_data(self) -> dict[str, Any]:  # noqa: C901
         """Fetch data from the Frame TV."""
@@ -774,6 +836,7 @@ class FrameArtCoordinator(DataUpdateCoordinator):
             # Keep current_artwork (current_content_id) from previous data for Lovelace
             if self.data and self.data.get("current_artwork"):
                 data["current_artwork"] = self.data["current_artwork"]
+            self._publish_art_extras(data)
             # Return immediately with minimal data when TV is off
             return data
 
@@ -959,6 +1022,12 @@ class FrameArtCoordinator(DataUpdateCoordinator):
                         self._log.debug("Timeout getting artwork list")
                     except Exception as ex:
                         self._log.debug("Error getting artwork list: %s", ex)
+
+            # Capability flags, Art Mode picture type and orientation: same
+            # gate and throttle as the count; the cached values stay published.
+            if data["art_mode"] == "on":
+                await self._refresh_art_extras()
+            self._publish_art_extras(data)
 
             # Get slideshow / auto-rotation status (routed via persisted API).
             # Samsung Frame TVs split this feature across two parallel APIs
@@ -1917,6 +1986,50 @@ class FrameArtFolderSensor(SensorEntity):
         self._files, self._total_bytes = await self.hass.async_add_executor_job(_scan)
 
 
+class FrameArtOrientationSensor(CoordinatorEntity, SensorEntity):
+    """Panel orientation reported by the art-app (landscape / portrait).
+
+    Read with get_current_rotation by the Frame Art coordinator; a
+    rotation_changed broadcast forces a re-read.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "art_orientation"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["landscape", "portrait"]
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: FrameArtCoordinator,
+        entry: ConfigEntry,
+        device_name: str,
+        device_unique_id: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_art_orientation"
+        self._device_name = device_name
+        self._device_unique_id = device_unique_id
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_unique_id)},
+            name=self._device_name,
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        data = self.coordinator.data or {}
+        return data.get("art_rotation")
+
+    @property
+    def icon(self) -> str:
+        if self.native_value == "portrait":
+            return "mdi:phone-rotate-portrait"
+        return "mdi:phone-rotate-landscape"
+
+
 class FrameArtSensor(CoordinatorEntity, SensorEntity):
     """Sensor entity for Samsung Frame TV Art Mode."""
 
@@ -2031,6 +2144,13 @@ class FrameArtSensor(CoordinatorEntity, SensorEntity):
             # API version
             if data.get("api_version") is not None:
                 attrs["api_version"] = data["api_version"]
+
+            if data.get("art_rotation") is not None:
+                attrs["art_rotation"] = data["art_rotation"]
+            if data.get("art_picture_mode") is not None:
+                attrs["art_picture_mode"] = data["art_picture_mode"]
+            if data.get("art_device_info"):
+                attrs["art_device_info"] = data["art_device_info"]
 
         # Thumbnail auto-fetch status
         attrs["thumbnail_auto_fetch"] = self.coordinator._thumbnail_fetch_enabled
