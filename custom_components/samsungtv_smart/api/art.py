@@ -181,6 +181,37 @@ def _describe_art_error(error_code: Any) -> str:
     return f"{name} ({error_code})" if name else str(error_code)
 
 
+# get_current_rotation / get_device_info current_rotation_status values.
+_ROTATION_STATUS = {"1": "landscape", "2": "portrait"}
+
+# get_content_list categories served from the "recently set" list.
+_RECENT_CATEGORIES = ("MY-C0008", "MY-C0009")
+
+
+def _dedupe_content_list(content_list: list) -> list:
+    """Drop the duplicates of an unfiltered get_content_list reply.
+
+    The art-app prepends the recently set artworks, labelled MY-C0008, to the
+    MY-C0002 / MY-C0004 / MY-C0001 lists, so a recent artwork appears twice
+    (and a favourite photo is both in MY-C0002 and MY-C0004). Keep one entry
+    per content_id, preferring the one carrying its real category.
+    """
+    by_id: dict[Any, dict] = {}
+    for item in content_list:
+        if not isinstance(item, dict):
+            continue
+        content_id = item.get("content_id")
+        if not content_id:
+            continue
+        kept = by_id.get(content_id)
+        if kept is None or (
+            kept.get("category_id") in _RECENT_CATEGORIES
+            and item.get("category_id") not in _RECENT_CATEGORIES
+        ):
+            by_id[content_id] = item
+    return list(by_id.values())
+
+
 def _build_ws_image_frame(envelope: dict, data: bytes) -> bytes:
     """Frame one WS-binary art upload: 2-byte big-endian header length, then
     the compact JSON ``art_app_request`` envelope, then the raw image bytes."""
@@ -1554,7 +1585,15 @@ class SamsungTVAsyncArt:
     ) -> list | None:
         """Get list of available artwork.
 
-        category: 'MY-C0002' for my pictures, 'MY-C0004' for favourites, 'MY-C0008' for store
+        category: 'MY-C0002' for my pictures, 'MY-C0004' for favourites,
+        'MY-C0001' for the default artworks, 'MY-C0008' for recently set.
+
+        The art-app reads ``category_id`` (decompiled 3.50.106); ``category``
+        is what older clients sent and is kept for firmware that may still
+        read it. Without ``category_id`` the TV returns only recents +
+        MY-C0002 + MY-C0004 + MY-C0001, with every recent item relabelled
+        MY-C0008: any other category filtered client-side came back empty,
+        and the full list counted each recent artwork twice.
 
         By default a failed read (no answer, unparsable reply) returns [] like an
         empty library. With strict=True it returns None instead, so a caller
@@ -1562,10 +1601,10 @@ class SamsungTVAsyncArt:
         artwork" from "the TV did not answer".
         """
         failed: list | None = None if strict else []
-        data = await self._send_art_request(
-            {"request": "get_content_list", "category": category},
-            timeout=15,
-        )
+        request: dict[str, Any] = {"request": "get_content_list", "category": category}
+        if category:
+            request["category_id"] = category
+        data = await self._send_art_request(request, timeout=15)
         if not data:
             return failed
 
@@ -1576,9 +1615,16 @@ class SamsungTVAsyncArt:
             except json.JSONDecodeError:
                 return failed
 
+        if not isinstance(content_list, list):
+            return failed
         if category:
-            return [v for v in content_list if v.get("category_id") == category]
-        return content_list
+            matching = [v for v in content_list if v.get("category_id") == category]
+            # A TV that honours category_id labels recents with their real
+            # category, not MY-C0008/MY-C0009: the reply is already filtered.
+            if not matching and category in _RECENT_CATEGORIES:
+                return content_list
+            return matching
+        return _dedupe_content_list(content_list)
 
     async def get_current(self) -> dict[str, Any] | None:
         """Get information about the currently displayed artwork."""
@@ -2400,6 +2446,62 @@ class SamsungTVAsyncArt:
         )
         if data is not None:
             self._invalidate_artmode_settings_cache()
+        return data is not None
+
+    async def reset_brightness(self) -> dict | None:
+        """Reset the Art Mode brightness to its default.
+
+        The reply carries ``brightness_value``, read back after the reset
+        (decompiled 3.50.106, MobileResetBrightnessCommand). None when the TV
+        did not answer.
+        """
+        data = await self._send_art_request({"request": "reset_brightness"})
+        if data is not None:
+            self._invalidate_artmode_settings_cache()
+        return data
+
+    async def get_device_info(self) -> dict | None:
+        """Read the art-app's capability flags.
+
+        Returns e.g. ``support_motion_sensor`` / ``support_brightness_sensor`` /
+        ``support_color_tone`` ("TRUE"/"FALSE"), ``resolution_type``,
+        ``tv_flash_size``, ``current_rotation_status``.
+        """
+        data = await self._send_art_request({"request": "get_device_info"})
+        if not isinstance(data, dict):
+            return None
+        return {
+            key: value
+            for key, value in data.items()
+            if key not in ("id", "request_id", "event", "target")
+        }
+
+    async def get_current_rotation(self) -> str | None:
+        """Return ``"landscape"`` or ``"portrait"`` (current_rotation_status 1/2)."""
+        data = await self._send_art_request({"request": "get_current_rotation"})
+        if not isinstance(data, dict):
+            return None
+        return _ROTATION_STATUS.get(str(data.get("current_rotation_status")))
+
+    async def get_art_picture_mode(self) -> int | None:
+        """Return the Art Mode picture type (platform value, 0 when unreadable)."""
+        data = await self._send_art_request({"request": "get_art_picture_mode"})
+        if not isinstance(data, dict):
+            return None
+        try:
+            return int(data.get("art_picture_mode"))
+        except (TypeError, ValueError):
+            return None
+
+    async def set_art_picture_mode(self, value: int) -> bool:
+        """Set the Art Mode picture type.
+
+        The TV defers the write while its picture-setting menu is open and
+        applies it when the menu closes; either way it answers ``value``.
+        """
+        data = await self._send_art_request(
+            {"request": "set_art_picture_mode", "art_picture_mode": int(value)}
+        )
         return data is not None
 
     async def get_auto_rotation_status(self) -> dict | None:

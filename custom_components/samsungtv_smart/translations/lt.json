@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Pasportas",
+        "state": {
+          "none": "Be pasporto",
+          "modernthin": "Modernus pasportas – siauras",
+          "modern": "Modernus pasportas",
+          "modernwide": "Modernus pasportas – platus",
+          "flexible": "Modernus pasportas – automatinis",
+          "shadowbox": "Pasportas su šešėliu",
+          "panoramic": "Panoraminis pasportas",
+          "triptych": "Trijų dalių pasportas",
+          "mix": "Mišrus pasportas",
+          "squares": "Kvadratinis pasportas"
+        }
+      },
+      "matte_color": {
+        "name": "Pasporto spalva",
+        "state": {
+          "black": "Juoda",
+          "neutral": "Neutralus",
+          "antique": "Senovinis",
+          "warm": "Šilta",
+          "polar": "Poliarinis",
+          "sand": "Smėliuotas",
+          "seafoam": "Pilkšvas",
+          "sage": "Tamsiai žalsvas",
+          "burgandy": "Burgundiškas",
+          "navy": "Tamsiai mėlyna",
+          "apricot": "Abrikosas",
+          "byzantine": "Bizantijos",
+          "lavender": "Levanda",
+          "redorange": "Oranžinė",
+          "skyblue": "Dangaus mėlyna",
+          "turquoise": "Turkis"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minučių",
+          "15": "15 minučių",
+          "30": "30 minučių",
+          "60": "1 valanda",
+          "120": "2 val.",
+          "180": "3 val.",
+          "240": "4 val."
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "„Meno“ režimas"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Šviesumo nustatymas iš naujo"
+      }
+    }
+  }
+}

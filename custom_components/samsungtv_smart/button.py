@@ -1,4 +1,4 @@
-"""Samsung TV reboot button (IP Control).
+"""Samsung TV buttons: reboot (IP Control) and Art Mode brightness reset.
 
 Exposes a single "Reboot TV" button, added only when the entry is paired for
 IP Control (a CONF_IP_CONTROL_TOKEN is present) and the IP Control channel is
@@ -9,6 +9,9 @@ recovers a TV whose Art WebSocket has gone unresponsive.
 The IP Control token survives the reboot, so no re-pairing is needed afterwards.
 If the TV is off, it is powered on first and then rebooted. On an auth error the
 IP Control persistent notification is raised; on success it is cleared.
+
+On a Frame, a "Brightness Reset" button sends the art-app's reset_brightness
+request, the same action as the Art Mode settings menu entry.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .api.art import SamsungTVAsyncArt
 from .api.ipcontrol import (
     SamsungIPControl,
     SamsungIPControlAuthError,
@@ -32,6 +36,8 @@ from .api.ipcontrol import (
 from .const import (
     CONF_ENABLE_IP_CONTROL,
     CONF_IP_CONTROL_TOKEN,
+    CONF_IS_FRAME_TV,
+    DATA_ART_API,
     DATA_CFG,
     DOMAIN,
     ip_control_port,
@@ -53,21 +59,40 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the reboot button — only when IP Control is active."""
-    if not _ip_control_active(entry):
-        # Not paired, or the channel is disabled: no reboot path, so no button.
-        # Pairing or re-enabling via the options flow reloads the entry and
-        # adds it then.
-        return
-
+    """Set up the reboot button (IP Control) and the Art brightness reset."""
     config = hass.data[DOMAIN][entry.entry_id][DATA_CFG]
     host = config[CONF_HOST]
     device_unique_id = config.get(CONF_ID, entry.entry_id)
     device_name = config.get(CONF_NAME) or entry.title or host
 
-    async_add_entities(
-        [SamsungTVRebootButton(hass, entry, host, device_unique_id, device_name)]
-    )
+    entities: list[ButtonEntity] = []
+    # Not paired, or the channel is disabled: no reboot path, so no button.
+    # Pairing or re-enabling via the options flow reloads the entry and adds it
+    # then.
+    if _ip_control_active(entry):
+        entities.append(
+            SamsungTVRebootButton(hass, entry, host, device_unique_id, device_name)
+        )
+
+    art_api = hass.data[DOMAIN][entry.entry_id].get(DATA_ART_API)
+    is_frame_tv = bool(entry.data.get(CONF_IS_FRAME_TV))
+    if art_api is not None and not is_frame_tv:
+        # Same probe as the art number entities when the flag is not persisted
+        # yet (first setup).
+        try:
+            async with asyncio.timeout(5):
+                is_frame_tv = await art_api.supported()
+        except Exception:  # noqa: BLE001
+            is_frame_tv = False
+    if art_api is not None and is_frame_tv:
+        entities.append(
+            SamsungTVArtBrightnessResetButton(
+                entry, art_api, device_unique_id, device_name
+            )
+        )
+
+    if entities:
+        async_add_entities(entities)
 
 
 class SamsungTVRebootButton(ButtonEntity):
@@ -150,3 +175,40 @@ class SamsungTVRebootButton(ButtonEntity):
         # Reboot accepted — token is valid, so clear any stale notification.
         clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
         _LOGGER.info("Reboot requested for %s via IP Control", self._host)
+
+
+class SamsungTVArtBrightnessResetButton(ButtonEntity):
+    """Reset the Art Mode brightness to the TV's default."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "art_brightness_reset"
+    _attr_icon = "mdi:brightness-6"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        art_api: SamsungTVAsyncArt,
+        device_unique_id: str,
+        device_name: str,
+    ) -> None:
+        self._art_api = art_api
+        self._device_unique_id = device_unique_id
+        self._device_name = device_name
+        self._attr_unique_id = f"{entry.entry_id}_art_brightness_reset"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Link this entity to the TV device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_unique_id)},
+            name=self._device_name,
+        )
+
+    async def async_press(self) -> None:
+        """Send reset_brightness over the art channel."""
+        reply = await self._art_api.reset_brightness()
+        if reply is None:
+            raise HomeAssistantError(
+                "The TV did not confirm the Art Mode brightness reset (is it on?)."
+            )
+        _LOGGER.info("Art Mode brightness reset to %s", reply.get("brightness_value"))

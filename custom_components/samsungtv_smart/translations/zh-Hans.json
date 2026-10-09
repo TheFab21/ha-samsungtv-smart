@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "遮片",
+        "state": {
+          "none": "无遮片",
+          "modernthin": "现代遮片 - 细",
+          "modern": "现代遮片",
+          "modernwide": "现代遮片 - 宽",
+          "flexible": "现代遮片 - 自动",
+          "shadowbox": "影箱遮片",
+          "panoramic": "全景遮片",
+          "triptych": "三联遮片",
+          "mix": "混合遮片",
+          "squares": "正方形遮片"
+        }
+      },
+      "matte_color": {
+        "name": "遮片颜色",
+        "state": {
+          "black": "黑色",
+          "neutral": "中性",
+          "antique": "仿古",
+          "warm": "暧和",
+          "polar": "极地",
+          "sand": "沙滩",
+          "seafoam": "石板",
+          "sage": "鼠尾草",
+          "burgandy": "梅红",
+          "navy": "藏青色",
+          "apricot": "杏黄色",
+          "byzantine": "拜占庭式",
+          "lavender": "淡紫色",
+          "redorange": "红紫色",
+          "skyblue": "天空蓝",
+          "turquoise": "蓝绿色"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 分钟",
+          "15": "15 分钟",
+          "30": "30 分钟",
+          "60": "1 小时",
+          "120": "2 小时",
+          "180": "3 小时",
+          "240": "4 小时"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "艺术模式"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "亮度重设"
+      }
+    }
+  }
+}

@@ -1193,7 +1193,7 @@ class SamsungTVMatteTypeSelect(SamsungTVMatteSelectBase):
     def __init__(self, hass, entry, art_api, device_name, device_unique_id):
         super().__init__(hass, entry, art_api, device_name, device_unique_id)
         self._attr_unique_id = f"{device_unique_id}_matte_type"
-        self._attr_name = "Matte Type"
+        self._attr_translation_key = "matte_type"
         self._attr_options = ["none"]
         self._attr_current_option = "none"
 
@@ -1255,7 +1255,7 @@ class SamsungTVMatteColorSelect(SamsungTVMatteSelectBase):
     def __init__(self, hass, entry, art_api, device_name, device_unique_id):
         super().__init__(hass, entry, art_api, device_name, device_unique_id)
         self._attr_unique_id = f"{device_unique_id}_matte_color"
-        self._attr_name = "Matte Color"
+        self._attr_translation_key = "matte_color"
         self._attr_options = ["polar"]
         self._attr_current_option = "polar"
 
@@ -1434,7 +1434,7 @@ class SamsungTVArtMotionTimerSelect(SamsungTVArtMotionSelectBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._attr_unique_id = f"{self._device_unique_id}_art_motion_timer"
-        self._attr_name = "Motion Timer"
+        self._attr_translation_key = "art_motion_timer"
 
     async def _async_set(self, option: str) -> None:
         await self._art_api.set_motion_timer(option)

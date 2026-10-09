@@ -1,0 +1,75 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Rand",
+        "state": {
+          "none": "Kein Rand",
+          "modernthin": "Moderner Rand – Schmal",
+          "modern": "Moderner Rand",
+          "modernwide": "Moderner Rand – Breit",
+          "flexible": "Moderner Rand – Automatisch",
+          "shadowbox": "Schattenrand",
+          "panoramic": "Panoramarand",
+          "triptych": "Triptychonrand",
+          "mix": "Gemischter Rand",
+          "squares": "Rand mit Quadraten"
+        }
+      },
+      "matte_color": {
+        "name": "Randfarbe",
+        "state": {
+          "black": "Schwarz",
+          "neutral": "Neutral",
+          "antique": "Antik",
+          "warm": "Warm",
+          "polar": "Polar",
+          "sand": "Sand",
+          "seafoam": "Blaugrau",
+          "sage": "Graugrün",
+          "burgandy": "Burgunderrot",
+          "navy": "Marineblau",
+          "apricot": "Aprikosenfarben",
+          "byzantine": "Byzanz-Lila",
+          "lavender": "Lavendel",
+          "redorange": "Orange",
+          "skyblue": "Himmelblau",
+          "turquoise": "Türkis"
+        }
+      },
+      "art_motion_timer": {
+        "name": "Bewegungstimer",
+        "state": {
+          "5": "5 Minuten",
+          "15": "15 Minuten",
+          "30": "30 Minuten",
+          "60": "1 Stunde",
+          "120": "2 Stunden",
+          "180": "3 Stunden",
+          "240": "4 Stunden",
+          "off": "Aus",
+          "always": "Immer"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Kunstmodus"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Helligkeits-Reset"
+      }
+    },
+    "sensor": {
+      "art_orientation": {
+        "name": "Art-Ausrichtung",
+        "state": {
+          "landscape": "Querformat",
+          "portrait": "Hochformat"
+        }
+      }
+    }
+  }
+}

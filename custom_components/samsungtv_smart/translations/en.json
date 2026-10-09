@@ -254,6 +254,9 @@
     "button": {
       "reboot": {
         "name": "Reboot TV"
+      },
+      "art_brightness_reset": {
+        "name": "Art Mode Brightness Reset"
       }
     },
     "sensor": {
@@ -262,11 +265,73 @@
       },
       "brightness_intensity": {
         "name": "Brightness intensity"
+      },
+      "art_orientation": {
+        "name": "Art orientation",
+        "state": {
+          "landscape": "Landscape",
+          "portrait": "Portrait"
+        }
       }
     },
     "switch": {
       "power": {
         "name": "Power"
+      },
+      "art_mode": {
+        "name": "Art Mode"
+      }
+    },
+    "select": {
+      "matte_type": {
+        "name": "Matte Type",
+        "state": {
+          "none": "No Mat",
+          "modernthin": "Modern Mat - Thin",
+          "modern": "Modern Mat",
+          "modernwide": "Modern Mat - Wide",
+          "flexible": "Modern Mat - Auto",
+          "shadowbox": "Shadowbox Mat",
+          "panoramic": "Panoramic Mat",
+          "triptych": "Triptych Mat",
+          "mix": "Mixed Mat",
+          "squares": "Squares Mat"
+        }
+      },
+      "matte_color": {
+        "name": "Matte Color",
+        "state": {
+          "black": "Black",
+          "neutral": "Neutral",
+          "antique": "Antique",
+          "warm": "Warm",
+          "polar": "Polar",
+          "sand": "Sand",
+          "seafoam": "Slate",
+          "sage": "Sage",
+          "burgandy": "Burgundy",
+          "navy": "Navy",
+          "apricot": "Apricot",
+          "byzantine": "Byzantine",
+          "lavender": "Lavender",
+          "redorange": "Orange",
+          "skyblue": "Sky Blue",
+          "turquoise": "Turquoise"
+        }
+      },
+      "art_motion_timer": {
+        "name": "Motion Timer",
+        "state": {
+          "5": "5 minutes",
+          "15": "15 minutes",
+          "30": "30 minutes",
+          "60": "1 hour",
+          "120": "2 hours",
+          "180": "3 hours",
+          "240": "4 hours",
+          "off": "Off",
+          "always": "Always"
+        }
       }
     }
   }

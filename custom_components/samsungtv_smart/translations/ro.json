@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Passe-partout",
+        "state": {
+          "none": "Fără Passe-partout",
+          "modernthin": "Passe-partout modern – subțire",
+          "modern": "Passe-partout modern",
+          "modernwide": "Passe-partout modern – lat",
+          "flexible": "Passe-partout modern – automat",
+          "shadowbox": "Passe-partout cu geam",
+          "panoramic": "Passe-partout panoramic",
+          "triptych": "Passe-partout triptic",
+          "mix": "Passe-partout combinat",
+          "squares": "Passe-partout pătrat"
+        }
+      },
+      "matte_color": {
+        "name": "Culoare passe-partout",
+        "state": {
+          "black": "Negru",
+          "neutral": "Neutră",
+          "antique": "Antică",
+          "warm": "Cald",
+          "polar": "Polară",
+          "sand": "Nisip",
+          "seafoam": "Ardezie",
+          "sage": "Salvie",
+          "burgandy": "Roșu de Burgundia",
+          "navy": "Albastru închis",
+          "apricot": "Caisă",
+          "byzantine": "Bizantin",
+          "lavender": "Lavandă",
+          "redorange": "Portocaliu",
+          "skyblue": "Albastru azuriu",
+          "turquoise": "Turcoaz"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minute",
+          "15": "15 minute",
+          "30": "30 de minute",
+          "60": "1 oră",
+          "120": "2 ore",
+          "180": "3 ore",
+          "240": "4 ore"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Mod Artă"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Resetare luminozitate"
+      }
+    }
+  }
+}

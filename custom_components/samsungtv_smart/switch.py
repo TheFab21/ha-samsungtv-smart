@@ -211,7 +211,7 @@ class FrameArtModeSwitch(SwitchEntity):
 
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_has_entity_name = True
-    _attr_name = "Art Mode"
+    _attr_translation_key = "art_mode"
     _attr_icon = "mdi:palette"
 
     def __init__(

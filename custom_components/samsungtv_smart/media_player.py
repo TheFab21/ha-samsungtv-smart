@@ -89,6 +89,7 @@ from .api.smartthings import SmartThingsCapabilityUnsupported, SmartThingsTV, ST
 from .api.upnp import SamsungUPnP
 from .art_mode_guard import ArtModeWriteSuppressed, guard_for
 from .const import (
+    ATTR_ART_PICTURE_MODE,
     ATTR_BRIGHTNESS,
     ATTR_CATEGORY_ID,
     ATTR_COLOR_TEMPERATURE,
@@ -161,6 +162,7 @@ from .const import (
     SERVICE_ART_GET_BRIGHTNESS,
     SERVICE_ART_GET_COLOR_TEMPERATURE,
     SERVICE_ART_GET_CURRENT,
+    SERVICE_ART_GET_DEVICE_INFO,
     SERVICE_ART_GET_MATTE_LIST,
     SERVICE_ART_GET_PHOTO_FILTER_LIST,
     SERVICE_ART_GET_THUMBNAIL,
@@ -173,6 +175,7 @@ from .const import (
     SERVICE_ART_SET_COLOR_TEMPERATURE,
     SERVICE_ART_SET_FAVOURITE,
     SERVICE_ART_SET_PHOTO_FILTER,
+    SERVICE_ART_SET_PICTURE_MODE,
     SERVICE_ART_SET_SLIDESHOW,
     SERVICE_ART_UPLOAD,
     SERVICE_ART_UPLOAD_BATCH,
@@ -520,6 +523,18 @@ async def async_setup_entry(
         SERVICE_ART_GET_MATTE_LIST,
         {},
         "async_art_get_matte_list",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    platform.async_register_entity_service(
+        SERVICE_ART_GET_DEVICE_INFO,
+        {},
+        "async_art_get_device_info",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    platform.async_register_entity_service(
+        SERVICE_ART_SET_PICTURE_MODE,
+        {vol.Required(ATTR_ART_PICTURE_MODE): vol.Coerce(int)},
+        "async_art_set_picture_mode",
         supports_response=SupportsResponse.OPTIONAL,
     )
     platform.async_register_entity_service(
@@ -5807,6 +5822,34 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return result
         except Exception as ex:
             self._log.error("Error getting matte list: %s", ex)
+            return {"error": str(ex)}
+
+    async def async_art_get_device_info(self) -> dict:
+        """Return the art-app's capability flags, orientation and picture mode."""
+        if not await self._ensure_frame_tv_check():
+            self._log.warning("Frame TV art mode is not supported on this device")
+            return {"error": "Frame TV not supported"}
+        try:
+            return {
+                "device_info": await self._art_api.get_device_info(),
+                "rotation": await self._art_api.get_current_rotation(),
+                "art_picture_mode": await self._art_api.get_art_picture_mode(),
+            }
+        except Exception as ex:
+            self._log.error("Error getting art device info: %s", ex)
+            return {"error": str(ex)}
+
+    async def async_art_set_picture_mode(self, art_picture_mode: int) -> dict:
+        """Set the Art Mode picture type (raw platform value)."""
+        if not await self._ensure_frame_tv_check():
+            self._log.warning("Frame TV art mode is not supported on this device")
+            return {"error": "Frame TV not supported"}
+        try:
+            if not await self._art_api.set_art_picture_mode(art_picture_mode):
+                return {"error": "The TV did not confirm the picture mode"}
+            return {"success": True, "art_picture_mode": art_picture_mode}
+        except Exception as ex:
+            self._log.error("Error setting art picture mode: %s", ex)
             return {"error": str(ex)}
 
     async def async_art_set_favourite(

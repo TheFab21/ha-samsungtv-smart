@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Mat",
+        "state": {
+          "none": "Brez mata",
+          "modernthin": "Sodobni mat – tanko",
+          "modern": "Sodobni mat",
+          "modernwide": "Sodobni mat – široko",
+          "flexible": "Sodobni mat – samodejno",
+          "shadowbox": "Senčni mat",
+          "panoramic": "Panoramski mat",
+          "triptych": "Trodelni mat",
+          "mix": "Mešani mat",
+          "squares": "Kvadratni mat"
+        }
+      },
+      "matte_color": {
+        "name": "Barva mata",
+        "state": {
+          "black": "Črna",
+          "neutral": "Nevtralna",
+          "antique": "Antična",
+          "warm": "Toplo",
+          "polar": "Polarna",
+          "sand": "Pesek",
+          "seafoam": "Skrilasta",
+          "sage": "Barva žajblja",
+          "burgandy": "Vinsko rdeča",
+          "navy": "Mornarsko modra",
+          "apricot": "Marelica",
+          "byzantine": "Temnovijoličasta",
+          "lavender": "Sivka",
+          "redorange": "Oranžno",
+          "skyblue": "Nebeško modra",
+          "turquoise": "Turkizna"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minut",
+          "15": "15 minut",
+          "30": "30 minut",
+          "60": "1 ura",
+          "120": "2 ur",
+          "180": "3 ur",
+          "240": "4 ur"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Način Umetnost"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Ponastavitev svetlosti"
+      }
+    }
+  }
+}

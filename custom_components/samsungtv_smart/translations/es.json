@@ -196,6 +196,75 @@
     "button": {
       "reboot": {
         "name": "Reiniciar el televisor"
+      },
+      "art_brightness_reset": {
+        "name": "Restablecer brillo"
+      }
+    },
+    "select": {
+      "matte_type": {
+        "name": "Paspartú",
+        "state": {
+          "none": "Ningún paspartú",
+          "modernthin": "Paspartú moderno: Estrecho",
+          "modern": "Paspartú moderno",
+          "modernwide": "Paspartú moderno: Amplio",
+          "flexible": "Paspartú moderno (automático)",
+          "shadowbox": "Paspartú con marco sombreado",
+          "panoramic": "Paspartú panorámico",
+          "triptych": "Paspartú tríptico",
+          "mix": "Paspartú mixto",
+          "squares": "Paspartú cuadrado"
+        }
+      },
+      "matte_color": {
+        "name": "Color del paspartú",
+        "state": {
+          "black": "Negro",
+          "neutral": "Neutro",
+          "antique": "Antiguo",
+          "warm": "Cálido",
+          "polar": "Polar",
+          "sand": "Arena",
+          "seafoam": "Pizarra",
+          "sage": "Salvia",
+          "burgandy": "Bermellón",
+          "navy": "Azul marino",
+          "apricot": "Albaricoque",
+          "byzantine": "Bizantino",
+          "lavender": "Lavanda",
+          "redorange": "Naranja",
+          "skyblue": "Azul cielo",
+          "turquoise": "Turquesa"
+        }
+      },
+      "art_motion_timer": {
+        "name": "Temporizador de movimiento",
+        "state": {
+          "5": "5 minutos",
+          "15": "15 minutos",
+          "30": "30 minutos",
+          "60": "1 hora",
+          "120": "2 horas",
+          "180": "3 horas",
+          "240": "4 horas",
+          "off": "Desactivado",
+          "always": "Siempre"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Modo artístico"
+      }
+    },
+    "sensor": {
+      "art_orientation": {
+        "name": "Orientación Art",
+        "state": {
+          "landscape": "Horizontal",
+          "portrait": "Vertical"
+        }
       }
     }
   }

@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Pasparta",
+        "state": {
+          "none": "Žádná pasparta",
+          "modernthin": "Moderní pasparta – tenká",
+          "modern": "Moderní pasparta",
+          "modernwide": "Moderní pasparta – široká",
+          "flexible": "Moderní pasparta – automatická",
+          "shadowbox": "Stínová pasparta",
+          "panoramic": "Panoramatická pasparta",
+          "triptych": "Obdélníková pasparta pro tři umělecká díla",
+          "mix": "Smíšená pasparta",
+          "squares": "Čtvercová pasparta"
+        }
+      },
+      "matte_color": {
+        "name": "Barva pasparty",
+        "state": {
+          "black": "Černá",
+          "neutral": "Neutrální",
+          "antique": "Krémová",
+          "warm": "Teplo",
+          "polar": "Polární",
+          "sand": "Písek",
+          "seafoam": "Břidlicová",
+          "sage": "Šedozelená",
+          "burgandy": "Vínová",
+          "navy": "Námořnická modř",
+          "apricot": "Meruňková",
+          "byzantine": "Byzantská",
+          "lavender": "Levandulová",
+          "redorange": "Oranžová",
+          "skyblue": "Nebeská modř",
+          "turquoise": "Tyrkysová"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minut",
+          "15": "15 minut",
+          "30": "30 minut",
+          "60": "1 hodina",
+          "120": "2 hod.",
+          "180": "3 hod.",
+          "240": "4 hod."
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Režim Umění"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Obnovení jasu"
+      }
+    }
+  }
+}

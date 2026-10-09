@@ -51,6 +51,8 @@ def _load_methods():
         "    def _content_list_interval",
         "    def _artwork_count_is_fresh",
         "    def invalidate_artwork_count",
+        "    async def _refresh_art_extras",
+        "    def _publish_art_extras",
     )
     body = ""
     for start in wanted:
@@ -111,6 +113,18 @@ class _ArtApi:
         self.calls.append("detect_slideshow_api")
         return "slideshow"
 
+    async def get_device_info(self):
+        self.calls.append("get_device_info")
+        return {"support_motion_sensor": "TRUE"}
+
+    async def get_current_rotation(self):
+        self.calls.append("get_current_rotation")
+        return "landscape"
+
+    async def get_art_picture_mode(self):
+        self.calls.append("get_art_picture_mode")
+        return 1
+
 
 class _Entry:
     entry_id = "abc"
@@ -136,6 +150,11 @@ class _Coordinator(_Holder):
         self._store_retry_at = None
         self._artwork_count = None
         self._artwork_count_at = None
+        self._art_device_info = None
+        self._art_picture_mode = None
+        self._art_rotation = None
+        self._art_extras_at = None
+        self._art_extras_misses = 0
 
     def _is_tv_powered_off(self):
         return False
@@ -227,6 +246,71 @@ class ThrottleTest(unittest.TestCase):
         CLOCK.advance(5)
         self.c.poll()
         self.assertEqual(self.c._art_api.calls.count("get_current_artwork"), 2)
+
+
+class ArtExtrasTest(unittest.TestCase):
+    """Device info, rotation and picture mode ride the same throttle."""
+
+    def setUp(self):
+        CLOCK.now = 1000.0
+        self.c = _Coordinator()
+
+    def test_extras_are_published(self):
+        self.c.poll()
+        self.assertEqual(self.c.data["art_rotation"], "landscape")
+        self.assertEqual(self.c.data["art_picture_mode"], 1)
+        self.assertEqual(
+            self.c.data["art_device_info"], {"support_motion_sensor": "TRUE"}
+        )
+        # The slideshow read after them still runs.
+        self.assertIn("get_slideshow_status", self.c._art_api.calls)
+
+    def test_extras_are_throttled_and_device_info_read_once(self):
+        self.c.poll()
+        CLOCK.advance(5)
+        self.c.poll()
+        calls = self.c._art_api.calls
+        self.assertEqual(calls.count("get_current_rotation"), 1)
+        CLOCK.advance(301)
+        self.c.poll()
+        self.assertEqual(calls.count("get_current_rotation"), 2)
+        self.assertEqual(calls.count("get_device_info"), 1)
+        self.assertEqual(self.c.data["art_rotation"], "landscape")
+
+    def test_a_broadcast_forces_a_rotation_re_read(self):
+        self.c.poll()
+        CLOCK.advance(5)
+        self.c.invalidate_artwork_count()
+        self.c.poll()
+        self.assertEqual(self.c._art_api.calls.count("get_current_rotation"), 2)
+
+
+class ArtExtrasUnsupportedTest(unittest.TestCase):
+    """Firmware that does not answer the extras is not asked forever."""
+
+    def setUp(self):
+        CLOCK.now = 1000.0
+        self.c = _Coordinator()
+
+        async def silent(*a, **kw):
+            self.c._art_api.calls.append("silent")
+            return None
+
+        api = self.c._art_api
+        api.get_device_info = api.get_current_rotation = silent
+        api.get_art_picture_mode = silent
+
+    def test_one_attempt_per_window_then_stop_after_two(self):
+        self.c.poll()
+        CLOCK.advance(5)
+        self.c.poll()
+        self.assertEqual(self.c._art_api.calls.count("silent"), 3)
+        CLOCK.advance(301)
+        self.c.poll()
+        self.assertEqual(self.c._art_api.calls.count("silent"), 6)
+        CLOCK.advance(301)
+        self.c.poll()
+        self.assertEqual(self.c._art_api.calls.count("silent"), 6)
 
 
 class WiringTest(unittest.TestCase):

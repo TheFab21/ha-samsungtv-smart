@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Paspartú",
+        "state": {
+          "none": "Sense paspartú",
+          "modernthin": "Paspartú modern - Prim",
+          "modern": "Paspartú modern",
+          "modernwide": "Paspartú modern - Ample",
+          "flexible": "Paspartú modern - Automàtic",
+          "shadowbox": "Paspartú amb marc ombrejat",
+          "panoramic": "Paspartú panoràmic",
+          "triptych": "Paspartú tríptic",
+          "mix": "Paspartú barrejat",
+          "squares": "Paspartú quadrat"
+        }
+      },
+      "matte_color": {
+        "name": "Color del paspartú",
+        "state": {
+          "black": "Negre",
+          "neutral": "Neutre",
+          "antique": "Antiguitats",
+          "warm": "Càlid",
+          "polar": "Polar",
+          "sand": "Sorra",
+          "seafoam": "Pissarra",
+          "sage": "Sàlvia",
+          "burgandy": "Borgonya",
+          "navy": "Blau marí",
+          "apricot": "Albercoc",
+          "byzantine": "Bizantí",
+          "lavender": "Espígol",
+          "redorange": "Taronja",
+          "skyblue": "Blau cel",
+          "turquoise": "Turquesa"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minuts",
+          "15": "15 minuts",
+          "30": "30 minuts",
+          "60": "1 hora",
+          "120": "2 hores",
+          "180": "3 hores",
+          "240": "4 hores"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Mode artístic"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Restabliment de la brillantor"
+      }
+    }
+  }
+}

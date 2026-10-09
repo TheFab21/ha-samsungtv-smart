@@ -1,0 +1,75 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Mat",
+        "state": {
+          "none": "Niet mat",
+          "modernthin": "Modern mat - Smal",
+          "modern": "Modern mat",
+          "modernwide": "Modern mat - Breed",
+          "flexible": "Modern mat - Auto",
+          "shadowbox": "Schaduwkader mat",
+          "panoramic": "Panoramisch mat",
+          "triptych": "Drieluik mat",
+          "mix": "Gemengd mat",
+          "squares": "Vierkant mat"
+        }
+      },
+      "matte_color": {
+        "name": "Matte kleur",
+        "state": {
+          "black": "Zwart",
+          "neutral": "Neutraal",
+          "antique": "Antiek",
+          "warm": "Warm",
+          "polar": "Wintergloed",
+          "sand": "Zand",
+          "seafoam": "Leisteen",
+          "sage": "Grijsgroen",
+          "burgandy": "Bordeauxrood",
+          "navy": "Marineblauw",
+          "apricot": "Abrikoos",
+          "byzantine": "Byzantijns",
+          "lavender": "Lavendel",
+          "redorange": "Oranje",
+          "skyblue": "Hemelsblauw",
+          "turquoise": "Turquoise"
+        }
+      },
+      "art_motion_timer": {
+        "name": "Bewegingstimer",
+        "state": {
+          "5": "5 minuten",
+          "15": "15 minuten",
+          "30": "30 minuten",
+          "60": "1 uur",
+          "120": "2 uur",
+          "180": "3 uur",
+          "240": "4 uur",
+          "off": "Uit",
+          "always": "Altijd"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Kunstmodus"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Helderheid resetten"
+      }
+    },
+    "sensor": {
+      "art_orientation": {
+        "name": "Art-oriëntatie",
+        "state": {
+          "landscape": "Liggend",
+          "portrait": "Staand"
+        }
+      }
+    }
+  }
+}

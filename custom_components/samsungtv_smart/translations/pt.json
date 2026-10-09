@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Passe-partout",
+        "state": {
+          "none": "Sem Passe-partout",
+          "modernthin": "Passe-partout Moderno - Fino",
+          "modern": "Passe-partout Moderno",
+          "modernwide": "Passe-partout Moderno - Amplo",
+          "flexible": "Passe-partout Moderno - Auto",
+          "shadowbox": "Passe-partout com Sombreado",
+          "panoramic": "Passe-partout Panorâmico",
+          "triptych": "Passe-partout Tríptico",
+          "mix": "Passe-partout Misto",
+          "squares": "Passe-partout aos Quadrados"
+        }
+      },
+      "matte_color": {
+        "name": "Cor do passe-partout",
+        "state": {
+          "black": "Preto",
+          "neutral": "Neutro",
+          "antique": "Antigo",
+          "warm": "Quente",
+          "polar": "Polar",
+          "sand": "Areia",
+          "seafoam": "Ardósia",
+          "sage": "Verde Acinzentado",
+          "burgandy": "Bordeaux",
+          "navy": "Azul marinho",
+          "apricot": "Alperce",
+          "byzantine": "Bizantino",
+          "lavender": "Lavanda",
+          "redorange": "Laranja",
+          "skyblue": "Azul Céu",
+          "turquoise": "Turquesa"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minutos",
+          "15": "15 minutos",
+          "30": "30 minutos",
+          "60": "1 hora",
+          "120": "2 horas",
+          "180": "3 horas",
+          "240": "4 horas"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Modo Artístico"
+      }
+    },
+    "button": {
+      "art_brightness_reset": {
+        "name": "Repor Brilho"
+      }
+    }
+  }
+}
