@@ -61,14 +61,21 @@ class PowerOnDistrustsAnUnbackedKeyTest(unittest.TestCase):
         self.assertLess(gate, reset)
         self.assertLess(reset, fallback)
 
-    def test_the_fallback_still_runs_on_the_discarded_key(self):
-        gate = self.block.index("if not key_power_sent:")
-        for wake in (
-            "self._st.async_turn_on()",
-            "ip_client.async_power_on()",
-            "self._send_wol_packet",
-        ):
-            self.assertLess(gate, self.block.index(wake), wake)
+    def test_a_discarded_key_still_reaches_the_wol_default(self):
+        # WOL is the default wake and is gated on the key: a discarded key
+        # (key_power_sent = False) must still fall through to it.
+        gate = self.block.index("elif not key_power_sent:")
+        wol = self.block.index("self._send_wol_packet", gate)
+        self.assertLess(gate, wol)
+
+    def test_the_configured_method_is_not_gated_behind_the_key(self):
+        # #319: an explicitly configured SmartThings / IP Control wake runs on
+        # every cold power-on, so it must NOT sit behind `if not
+        # key_power_sent` — a "sent" key over a sleeping Frame cannot suppress
+        # the method the user chose.
+        key_gate = self.block.index("elif not key_power_sent:")
+        for wake in ("self._st.async_turn_on()", "ip_client.async_power_on()"):
+            self.assertLess(self.block.index(wake), key_gate, wake)
 
     def test_the_decision_reproduces(self):
         def wake_method_runs(auth_blocked, sent, connected) -> bool:
