@@ -3453,34 +3453,42 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     self._host,
                 )
                 key_power_sent = False
-        if not key_power_sent:
-            turn_on_method = PowerOnMethod(
-                self._get_option(CONF_POWER_ON_METHOD, PowerOnMethod.WOL.value)
-            )
+        turn_on_method = PowerOnMethod(
+            self._get_option(CONF_POWER_ON_METHOD, PowerOnMethod.WOL.value)
+        )
 
-            if turn_on_method == PowerOnMethod.SmartThings and self._st:
-                await self._st.async_turn_on()
-            elif turn_on_method == PowerOnMethod.IPControl:
-                ip_client = self._get_ip_control_client()
-                if ip_client is not None:
-                    try:
-                        await ip_client.async_power_on()
-                    except SamsungIPControlError as ex:
-                        self._log.warning(
-                            "IP Control power-on for %s failed (%s); falling "
-                            "back to WOL",
-                            self._host,
-                            ex,
-                        )
-                        result = await self.hass.async_add_executor_job(
-                            self._send_wol_packet
-                        )
-                else:
+        # An explicitly configured wake method (SmartThings / IP Control) is
+        # honoured on EVERY cold power-on, not only when KEY_POWER failed to
+        # "send". KEY_POWER over the WebSocket is no proof a Frame actually woke:
+        # the remote channel can read `is_connected` in standby while the panel
+        # ignores the key, so the set stays off and the method the user chose
+        # never ran (#319: KEY_POWER sent, WS connected, SmartThings wake never
+        # fired, TV stayed off). SmartThings Command.ON / IP powerOn are
+        # idempotent on an already-waking set, so sending them alongside a key
+        # that may or may not have landed is safe. WOL stays the default and is
+        # used only when KEY_POWER could not be sent (an auth-blocked or
+        # disconnected channel, #12/#273) — that historical path is unchanged.
+        if turn_on_method == PowerOnMethod.SmartThings and self._st:
+            await self._st.async_turn_on()
+        elif turn_on_method == PowerOnMethod.IPControl:
+            ip_client = self._get_ip_control_client()
+            if ip_client is not None:
+                try:
+                    await ip_client.async_power_on()
+                except SamsungIPControlError as ex:
+                    self._log.warning(
+                        "IP Control power-on for %s failed (%s); falling "
+                        "back to WOL",
+                        self._host,
+                        ex,
+                    )
                     result = await self.hass.async_add_executor_job(
                         self._send_wol_packet
                     )
             else:
                 result = await self.hass.async_add_executor_job(self._send_wol_packet)
+        elif not key_power_sent:
+            result = await self.hass.async_add_executor_job(self._send_wol_packet)
 
         if result:
             self._state = MediaPlayerState.OFF
