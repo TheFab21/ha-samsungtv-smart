@@ -254,6 +254,61 @@
     "switch": {
       "power": {
         "name": "Alimentation"
+      },
+      "art_mode": {
+        "name": "Mode Art"
+      }
+    },
+    "select": {
+      "matte_type": {
+        "name": "Mat",
+        "state": {
+          "none": "Aucun effet mat",
+          "modernthin": "Mat moderne - Fin",
+          "modern": "Mat contemporain",
+          "modernwide": "Mat moderne - Large",
+          "flexible": "Mat contemporain - Automatique",
+          "shadowbox": "Mat ombré",
+          "panoramic": "Mat panoramique",
+          "triptych": "Mat triptyque",
+          "mix": "Mat mixte",
+          "squares": "Mat avec carrés"
+        }
+      },
+      "matte_color": {
+        "name": "Couleur mate",
+        "state": {
+          "black": "Noir",
+          "neutral": "Neutre",
+          "antique": "Antique",
+          "warm": "Chaude",
+          "polar": "Polaire",
+          "sand": "Sable",
+          "seafoam": "Ardoise",
+          "sage": "Sauge",
+          "burgandy": "Bourgogne",
+          "navy": "Bleu marine",
+          "apricot": "Abricot",
+          "byzantine": "Byzantium",
+          "lavender": "Lavande",
+          "redorange": "Orange",
+          "skyblue": "Bleu ciel",
+          "turquoise": "Turquoise"
+        }
+      },
+      "art_motion_timer": {
+        "name": "Minuterie de mouvement",
+        "state": {
+          "5": "5 minutes",
+          "15": "15 minutes",
+          "30": "30 minutes",
+          "60": "1 heure",
+          "120": "2 heures",
+          "180": "3 heures",
+          "240": "4 heures",
+          "off": "Désactivé",
+          "always": "Toujours"
+        }
       }
     }
   }

@@ -31,7 +31,7 @@ class StrictAvailableTest(unittest.TestCase):
     def test_strict_returns_none_on_failure(self):
         self.assertIn("strict: bool = False", self.block)
         self.assertIn("failed: list | None = None if strict else []", self.block)
-        self.assertEqual(self.block.count("return failed"), 2)
+        self.assertEqual(self.block.count("return failed"), 3)
 
     def test_default_behaviour_is_unchanged(self):
         # Non-strict callers (artwork count, art_available) still get [].

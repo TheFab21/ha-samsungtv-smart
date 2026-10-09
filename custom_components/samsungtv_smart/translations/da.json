@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Maske",
+        "state": {
+          "none": "Ingen maske",
+          "modernthin": "Moderne maske – Tynd",
+          "modern": "Moderne maske",
+          "modernwide": "Moderne maske – Bred",
+          "flexible": "Moderne maske – automatisk",
+          "shadowbox": "Skyggeboksmaske",
+          "panoramic": "Panoramamaske",
+          "triptych": "Tredelt maske",
+          "mix": "Blandet maske",
+          "squares": "Firkantet maske"
+        }
+      },
+      "matte_color": {
+        "name": "Maskefarve",
+        "state": {
+          "black": "Sort",
+          "neutral": "Neutral",
+          "antique": "Antik",
+          "warm": "Varm",
+          "polar": "Polar",
+          "sand": "Sand",
+          "seafoam": "Skifer",
+          "sage": "Salvie",
+          "burgandy": "Bordeaux",
+          "navy": "Marineblå",
+          "apricot": "Abrikos",
+          "byzantine": "Byzantinsk",
+          "lavender": "Lavendel",
+          "redorange": "Orange",
+          "skyblue": "Himmelblå",
+          "turquoise": "Turkis"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minutter",
+          "15": "15 min.",
+          "30": "30 minutter",
+          "60": "1 time",
+          "120": "2 timer",
+          "180": "3 timer",
+          "240": "4 timer"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Kunsttilstand"
+      }
+    }
+  }
+}

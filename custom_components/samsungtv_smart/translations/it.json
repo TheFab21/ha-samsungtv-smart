@@ -197,6 +197,63 @@
       "reboot": {
         "name": "Riavvia il televisore"
       }
+    },
+    "select": {
+      "matte_type": {
+        "name": "Passepartout",
+        "state": {
+          "none": "Nessun passepartout",
+          "modernthin": "Passepartout moderno - Sottile",
+          "modern": "Passepartout moderno",
+          "modernwide": "Passepartout moderno - Ampio",
+          "flexible": "Passepartout moderno - Auto",
+          "shadowbox": "Passepartout ombreggiato",
+          "panoramic": "Passepartout panoramico",
+          "triptych": "Passepartout trittico",
+          "mix": "Passepartout misto",
+          "squares": "Passepartout a quadrati"
+        }
+      },
+      "matte_color": {
+        "name": "Colore passepartout",
+        "state": {
+          "black": "Nero",
+          "neutral": "Neutro",
+          "antique": "Antico",
+          "warm": "Calda",
+          "polar": "Polare",
+          "sand": "Sabbia",
+          "seafoam": "Ardesia",
+          "sage": "Salvia",
+          "burgandy": "Bordeaux",
+          "navy": "Blu navy",
+          "apricot": "Albicocca",
+          "byzantine": "Bizantino",
+          "lavender": "Lavanda",
+          "redorange": "Arancio",
+          "skyblue": "Celeste",
+          "turquoise": "Turchese"
+        }
+      },
+      "art_motion_timer": {
+        "name": "Timer movimento",
+        "state": {
+          "5": "5 minuti",
+          "15": "15 minuti",
+          "30": "30 minuti",
+          "60": "1 ora",
+          "120": "2 ore",
+          "180": "3 ore",
+          "240": "4 ore",
+          "off": "Disattivato",
+          "always": "Sempre"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Modalità Arte"
+      }
     }
   }
 }

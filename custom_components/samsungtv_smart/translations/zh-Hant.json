@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "遮罩",
+        "state": {
+          "none": "無遮罩",
+          "modernthin": "現代遮罩 - 窄",
+          "modern": "現代遮罩",
+          "modernwide": "現代遮罩 - 寬",
+          "flexible": "現代遮罩 - 自動",
+          "shadowbox": "立體框遮罩",
+          "panoramic": "全景遮罩",
+          "triptych": "三聯遮罩",
+          "mix": "混合遮罩",
+          "squares": "方塊遮罩"
+        }
+      },
+      "matte_color": {
+        "name": "遮罩顏色",
+        "state": {
+          "black": "黑色",
+          "neutral": "中性",
+          "antique": "復古",
+          "warm": "暖和",
+          "polar": "極地",
+          "sand": "沙灘",
+          "seafoam": "石板",
+          "sage": "灰綠",
+          "burgandy": "酒紅",
+          "navy": "海軍藍",
+          "apricot": "杏桃",
+          "byzantine": "拜占庭風格",
+          "lavender": "淡紫",
+          "redorange": "橙色",
+          "skyblue": "天藍",
+          "turquoise": "淺粉藍"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 分鐘",
+          "15": "15 分鐘",
+          "30": "30 分鐘",
+          "60": "1 小時",
+          "120": "2 小時",
+          "180": "3 小時",
+          "240": "4 小時"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "藝術模式"
+      }
+    }
+  }
+}

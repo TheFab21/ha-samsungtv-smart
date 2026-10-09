@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Matējums",
+        "state": {
+          "none": "Bez matējuma",
+          "modernthin": "Moderns matējums — neliels",
+          "modern": "Moderns, ar matējumu",
+          "modernwide": "Moderns matējums — plašs",
+          "flexible": "Moderns, ar matējumu — automātisks",
+          "shadowbox": "Ēnots, ar matējumu",
+          "panoramic": "Panorāma, ar matējumu",
+          "triptych": "Triptihs, ar matējumu",
+          "mix": "Jaukts, ar matējumu",
+          "squares": "Kvadrāts, ar matējumu"
+        }
+      },
+      "matte_color": {
+        "name": "Matējuma krāsa",
+        "state": {
+          "black": "Melns",
+          "neutral": "Neitrāla",
+          "antique": "Senlaicīga",
+          "warm": "Silts",
+          "polar": "Polāra",
+          "sand": "Smiltis",
+          "seafoam": "Slāneklis",
+          "sage": "Salvija",
+          "burgandy": "Bordo",
+          "navy": "Tumši zils",
+          "apricot": "Aprikoze",
+          "byzantine": "Bizantisks",
+          "lavender": "Lavanda",
+          "redorange": "Oranžs",
+          "skyblue": "Debess zils",
+          "turquoise": "Tirkīzs"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minūtes",
+          "15": "15 minūtes",
+          "30": "30 minūtes",
+          "60": "1 stunda",
+          "120": "2 stundas",
+          "180": "3 stundas",
+          "240": "4 stundas"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Mākslas režīms"
+      }
+    }
+  }
+}

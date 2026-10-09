@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "マット",
+        "state": {
+          "none": "マットなし",
+          "modernthin": "モダン マット (細)",
+          "modern": "モダン マット",
+          "modernwide": "モダン マット (太)",
+          "flexible": "モダン マット - 自動",
+          "shadowbox": "シャドウボックス マット",
+          "panoramic": "パノラミック マット",
+          "triptych": "トリプティク マット",
+          "mix": "ミックス マット",
+          "squares": "スクエア マット"
+        }
+      },
+      "matte_color": {
+        "name": "マットカラー",
+        "state": {
+          "black": "黒",
+          "neutral": "中間色",
+          "antique": "アンティーク",
+          "warm": "暖かい",
+          "polar": "反対色",
+          "sand": "砂地",
+          "seafoam": "濃い青灰色",
+          "sage": "セージ",
+          "burgandy": "ワイン色",
+          "navy": "ネイビー",
+          "apricot": "アプリコット",
+          "byzantine": "ビザンチン",
+          "lavender": "ラベンダー",
+          "redorange": "オレンジ",
+          "skyblue": "スカイ ブルー",
+          "turquoise": "ターコイズ"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 分",
+          "15": "15 分",
+          "30": "30 分",
+          "60": "1 時間",
+          "120": "2 時間",
+          "180": "3 時間",
+          "240": "4 時間"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "アート モード"
+      }
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Mat",
+        "state": {
+          "none": "Tidak Ada Mat",
+          "modernthin": "Modern Mat - Tipis",
+          "modern": "Modern Mat",
+          "modernwide": "Modern Mat - Lebar",
+          "flexible": "Modern Mat - Otomatis",
+          "shadowbox": "Shadowbox Mat",
+          "panoramic": "Panoramic Mat",
+          "triptych": "Triptych Mat",
+          "mix": "Mixed Mat",
+          "squares": "Squares Mat"
+        }
+      },
+      "matte_color": {
+        "name": "Warna mat",
+        "state": {
+          "black": "Hitam",
+          "neutral": "Netral",
+          "antique": "Antik",
+          "warm": "Hangat",
+          "polar": "Polar",
+          "sand": "Pasir",
+          "seafoam": "Batu Tulis",
+          "sage": "Sage",
+          "burgandy": "Burgandy",
+          "navy": "Navy",
+          "apricot": "Aprikot",
+          "byzantine": "Bizantium",
+          "lavender": "Lavender",
+          "redorange": "Oranye",
+          "skyblue": "Biru Langit",
+          "turquoise": "Pirus"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 menit",
+          "15": "15 menit",
+          "30": "30 menit",
+          "60": "1 jam",
+          "120": "2 jam",
+          "180": "3 jam",
+          "240": "4 jam"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Mode Seni"
+      }
+    }
+  }
+}

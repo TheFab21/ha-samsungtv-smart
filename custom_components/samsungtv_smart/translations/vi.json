@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Tấm lót",
+        "state": {
+          "none": "Không tấm lót",
+          "modernthin": "Tấm lót hiện đại - mỏng",
+          "modern": "Tấm lót hiện đại",
+          "modernwide": "Tấm lót hiện đại - rộng",
+          "flexible": "Tấm lót hiện đại - Tự động",
+          "shadowbox": "Tấm lót khung hộp",
+          "panoramic": "Tấm lót bao quát",
+          "triptych": "Tấm lót ba phần",
+          "mix": "Tấm lót hỗn hợp",
+          "squares": "Tấm lót vuông"
+        }
+      },
+      "matte_color": {
+        "name": "Màu sắc tấm lót",
+        "state": {
+          "black": "Đen",
+          "neutral": "Trung tính",
+          "antique": "Cổ",
+          "warm": "ấm",
+          "polar": "Đối lập",
+          "sand": "Cát",
+          "seafoam": "Màu xám đen",
+          "sage": "Màu xanh xám",
+          "burgandy": "Màu đỏ rượu vang",
+          "navy": "Xanh hải quân",
+          "apricot": "Quả mơ",
+          "byzantine": "Kiến trúc Byzantine",
+          "lavender": "Hoa oải hương",
+          "redorange": "Màu cam",
+          "skyblue": "Màu xanh da trời",
+          "turquoise": "Màu ngọc lam"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 phút",
+          "15": "15 phút",
+          "30": "30 phút",
+          "60": "1 giờ",
+          "120": "2 giờ",
+          "180": "3 giờ",
+          "240": "4 giờ"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Chế độ tranh nghệ thuật"
+      }
+    }
+  }
+}

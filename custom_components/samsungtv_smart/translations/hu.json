@@ -197,6 +197,63 @@
       "reboot": {
         "name": "TV újraindítása"
       }
+    },
+    "select": {
+      "matte_type": {
+        "name": "Paszpartu",
+        "state": {
+          "none": "Nincs paszpartu",
+          "modernthin": "Modern paszpartu – keskeny",
+          "modern": "Modern paszpartu",
+          "modernwide": "Modern paszpartu – széles",
+          "flexible": "Modern paszpartu – automatikus",
+          "shadowbox": "Árnyékkeretes paszpartu",
+          "panoramic": "Panorámás paszpartu",
+          "triptych": "Triptichon paszpartu",
+          "mix": "Vegyes paszpartu",
+          "squares": "Négyzetes paszpartu"
+        }
+      },
+      "matte_color": {
+        "name": "Paszpartu színe",
+        "state": {
+          "black": "Fekete",
+          "neutral": "Semleges",
+          "antique": "Antik",
+          "warm": "Meleg",
+          "polar": "Polár",
+          "sand": "Homok",
+          "seafoam": "Palaszürke",
+          "sage": "Zsályazöld",
+          "burgandy": "Burgundi vörös",
+          "navy": "Tengerészkék",
+          "apricot": "Kajszibarack",
+          "byzantine": "Bizánci",
+          "lavender": "Levendula",
+          "redorange": "Narancs",
+          "skyblue": "Égszínkék",
+          "turquoise": "Türkiz"
+        }
+      },
+      "art_motion_timer": {
+        "name": "Mozgásérzékelő időzítő",
+        "state": {
+          "5": "5 perc",
+          "15": "15 perc",
+          "30": "30 perc",
+          "60": "1 óra",
+          "120": "2 óra",
+          "180": "3 óra",
+          "240": "4 óra",
+          "off": "Ki",
+          "always": "Mindig"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Művészet üzemmód"
+      }
     }
   }
 }

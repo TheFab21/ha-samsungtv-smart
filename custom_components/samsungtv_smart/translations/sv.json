@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Passepartout",
+        "state": {
+          "none": "Ingen passepartout",
+          "modernthin": "Modern passepartout - smal",
+          "modern": "Modern passepartout",
+          "modernwide": "Modern passepartout - bred",
+          "flexible": "Modern passepartout - Auto",
+          "shadowbox": "Skuggad passepartout",
+          "panoramic": "Vidsträckt passepartout",
+          "triptych": "Triptyk passepartout",
+          "mix": "Blandad passepartout",
+          "squares": "Passepartout med kvadratiska delar"
+        }
+      },
+      "matte_color": {
+        "name": "Passepartoutfärg",
+        "state": {
+          "black": "Svart",
+          "neutral": "Neutral",
+          "antique": "Antikvit",
+          "warm": "Varmt",
+          "polar": "Polarvit",
+          "sand": "Sand",
+          "seafoam": "Skiffergrå",
+          "sage": "Salviagrön",
+          "burgandy": "Vinröd",
+          "navy": "Marinblå",
+          "apricot": "Aprikos",
+          "byzantine": "Bysantinsk",
+          "lavender": "Lavendel",
+          "redorange": "Orange",
+          "skyblue": "Himmelsblå",
+          "turquoise": "Turkos"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minuter",
+          "15": "15 minuter",
+          "30": "30 minuter",
+          "60": "1 timme",
+          "120": "2 timmar",
+          "180": "3 timmar",
+          "240": "4 timmar"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Konstläge"
+      }
+    }
+  }
+}

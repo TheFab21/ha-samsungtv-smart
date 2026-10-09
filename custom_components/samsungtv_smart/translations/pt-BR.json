@@ -197,6 +197,63 @@
       "reboot": {
         "name": "Reiniciar a TV"
       }
+    },
+    "select": {
+      "matte_type": {
+        "name": "Tapete",
+        "state": {
+          "none": "Nenhum Fosco Selecionado",
+          "modernthin": "Fosco Moderno – Leve",
+          "modern": "Fosco Moderno",
+          "modernwide": "Fosco Moderno – Amplo",
+          "flexible": "Fosco Moderno – Automático",
+          "shadowbox": "Fosco Sombreado",
+          "panoramic": "Fosco Panorâmico",
+          "triptych": "Fosco Tríptico",
+          "mix": "Fosco Misto",
+          "squares": "Fosco Quadrados"
+        }
+      },
+      "matte_color": {
+        "name": "Cor fosca",
+        "state": {
+          "black": "Preto",
+          "neutral": "Neutro",
+          "antique": "Antigo",
+          "warm": "Aquecido",
+          "polar": "Polar",
+          "sand": "Areia",
+          "seafoam": "Ardósia",
+          "sage": "Sálvia",
+          "burgandy": "Bordô",
+          "navy": "Azul-marinho",
+          "apricot": "Damasco",
+          "byzantine": "Bizantino",
+          "lavender": "Lavanda",
+          "redorange": "Laranja",
+          "skyblue": "Céu Azul",
+          "turquoise": "Turquesa"
+        }
+      },
+      "art_motion_timer": {
+        "name": "Temporizador de movimento",
+        "state": {
+          "5": "5 minutos",
+          "15": "15 minutos",
+          "30": "30 minutos",
+          "60": "1 hora",
+          "120": "2 horas",
+          "180": "3 horas",
+          "240": "4 horas",
+          "off": "Desligado",
+          "always": "Sempre"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Modo Arte"
+      }
     }
   }
 }

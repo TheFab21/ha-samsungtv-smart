@@ -816,7 +816,7 @@ Artworks are identified by content IDs:
 |---|---|
 | `SAM-*` | Samsung Art Store content |
 | `MY_F*` | User-uploaded photos |
-| `MY-C*` | Categories (MY-C0002=My Photos, MY-C0004=Favorites, MY-C0008=All) |
+| `MY-C*` | Categories (MY-C0001=Default artworks, MY-C0002=My Photos, MY-C0004=Favorites, MY-C0008=Recently set). Leave the category empty to list them all. |
 
 ### Matte Styles
 

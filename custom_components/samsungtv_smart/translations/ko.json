@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "매트",
+        "state": {
+          "none": "매트 없음",
+          "modernthin": "얇은 모던 매트",
+          "modern": "모던 매트",
+          "modernwide": "넓은 모던 매트",
+          "flexible": "자동 모던 매트",
+          "shadowbox": "그림자 매트",
+          "panoramic": "파노라마 매트",
+          "triptych": "세 폭 매트",
+          "mix": "혼합 매트",
+          "squares": "사각 매트"
+        }
+      },
+      "matte_color": {
+        "name": "매트 색상",
+        "state": {
+          "black": "검정",
+          "neutral": "뉴트럴",
+          "antique": "앤틱",
+          "warm": "따뜻함",
+          "polar": "순백",
+          "sand": "모래",
+          "seafoam": "석판",
+          "sage": "풀잎",
+          "burgandy": "와인",
+          "navy": "네이비",
+          "apricot": "살구",
+          "byzantine": "비잔틴",
+          "lavender": "라벤더",
+          "redorange": "오렌지",
+          "skyblue": "스카이 블루",
+          "turquoise": "청록"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5분",
+          "15": "15분",
+          "30": "30분",
+          "60": "1시간",
+          "120": "2시간",
+          "180": "3시간",
+          "240": "4시간"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "아트 모드"
+      }
+    }
+  }
+}

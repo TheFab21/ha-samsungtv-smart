@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Paspatuuri",
+        "state": {
+          "none": "Ei paspatuuria",
+          "modernthin": "Moderni paspatuuri – Ohut",
+          "modern": "Moderni paspatuuri",
+          "modernwide": "Moderni paspatuuri – Leveä",
+          "flexible": "Moderni paspatuuri – Automaattinen",
+          "shadowbox": "Dioraaman kehys",
+          "panoramic": "Panoraamakehys",
+          "triptych": "Triptyykkikehys",
+          "mix": "Sekalainen kehys",
+          "squares": "Suorakulmainen kehys"
+        }
+      },
+      "matte_color": {
+        "name": "Paspatuurin väri",
+        "state": {
+          "black": "Musta",
+          "neutral": "Neutraali",
+          "antique": "Antiikki",
+          "warm": "Lämmin",
+          "polar": "Polaarinen",
+          "sand": "Hiekka",
+          "seafoam": "Savenharmaa",
+          "sage": "Harmaanvihreä",
+          "burgandy": "Viininpunainen",
+          "navy": "Laivastonsininen",
+          "apricot": "Aprikoosi",
+          "byzantine": "Bysantti",
+          "lavender": "Laventeli",
+          "redorange": "Oranssi",
+          "skyblue": "Taivaansininen",
+          "turquoise": "Turkoosi"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 minuuttia",
+          "15": "15 min",
+          "30": "30 minuuttia",
+          "60": "1 tunti",
+          "120": "2 tuntia",
+          "180": "3 tuntia",
+          "240": "4 tuntia"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Taidetila"
+      }
+    }
+  }
+}

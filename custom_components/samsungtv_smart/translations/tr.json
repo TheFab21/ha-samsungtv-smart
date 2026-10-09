@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "Mat",
+        "state": {
+          "none": "Mat Yok",
+          "modernthin": "Modern Mat - İnce",
+          "modern": "Modern Mat",
+          "modernwide": "Modern Mat - Geniş",
+          "flexible": "Modern Mat - Otomatik",
+          "shadowbox": "Derinlikli Çerçeve Matı",
+          "panoramic": "Panoramik Mat",
+          "triptych": "Triptik Mat",
+          "mix": "Karışık Mat",
+          "squares": "Kare Mat"
+        }
+      },
+      "matte_color": {
+        "name": "Mat rengi",
+        "state": {
+          "black": "Siyah",
+          "neutral": "Nötr",
+          "antique": "Antik",
+          "warm": "Ilık",
+          "polar": "Kutup",
+          "sand": "Kum",
+          "seafoam": "Arduvaz",
+          "sage": "Adaçayı",
+          "burgandy": "Burgonya",
+          "navy": "Lacivert",
+          "apricot": "Şeftali",
+          "byzantine": "Bizans",
+          "lavender": "Lavanta",
+          "redorange": "Turuncu",
+          "skyblue": "Gök Mavisi",
+          "turquoise": "Turkuaz"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 dakika",
+          "15": "15 dakika",
+          "30": "30 dakika",
+          "60": "1 saat",
+          "120": "2 saat",
+          "180": "3 saat",
+          "240": "4 saat"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "Sanat Modu"
+      }
+    }
+  }
+}

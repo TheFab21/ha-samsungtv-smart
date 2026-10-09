@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "select": {
+      "matte_type": {
+        "name": "מט",
+        "state": {
+          "none": "ללא מט",
+          "modernthin": "מט מודרני - דק",
+          "modern": "מט מודרני",
+          "modernwide": "מט מודרני - רחב",
+          "flexible": "מט מודרני - אוטומטי",
+          "shadowbox": "מט קופסת צל",
+          "panoramic": "מט פנורמי",
+          "triptych": "מט טריפטיכון",
+          "mix": "מט מעורב",
+          "squares": "מט ריבועים"
+        }
+      },
+      "matte_color": {
+        "name": "צבע מט",
+        "state": {
+          "black": "שחור",
+          "neutral": "ניטרלי",
+          "antique": "עתיק",
+          "warm": "חמים",
+          "polar": "פולרי",
+          "sand": "חול",
+          "seafoam": "צפחה",
+          "sage": "מרווה",
+          "burgandy": "בורגון",
+          "navy": "כחול כהה",
+          "apricot": "משמש",
+          "byzantine": "ביזנטי",
+          "lavender": "לבנדר",
+          "redorange": "כתום",
+          "skyblue": "כחול שמיים",
+          "turquoise": "טורקיז"
+        }
+      },
+      "art_motion_timer": {
+        "state": {
+          "5": "5 דקות",
+          "15": "15 דקות",
+          "30": "30 דקות",
+          "60": "שעה 1",
+          "120": "2 שעות",
+          "180": "3 שעות",
+          "240": "4 שעות"
+        }
+      }
+    },
+    "switch": {
+      "art_mode": {
+        "name": "מצב 'אמנות'"
+      }
+    }
+  }
+}
