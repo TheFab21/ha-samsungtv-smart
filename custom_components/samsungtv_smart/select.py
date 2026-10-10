@@ -310,6 +310,21 @@ def _frame_art_api_active(hass: HomeAssistant, entry_id: str) -> bool:
     return False
 
 
+
+def _frame_media_players_disabled(hass: HomeAssistant, entry_id: str) -> bool:
+    """True only when every registered media_player is explicitly disabled.
+
+    An empty registry during startup is not evidence of a disabled entity.
+    """
+    registry = er.async_get(hass)
+    players = [
+        entity
+        for entity in registry.entities.get_entries_for_config_entry_id(entry_id)
+        if entity.domain == "media_player"
+    ]
+    return bool(players) and all(entity.disabled_by is not None for entity in players)
+
+
 async def _load_matte_options(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -320,15 +335,28 @@ async def _load_matte_options(
     """Fetch matte options after the Frame is locally known to be awake."""
     attempt = 0
     deferred_logged = False
+    fallback_loaded = False
 
     while attempt < _MAX_RETRIES:
         if not _frame_art_api_active(hass, entry.entry_id):
-            if not deferred_logged:
+            if _frame_media_players_disabled(hass, entry.entry_id):
+                if not fallback_loaded:
+                    _LOGGER.info(
+                        "Media player disabled for %s; using built-in matte catalogue",
+                        entry.title,
+                    )
+                    # Only populate options. Reading the current matte here
+                    # would contact a potentially sleeping Frame.
+                    type_select.set_options(list(_MATTE_TYPES_FALLBACK))
+                    color_select.set_options(list(_MATTE_COLORS_FALLBACK))
+                    fallback_loaded = True
+            elif not deferred_logged:
                 _LOGGER.debug(
                     "Deferring matte option discovery for %s while Frame is asleep",
                     entry.title,
                 )
                 deferred_logged = True
+
             await asyncio.sleep(_RETRY_INTERVAL)
             continue
 
@@ -362,7 +390,9 @@ async def _load_matte_options(
             # Now that the option lists are known, read the TV's current
             # matte so the selects reflect the real state. Before the option
             # lists exist, _parse_matte_id cannot match the actual matte and
-            # the selects would remain on their defaults.
+            # the selects would remain on their defaults. This is not merely
+            # cosmetic: an automation re-applying the bogus "none" value could
+            # wipe the real matte on every restart.
             await type_select.async_refresh_current()
             await color_select.async_refresh_current()
             return

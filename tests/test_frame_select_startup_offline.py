@@ -1,5 +1,6 @@
 """Regression tests for Frame matte discovery when HA starts with the TV off."""
 
+import asyncio
 import inspect
 import sys
 from types import ModuleType, SimpleNamespace
@@ -116,6 +117,11 @@ async def test_matte_loader_defers_without_spending_tv_attempts(monkeypatch):
         lambda _hass, _entry_id: next(local_state),
     )
 
+    monkeypatch.setattr(
+        select_module,
+        "_frame_media_players_disabled",
+        lambda _hass, _entry_id: False,
+    )
     sleep = AsyncMock()
     monkeypatch.setattr(select_module.asyncio, "sleep", sleep)
 
@@ -169,3 +175,165 @@ def test_long_lived_matte_loader_is_owned_by_config_entry():
 
     assert entry_task != -1
     assert entry_task > hass_task
+
+
+def test_disabled_media_player_detection(monkeypatch):
+    """Only explicitly disabled media players qualify for immediate fallback."""
+    registry_entries = []
+    registry = SimpleNamespace(
+        entities=SimpleNamespace(
+            get_entries_for_config_entry_id=lambda _entry_id: registry_entries
+        )
+    )
+    monkeypatch.setattr(select_module.er, "async_get", lambda _hass: registry)
+    hass = SimpleNamespace()
+
+    assert not select_module._frame_media_players_disabled(hass, "entry")
+
+    registry_entries.append(
+        SimpleNamespace(
+            domain="media_player",
+            entity_id="media_player.frame",
+            disabled_by="user",
+        )
+    )
+    assert select_module._frame_media_players_disabled(hass, "entry")
+
+    registry_entries.append(
+        SimpleNamespace(
+            domain="media_player",
+            entity_id="media_player.frame_2",
+            disabled_by=None,
+        )
+    )
+    assert not select_module._frame_media_players_disabled(hass, "entry")
+
+
+@pytest.mark.asyncio
+async def test_disabled_media_player_gets_fallback_then_real_catalogue(monkeypatch):
+    """Fallback is loaded once, without TV calls, then replaced after wake."""
+    active = False
+    disabled = True
+    sleep_count = 0
+
+    monkeypatch.setattr(
+        select_module,
+        "_frame_art_api_active",
+        lambda _hass, _entry_id: active,
+    )
+    monkeypatch.setattr(
+        select_module,
+        "_frame_media_players_disabled",
+        lambda _hass, _entry_id: disabled,
+    )
+
+    async def fake_sleep(_seconds):
+        nonlocal active, disabled, sleep_count
+        sleep_count += 1
+        if sleep_count == 3:
+            disabled = False
+            active = True
+
+    monkeypatch.setattr(select_module.asyncio, "sleep", fake_sleep)
+
+    art_api = SimpleNamespace(
+        get_matte_list=AsyncMock(
+            return_value=(
+                ["none", "shadowbox"],
+                ["black", "polar"],
+            )
+        )
+    )
+    type_select = SimpleNamespace(
+        set_options=Mock(),
+        async_refresh_current=AsyncMock(),
+    )
+    color_select = SimpleNamespace(
+        set_options=Mock(),
+        async_refresh_current=AsyncMock(),
+    )
+    entry = SimpleNamespace(entry_id="entry", title="Frame")
+
+    await select_module._load_matte_options(
+        SimpleNamespace(),
+        entry,
+        art_api,
+        type_select,
+        color_select,
+    )
+
+    assert sleep_count == 3
+    assert type_select.set_options.call_count == 2
+    assert color_select.set_options.call_count == 2
+    type_select.set_options.assert_any_call(
+        list(select_module._MATTE_TYPES_FALLBACK)
+    )
+    color_select.set_options.assert_any_call(
+        list(select_module._MATTE_COLORS_FALLBACK)
+    )
+    type_select.set_options.assert_called_with(["none", "shadowbox"])
+    color_select.set_options.assert_called_with(["black", "polar"])
+    art_api.get_matte_list.assert_awaited_once_with(include_color=True)
+    type_select.async_refresh_current.assert_awaited_once()
+    color_select.async_refresh_current.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_disabled_player_never_contacts_sleeping_tv(monkeypatch):
+    """Disabled media_player must not cause Art API traffic or repeated fallback."""
+    monkeypatch.setattr(
+        select_module,
+        "_frame_art_api_active",
+        lambda _hass, _entry_id: False,
+    )
+    monkeypatch.setattr(
+        select_module,
+        "_frame_media_players_disabled",
+        lambda _hass, _entry_id: True,
+    )
+
+    checks = 0
+
+    async def stop_after_three_checks(_seconds):
+        nonlocal checks
+        checks += 1
+        if checks == 3:
+            raise asyncio.CancelledError()
+
+    monkeypatch.setattr(select_module.asyncio, "sleep", stop_after_three_checks)
+
+    art_api = SimpleNamespace(
+        get_matte_list=AsyncMock(),
+        get_current=AsyncMock(),
+        change_matte=AsyncMock(),
+    )
+    type_select = SimpleNamespace(
+        set_options=Mock(),
+        async_refresh_current=AsyncMock(),
+    )
+    color_select = SimpleNamespace(
+        set_options=Mock(),
+        async_refresh_current=AsyncMock(),
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await select_module._load_matte_options(
+            SimpleNamespace(),
+            SimpleNamespace(entry_id="entry", title="Frame"),
+            art_api,
+            type_select,
+            color_select,
+        )
+
+    assert checks == 3
+    type_select.set_options.assert_called_once_with(
+        list(select_module._MATTE_TYPES_FALLBACK)
+    )
+    color_select.set_options.assert_called_once_with(
+        list(select_module._MATTE_COLORS_FALLBACK)
+    )
+    type_select.async_refresh_current.assert_not_awaited()
+    color_select.async_refresh_current.assert_not_awaited()
+    art_api.get_matte_list.assert_not_awaited()
+    art_api.get_current.assert_not_awaited()
+    art_api.change_matte.assert_not_awaited()
