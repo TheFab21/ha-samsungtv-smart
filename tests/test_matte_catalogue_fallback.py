@@ -35,12 +35,17 @@ async def _run_load(art_api):
     color_select.async_refresh_current = AsyncMock()
 
     # Don't actually wait 30 s between the (shortened) retries.
+    entry = MagicMock()
+    entry.entry_id = "entry"
+    entry.title = "Frame"
+
     with (
         patch.object(select_mod, "_MAX_RETRIES", 2),
+        patch.object(select_mod, "_frame_art_api_active", return_value=True),
         patch.object(select_mod.asyncio, "sleep", AsyncMock()),
     ):
         await select_mod._load_matte_options(
-            MagicMock(), art_api, type_select, color_select
+            MagicMock(), entry, art_api, type_select, color_select
         )
     return type_select, color_select
 
