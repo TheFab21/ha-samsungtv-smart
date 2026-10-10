@@ -310,7 +310,6 @@ def _frame_art_api_active(hass: HomeAssistant, entry_id: str) -> bool:
     return False
 
 
-
 def _frame_media_players_disabled(hass: HomeAssistant, entry_id: str) -> bool:
     """True only when every registered media_player is explicitly disabled.
 
