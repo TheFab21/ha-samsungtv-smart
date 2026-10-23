@@ -203,6 +203,24 @@ This integration is a **custom repository** — it is not in the HACS default st
 > to Wake-on-LAN or IP Control instead (see
 > [Options](#options)).
 >
+> **Zigbee is not a way out.** Samsung's announcement lists it as something the
+> paid tiers *give you*, not something outside them: the API "gives access to
+> our multi-protocol ecosystem (Matter, Cloud-to-Cloud, **Zigbee**, Z-Wave)".
+> What escapes the fee is not a protocol, it is **not going through the
+> SmartThings API at all**.
+>
+> For a TV this is moot — a TV is not a Zigbee device, and this integration
+> reaches it over the local WebSocket, IP Control and Wake-on-LAN. It matters
+> if you use a **TV as a SmartThings hub**: 2023 and later Samsung sets carry
+> Zigbee/Thread radios, and anything paired to one is reachable from Home
+> Assistant only through the cloud API, so those devices now sit behind the
+> plan. Home Assistant's own SmartThings page gives the same answer we would —
+> "subscribe to Samsung's Personal Plan **or migrate your devices (like local
+> Zigbee/Z-Wave devices)**". Migrating means re-pairing them to a local
+> coordinator in Home Assistant (ZHA or Zigbee2MQTT with a USB dongle), after
+> which they are local, free and faster — at the cost of re-pairing each one
+> and losing them from the SmartThings app.
+>
 > **Keeping the call volume down if you do subscribe.** SmartThings polling is
 > throttled and **configurable from 5 to 30 seconds** (with a separate, longer
 > content-list interval). At 30 s that is at most ~2 calls/minute while the TV
