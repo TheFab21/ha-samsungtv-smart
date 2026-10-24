@@ -29,10 +29,12 @@ from homeassistant.helpers.event import async_track_state_change_event
 from .api.art import SamsungTVAsyncArt
 from .api.ipcontrol import (
     COLOR_TONE_OPTIONS,
+    PICTURE_MODE_OPTIONS,
     SamsungIPControl,
     SamsungIPControlAuthError,
     SamsungIPControlError,
     SamsungIPControlModeLockedError,
+    SamsungIPControlUnsupportedError,
     resolve_speaker_select_option,
 )
 from .const import (
@@ -238,10 +240,29 @@ async def async_setup_entry(
             _LOGGER.debug("SmartThings media output select created for %s", device_name)
     else:
         picture_mode_select = None
-        _LOGGER.debug(
-            "SmartThings not configured for %s, skipping Picture Mode select",
-            device_name,
-        )
+        if _ip_control_active(entry):
+            # Local picture mode via pictureModeControl. Only offered when
+            # SmartThings is absent so one TV never carries two picture-mode
+            # selects; with SmartThings configured its select keeps the
+            # per-input mode list and the service it calls tries IP Control
+            # first anyway. The entity probes the method on first update and
+            # stays unavailable on TVs that lack it (the 2024 Frame answers
+            # -32601), instead of being added only after a successful probe —
+            # that would hide it until the TV is on for the first time.
+            async_add_entities(
+                [
+                    SamsungTVIPControlPictureModeSelect(
+                        hass, entry, host, device_name, device_unique_id
+                    )
+                ],
+                True,
+            )
+            _LOGGER.debug("IP Control picture mode select created for %s", device_name)
+        else:
+            _LOGGER.debug(
+                "SmartThings not configured for %s, skipping Picture Mode select",
+                device_name,
+            )
 
     if entities:
         async_add_entities(entities)
@@ -787,6 +808,186 @@ class SamsungTVIPControlColorToneSelect(SelectEntity):
 
     def _mark_unavailable(self) -> None:
         """Expose no selected color tone until a live IP Control read succeeds."""
+        self._attr_available = False
+        self._attr_current_option = None
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# IP Control Picture Mode
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class SamsungTVIPControlPictureModeSelect(SelectEntity):
+    """Select entity for the picture mode via IP Control ``pictureModeControl``.
+
+    Local, cloud-free counterpart of :class:`SamsungTVPictureModeSelect`, for
+    setups without SmartThings. Options are the TV's internal names
+    (``Movie`` is what the menu shows as Cinema); whatever the TV reports that
+    is not in the base list — the HDR variants, ``Natural`` on models that
+    have it — is learned and offered too, so the current value is always
+    selectable and HA never shows the entity as unknown for a mode it has
+    just read. ``pictureModeControl`` is not on every model (the 2024 Frame
+    answers -32601): the entity then stays unavailable and says so once.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:television-ambient-light"
+    _attr_should_poll = True
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        host: str,
+        device_name: str,
+        device_unique_id: str,
+    ) -> None:
+        """Initialize the IP Control picture mode select."""
+        self.hass = hass
+        self._entry_id = entry.entry_id
+        self._host = host
+        self._device_name = device_name
+        self._device_unique_id = device_unique_id
+        self._ip_control: SamsungIPControl | None = None
+        self._ip_control_token: str | None = None
+        self._attr_unique_id = f"{device_unique_id}_ip_control_picture_mode"
+        self._attr_name = "Picture Mode"
+        self._attr_options = list(PICTURE_MODE_OPTIONS)
+        self._attr_current_option: str | None = None
+        self._attr_available = False
+        self._unsupported_logged = False
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Link this entity to the TV device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_unique_id)},
+            name=self._device_name,
+        )
+
+    @property
+    def available(self) -> bool:
+        """Available only while IP Control is paired, enabled, and reachable."""
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        return bool(entry and _ip_control_active(entry) and self._attr_available)
+
+    def _device_title(self) -> str:
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        return entry.title if entry else (self._device_name or "this Samsung TV")
+
+    def _get_ip_control(self) -> SamsungIPControl | None:
+        """Return a live IP Control client if paired AND enabled."""
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        if entry is None or not _ip_control_active(entry):
+            self._ip_control = None
+            self._ip_control_token = None
+            return None
+        token = entry.data.get(CONF_IP_CONTROL_TOKEN)
+        if self._ip_control is None or self._ip_control_token != token:
+            self._ip_control = SamsungIPControl(
+                self.hass,
+                self._host,
+                port=ip_control_port(entry.data),
+                token=token,
+            )
+            self._ip_control_token = token
+        return self._ip_control
+
+    def _learn_option(self, value: str) -> None:
+        """Add a value the TV reported so it can be shown and re-selected."""
+        if value not in self._attr_options:
+            self._attr_options = [*self._attr_options, value]
+
+    async def async_select_option(self, option: str) -> None:
+        """Set the picture mode through IP Control."""
+        client = self._get_ip_control()
+        if client is None:
+            raise HomeAssistantError(
+                "IP Control is not paired or is disabled for this TV."
+            )
+
+        try:
+            applied = await client.async_set_picture_mode(option)
+        except SamsungIPControlAuthError as ex:
+            self._mark_unavailable()
+            notify_token_problem(
+                self.hass, self._entry_id, METHOD_IP_CONTROL, self._device_title()
+            )
+            raise HomeAssistantError(
+                f"IP Control token rejected while setting picture mode: {ex}"
+            ) from ex
+        except SamsungIPControlUnsupportedError as ex:
+            raise HomeAssistantError(
+                f"This TV does not offer picture mode over IP Control: {ex}"
+            ) from ex
+        except SamsungIPControlError as ex:
+            # -32002 here is the TV refusing the NAME (e.g. a mode the current
+            # input does not offer), not a transport fault: keep the entity
+            # available so another choice can be made right away.
+            raise HomeAssistantError(
+                f"The TV refused picture mode '{option}': {ex}"
+            ) from ex
+
+        self._learn_option(applied)
+        self._attr_current_option = applied
+        self._attr_available = True
+        clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
+        self.async_write_ha_state()
+
+    async def async_update(self) -> None:
+        """Read the current picture mode from IP Control."""
+        # Same gate as the color tone select: no polling of a TV that is off
+        # or showing art, where the method answers -32601 or times out (#248).
+        if not _tv_normal_viewing(self.hass, self._entry_id):
+            self._mark_unavailable()
+            return
+
+        client = self._get_ip_control()
+        if client is None:
+            self._mark_unavailable()
+            return
+
+        try:
+            current = await client.async_get_picture_mode()
+        except SamsungIPControlAuthError as ex:
+            _LOGGER.warning(
+                "IP Control picture mode read for %s: token rejected (%s) — "
+                "re-pair via the integration options",
+                self._host,
+                ex,
+            )
+            self._mark_unavailable()
+            notify_token_problem(
+                self.hass, self._entry_id, METHOD_IP_CONTROL, self._device_title()
+            )
+            return
+        except SamsungIPControlUnsupportedError as ex:
+            if not self._unsupported_logged:
+                _LOGGER.info(
+                    "%s does not answer pictureMode over IP Control (%s); the "
+                    "Picture Mode select stays unavailable on this model",
+                    self._host,
+                    ex,
+                )
+                self._unsupported_logged = True
+            self._mark_unavailable()
+            return
+        except SamsungIPControlError as ex:
+            _LOGGER.debug(
+                "Could not refresh IP Control picture mode for %s: %s",
+                self._host,
+                ex,
+            )
+            self._mark_unavailable()
+            return
+
+        self._learn_option(current)
+        self._attr_current_option = current
+        self._attr_available = True
+        clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
+
+    def _mark_unavailable(self) -> None:
+        """Expose no selected mode until a live IP Control read succeeds."""
         self._attr_available = False
         self._attr_current_option = None
 

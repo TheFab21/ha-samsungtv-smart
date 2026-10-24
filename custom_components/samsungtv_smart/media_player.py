@@ -77,6 +77,7 @@ from . import (
 )
 from .api.art import SamsungTVAsyncArt
 from .api.ipcontrol import (
+    PICTURE_MODE_OPTIONS,
     SamsungIPControl,
     SamsungIPControlAuthError,
     SamsungIPControlError,
@@ -202,7 +203,7 @@ from .const import (
 )
 from .entity import SamsungTVEntity
 from .logo import LOGO_OPTION_DEFAULT, LocalImageUrl, Logo, LogoOption
-from .picture_mode_keys import picture_mode_ws_key
+from .picture_mode_keys import picture_mode_ip_value, picture_mode_ws_key
 from .token_notify import (
     METHOD_IP_CONTROL,
     METHOD_LOCAL,
@@ -2410,6 +2411,27 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         return self._ip_input_source
 
+    def _get_ip_control_picture_mode(self) -> str | None:
+        """Return the panel's picture mode from the shared IP Control snapshot.
+
+        "Ambient" is a Frame showing art, not a picture mode anyone selects,
+        so it is not reported here.
+        """
+        if self._get_ip_control_client() is None:
+            return None
+
+        coordinator = self._get_ip_control_state_coordinator()
+        data = getattr(coordinator, "data", None)
+        if not isinstance(data, dict) or data.get("powered_off"):
+            return None
+        tv_states = data.get("tv")
+        if not isinstance(tv_states, dict):
+            return None
+        value = tv_states.get("pictureMode")
+        if not isinstance(value, str) or not value or value == "Ambient":
+            return None
+        return value
+
     def _get_ip_control_channel(self) -> str | None:
         """Return the latest tuner channel from the shared IP Control snapshot."""
         if self._get_ip_control_client() is None:
@@ -3508,6 +3530,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 data[ATTR_PICTURE_MODE] = picture_mode
             if picture_mode_list:
                 data[ATTR_PICTURE_MODE_LIST] = picture_mode_list
+        if ATTR_PICTURE_MODE not in data:
+            # No SmartThings: the shared getTVStates snapshot carries the
+            # panel's own picture mode, and pictureModeControl takes the
+            # internal names listed in PICTURE_MODE_OPTIONS.
+            if local_mode := self._get_ip_control_picture_mode():
+                data[ATTR_PICTURE_MODE] = local_mode
+                data[ATTR_PICTURE_MODE_LIST] = list(PICTURE_MODE_OPTIONS)
 
         # Add Frame Art last result if available
         if hasattr(self, "_frame_art_last_result") and self._frame_art_last_result:
@@ -4121,6 +4150,57 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._log.debug("IP Control input source selected: %s", selected_source)
         return True
 
+    async def _async_ip_control_picture_mode(
+        self, picture_mode: str, mode_id: str = ""
+    ) -> bool:
+        """Set the picture mode through local IP Control; True when applied.
+
+        Silent False — never raises — when IP Control is not paired, the mode
+        has no IP Control name, or the TV refuses it, so the caller can carry
+        on with SmartThings and the WS key as before.
+        """
+        client = self._get_ip_control_client()
+        if client is None:
+            return False
+
+        ip_value = picture_mode_ip_value(picture_mode, mode_id)
+        if ip_value is None:
+            self._log.debug(
+                "No IP Control value for picture mode '%s' (id=%s)",
+                picture_mode,
+                mode_id or "unknown",
+            )
+            return False
+
+        try:
+            applied = await client.async_set_picture_mode(ip_value)
+        except SamsungIPControlError as ex:
+            self._log.debug(
+                "IP Control picture mode %s not applied (%s); trying the "
+                "SmartThings/WS path",
+                ip_value,
+                ex,
+            )
+            return False
+
+        # Mirror the change into the shared getTVStates snapshot so the
+        # picture-mode sensor follows at once rather than on the next poll.
+        coordinator = self._get_ip_control_state_coordinator()
+        if coordinator is not None:
+            current_data = getattr(coordinator, "data", None)
+            updated_data = dict(current_data) if isinstance(current_data, dict) else {}
+            current_tv = updated_data.get("tv")
+            tv_states = dict(current_tv) if isinstance(current_tv, dict) else {}
+            tv_states["pictureMode"] = applied
+            updated_data["tv"] = tv_states
+            updated_data["powered_off"] = False
+            set_updated_data = getattr(coordinator, "async_set_updated_data", None)
+            if callable(set_updated_data):
+                set_updated_data(updated_data)
+
+        self._log.debug("IP Control picture mode selected: %s", applied)
+        return True
+
     async def _async_send_keys(self, source_key):
         """Send key / chained keys."""
         prev_wait = True
@@ -4536,6 +4616,17 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._picture_mode_seq += 1
         seq = self._picture_mode_seq
 
+        mode_id = ""
+        if self._st:
+            mode_id = self._st.picture_mode_map.get(picture_mode, "")
+
+        # Local first: pictureModeControl sets the mode in one round trip and
+        # echoes the applied value, with no cloud and no per-input blocking.
+        # Not every model has it (the 2024 Frame answers -32601), so a refusal
+        # falls through to the SmartThings/WS chain unchanged.
+        if await self._async_ip_control_picture_mode(picture_mode, mode_id):
+            return
+
         applied = False
         if self._st:
             try:
@@ -4563,9 +4654,6 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         # SmartThings could not be confirmed to have applied it — send the key,
         # which also covers the HDMI-restricted case above.
-        mode_id = ""
-        if self._st:
-            mode_id = self._st.picture_mode_map.get(picture_mode, "")
         ws_key = picture_mode_ws_key(picture_mode, mode_id)
         if ws_key:
             await self.async_send_command(ws_key)

@@ -99,3 +99,53 @@ def picture_mode_ws_key(display_name: str, mode_id: str = "") -> str | None:
         if name.startswith(prefixes):
             return key
     return None
+
+
+# IP Control ``pictureModeControl`` values, keyed by the WS key of the same
+# mode so the two resolvers share one set of name rules. Unlike the remote
+# keys, IP Control has values for Filmmaker and Natural as well.
+IP_DYNAMIC = "Dynamic"
+IP_STANDARD = "Standard"
+IP_MOVIE = "Movie"
+IP_ECO = "Eco"
+IP_FILMMAKER = "FilmmakerMode"
+IP_NATURAL = "Natural"
+
+_IP_BY_KEY = {
+    KEY_DYNAMIC: IP_DYNAMIC,
+    KEY_STANDARD: IP_STANDARD,
+    KEY_MOVIE: IP_MOVIE,
+    KEY_ECO: IP_ECO,
+}
+_IP_VALUES = frozenset(
+    (IP_DYNAMIC, IP_STANDARD, IP_MOVIE, IP_ECO, IP_FILMMAKER, IP_NATURAL)
+)
+
+_IP_NATURAL_PREFIXES = ("natur", "prirod", "přiroz", "natuur", "luonno")
+
+
+def picture_mode_ip_value(display_name: str, mode_id: str = "") -> str | None:
+    """Return the IP Control ``pictureModeControl`` value for a picture mode.
+
+    Accepts the SmartThings id (``modeMovie``), a localized display name
+    (``Cinéma``), or an IP Control value verbatim (``StandardHDR``), which is
+    passed through so a value read back from the TV can be written back as is.
+    Returns None when the mode cannot be named safely.
+    """
+    raw = display_name.strip()
+    if not raw:
+        return None
+    # Verbatim IP Control values pass through, including the HDR variants the
+    # getter reports ("StandardHDR"), which have no other handle.
+    if raw in _IP_VALUES or (raw.endswith("HDR") and raw[:-3] in _IP_VALUES):
+        return raw
+
+    name = _normalise(raw)
+    if "filmmaker" in name or _normalise(mode_id) == "modefilmmaker":
+        return IP_FILMMAKER
+    if name.startswith(_IP_NATURAL_PREFIXES) or _normalise(mode_id) == "modenatural":
+        return IP_NATURAL
+    key = picture_mode_ws_key(raw, mode_id)
+    if key is None:
+        return None
+    return _IP_BY_KEY.get(key)

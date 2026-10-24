@@ -469,7 +469,7 @@ The **Requires** column below says what each one needs.
 | `media_player.<tv_name>` | Media Player | — | Main TV control entity |
 | `remote.<tv_name>` | Remote | — | Send remote key sequences |
 | `switch.<tv_name>_power` | Switch | — | Power the TV on/off (uses SmartThings when configured, WebSocket/WOL otherwise) |
-| `select.<tv_name>_picture_mode` | Select | SmartThings | Change picture mode (Standard, Movie, etc.) |
+| `select.<tv_name>_picture_mode` | Select | SmartThings **or** IP Control | Change picture mode (Standard, Movie, etc.). With SmartThings the options are the TV's per-input list; without it, IP Control's `pictureModeControl` offers the TV's internal names (`Dynamic`, `Standard`, `Eco`, `Movie`, `FilmmakerMode`, plus whatever the TV reports, e.g. `StandardHDR`) on models that implement it — verified on a 2026 S95H, absent on the 2024 Frame |
 | `select.<tv_name>_speaker_select` | Select | SmartThings **or** IP Control | Audio output — TV speaker, external, or Q-Symphony when a compatible soundbar is paired |
 | `select.<tv_name>_color_tone` | Select | **IP Control** | Colour tone / white balance preset |
 | `number.<tv_name>_backlight` | Number | **IP Control** | Panel backlight level |
@@ -1308,10 +1308,7 @@ AdGuard Home or a router blocklist catching Samsung's cloud endpoints as
 3. **Power-cycle the TV at the mains** — a standby toggle is not enough, the
    cloud connection is only re-established on a cold boot.
 
-Picture mode also has a local fallback: a WebSocket remote key is sent straight
-to the TV alongside the cloud command, which works on TVs that honour those
-keys regardless of SmartThings. `FILMMAKER MODE` and `Natural` have no
-dedicated key and are cloud-only.
+Picture mode is set locally first when IP Control is paired: `pictureModeControl` applies it in one call on models that implement it (a 2026 S95H does; the 2024 Frame answers `-32601` and falls through). After that comes the SmartThings command, and as a last resort a WebSocket remote key is sent straight to the TV, which works on TVs that honour those keys regardless of SmartThings. `FILMMAKER MODE` and `Natural` have no dedicated key, so without IP Control they are cloud-only.
 
 ### Frame Art services not working
 

@@ -125,7 +125,7 @@ when calling each method with only the `AccessToken` (no extra params):
 | `channelUpDnControl` | ⚠️ needs param | `control` ∈ `channelUp` / `channelDn` | `control` | Relative channel. |
 | `directVolumeControl` | ✅ | `volume` (0–100) | `volume` | Absolute volume. **Measured working on two Frame generations.** A 2023 QE32LS03CBUXXN (`23_KSUE_FTV_T09`, fw `T-KSU2ECDEUC-0090-2230.0`) answered the getter with `{"volume": 11}` in normal viewing, matching its volume sensor; the 2025 QN55LS03FAFXZA decompile declares `volume` int `0..100` and live-accepted the full range; a 2013 UE27F6000 accepted 50/60/80/100 ([#238](https://github.com/TheFab21/ha-samsungtv-smart/pull/238)). The earlier "not implemented on Frame 2024" entry was a `-32601` whose **display mode was not recorded**, and this method sits in the none-ambient dispatch map, which answers `-32601` while art/ambient is on screen — so treat `-32601` here as a mode, not a model. Whether a 2024 panel genuinely differs is still unmeasured. |
 | `inputSourceControl` | ❌ | `inputSource` | — | **Not implemented on Frame 2024.** Read-only via `getTVStates.inputSource`. To set input on a Frame: WebSocket `KEY_HDMIx` or SmartThings. |
-| `pictureModeControl` | ❌ | `pictureMode` | — | Read-only via `getTVStates.pictureMode` on Frame 2024. |
+| `pictureModeControl` | ❌ on Frame 2024 / ✅ on S95H 2026 | `pictureMode` | `pictureMode` | **Model-dependent.** `-32601` on the Frame 2024 (read-only there via `getTVStates.pictureMode`). A 2026 QD-OLED (TQ65S95HFTXXC, Tizen 10) implements getter and setter: `Dynamic`, `Standard`, `Eco`, `Movie`, `FilmmakerMode` all accepted and echoed; `Natural`, `Filmmaker`, `FILMMAKER MODE` refused with `-32002` (unknown name, not a mode gate). The getter reports HDR variants (`StandardHDR`) while HDR content plays. Internal names, the same in every menu language. |
 | `pictureSizeControl` | ❌ | `pictureSize` | — | Read-only via `getTVStates.pictureSize`. |
 | `soundModeControl` | ❌ | `soundMode` | — | Read-only via `getTVStates.soundMode`. |
 | `speakerSelectControl` | ✅ | `speakerSelect` | `speakerSelect` | **Writable** (earlier "read-only" was wrong). Get with no params → capitalized value (`Internal`/`External`), unlike lowercase `getTVStates.speakerSelect`. Set accepts `Internal`, `AudioOut/Optical`; bare `External` is rejected — use `externalSpeakerControl`. |
@@ -328,6 +328,7 @@ Several methods map directly onto current pain points:
   SmartThings.
 - Set picture mode / picture size / sound mode / speaker / picture levels — all
   `-32601`. Read-only via `getTVStates`/`getVideoStates`. Use SmartThings for setting.
+  Picture mode is the exception on newer sets: see the `pictureModeControl` row.
 - ~~Set absolute volume (`directVolumeControl` → not found).~~ **Retracted**: the
   2025 Frame firmware declares and accepts `0..100`, and the original `-32601`
   has no recorded display mode. See the `directVolumeControl` row above.

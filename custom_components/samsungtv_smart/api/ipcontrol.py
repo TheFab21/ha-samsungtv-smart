@@ -148,6 +148,13 @@ def _host_lock(host: str) -> _HostGate:
 DEFAULT_IP_CONTROL_PORT = 1516
 JSONRPC_VERSION = "2.0"
 COLOR_TONE_OPTIONS = ("Cool", "Standard", "Warm1", "Warm2")
+# pictureModeControl values accepted by a 2026 QD-OLED (TQ65S95H, Tizen 10).
+# These are the TV's internal names, the same in every menu language: the
+# French menu shows "Cinéma" for "Movie". The getter reports HDR variants such
+# as "StandardHDR" while HDR content plays; the select learns any value it
+# reads back and offers it alongside these. "Natural" is refused by that set
+# and is left out; a TV that reports it gets it added the same way.
+PICTURE_MODE_OPTIONS = ("Dynamic", "Standard", "Eco", "Movie", "FilmmakerMode")
 # speakerSelectControl public values (verified on Frame 2024/2025). "External"
 # is REPORTED by the getter when an external device (e.g. HDMI-eARC receiver)
 # is active, but SELECTING a specific external device goes through
@@ -672,6 +679,36 @@ class SamsungIPControl:
             "FWVersion": str(result.get("FWVersion", "")),
             "serialNumber": str(result.get("serialNumber", "")),
         }
+
+    async def async_get_picture_mode(self) -> str:
+        """Return the current picture mode name via ``pictureModeControl``.
+
+        The value is the TV's internal English name (``Standard``, ``Movie``,
+        ``FilmmakerMode``, ``StandardHDR``, ...), not the localized menu label.
+        Models that do not implement the method answer ``-32601`` (raised as
+        :class:`SamsungIPControlUnsupportedError`); the 2024 Frame is one.
+        """
+        result = await self._async_request("pictureModeControl")
+        value = result.get("pictureMode")
+        if not isinstance(value, str) or not value:
+            raise SamsungIPControlError(f"no pictureMode in response: {result!r}")
+        return value
+
+    async def async_set_picture_mode(self, value: str) -> str:
+        """Set the picture mode via ``pictureModeControl`` and return the echo.
+
+        ``value`` is the TV's internal name (see :data:`PICTURE_MODE_OPTIONS`).
+        A name the TV does not know for the current input answers ``-32002``,
+        which here means "no such mode", not a picture-mode gate — the method
+        is deliberately not in :data:`PICTURE_WRITE_METHODS`.
+        """
+        if not isinstance(value, str) or not value:
+            raise SamsungIPControlError("picture mode must not be empty")
+        result = await self._async_request("pictureModeControl", {"pictureMode": value})
+        response_value = result.get("pictureMode", value)
+        if not isinstance(response_value, str) or not response_value:
+            raise SamsungIPControlError(f"invalid pictureMode response: {result!r}")
+        return response_value
 
     async def async_set_input_source(self, value: str) -> str:
         """Select an input source via local IP Control."""
