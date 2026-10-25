@@ -78,6 +78,15 @@ class CallerTest(unittest.TestCase):
     def test_the_ws_key_is_still_sent_on_the_fallback_path(self):
         self.assertIn("await self.async_send_command(ws_key)", self.block)
 
+    def test_a_superseded_request_sends_no_ws_key(self):
+        # Two quick selections overlap while SmartThings verifies the first;
+        # the older one must not fire its key over the newer mode.
+        guard = self.block.index("if seq != self._picture_mode_seq:")
+        self.assertLess(self.block.index("self._picture_mode_seq += 1"), guard)
+        self.assertLess(
+            guard, self.block.index("await self.async_send_command(ws_key)")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

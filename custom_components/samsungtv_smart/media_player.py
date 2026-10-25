@@ -993,6 +993,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._st_auth_error_count = 0
         self._st_last_exc = None
         self._st_sources_loaded = False
+        # Bumped by every select_picture_mode call, so an older call does not
+        # fire its WS-key fallback after a newer one took over.
+        self._picture_mode_seq = 0
         # SmartThings poll throttling: the local WebSocket is the primary state
         # source; SmartThings is only polled for cloud-only data at a slower
         # cadence (configurable when ON, fixed keepalive when OFF).
@@ -4530,6 +4533,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             )
             return
 
+        self._picture_mode_seq += 1
+        seq = self._picture_mode_seq
+
         applied = False
         if self._st:
             try:
@@ -4541,6 +4547,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._log.debug(
                 "Picture mode '%s' verified applied via SmartThings; "
                 "not sending the WS key as well",
+                picture_mode,
+            )
+            return
+
+        if seq != self._picture_mode_seq:
+            # A newer selection arrived while SmartThings was verifying this
+            # one; its own call decides about the key.
+            self._log.debug(
+                "Picture mode '%s' superseded by a newer request; not sending "
+                "the WS key",
                 picture_mode,
             )
             return
