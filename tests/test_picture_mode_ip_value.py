@@ -1,8 +1,14 @@
-"""Tests for the picture mode -> IP Control pictureModeControl value resolution."""
+"""Picture mode -> IP Control ``pictureModeControl`` value.
+
+The TV takes OCF names — the SmartThings ids without "mode" — which are the
+same in every menu language. They come from the id whenever one is known;
+only the untranslated "FILMMAKER MODE" and the four remote-key modes are ever
+read from a label.
+"""
 
 import importlib.util
-import unittest
 from pathlib import Path
+import unittest
 
 # Loaded straight from its file, like test_picture_mode_keys: the module is pure
 # standard library and importing it through the package would pull in the whole
@@ -17,93 +23,97 @@ _spec = importlib.util.spec_from_file_location("picture_mode_keys", _MODULE_PATH
 _pmk = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_pmk)
 
-picture_mode_ip_value = _pmk.picture_mode_ip_value
-IP_DYNAMIC = _pmk.IP_DYNAMIC
-IP_STANDARD = _pmk.IP_STANDARD
-IP_MOVIE = _pmk.IP_MOVIE
-IP_ECO = _pmk.IP_ECO
-IP_FILMMAKER = _pmk.IP_FILMMAKER
-IP_NATURAL = _pmk.IP_NATURAL
+ip_value = _pmk.picture_mode_ip_value
+ip_base = _pmk.picture_mode_ip_base
+ip_variant = _pmk.picture_mode_ip_variant
+slug = _pmk.picture_mode_slug
+
+
+class TestSmartThingsId(unittest.TestCase):
+    """The id wins, whatever the label says."""
+
+    def test_the_mode_prefix_is_stripped(self):
+        for mode_id, expected in (
+            ("modeDynamic", "Dynamic"),
+            ("modeMovie", "Movie"),
+            ("modeFilmmakerMode", "FilmmakerMode"),
+            ("modeNatural", "Natural"),
+            # The 2018 set of #206 names its Dynamisk mode this way; it is a
+            # predefined OCF value, so it is sent as is.
+            ("modeEntertainment", "Entertainment"),
+        ):
+            with self.subTest(mode_id=mode_id):
+                self.assertEqual(ip_value("anything", mode_id), expected)
+
+    def test_a_label_in_any_language_follows_the_id(self):
+        self.assertEqual(ip_value("Cinéma", "modeMovie"), "Movie")
+        self.assertEqual(ip_value("Naturel", "modeNatural"), "Natural")
 
 
 class TestVerbatim(unittest.TestCase):
-    """IP Control's own values pass through untouched."""
+    """OCF names, their option keys and hand-typed ids pass through."""
 
-    def test_known_values(self):
-        for value in (
-            IP_DYNAMIC,
-            IP_STANDARD,
-            IP_MOVIE,
-            IP_ECO,
-            IP_FILMMAKER,
-            IP_NATURAL,
-        ):
+    def test_ocf_names_and_variants(self):
+        for value in ("Dynamic", "Eco", "FilmmakerMode", "CAL-DAY", "StandardHDR"):
             with self.subTest(value=value):
-                self.assertEqual(picture_mode_ip_value(value), value)
+                self.assertEqual(ip_value(value), value)
 
-    def test_hdr_variants_read_back_from_the_tv(self):
-        # The getter reports "StandardHDR" while HDR content plays; the select
-        # must be able to write that back as is.
-        self.assertEqual(picture_mode_ip_value("StandardHDR"), "StandardHDR")
-        self.assertEqual(picture_mode_ip_value("MovieHDR"), "MovieHDR")
+    def test_option_keys(self):
+        self.assertEqual(ip_value("filmmaker_mode"), "FilmmakerMode")
+        self.assertEqual(ip_value("movie"), "Movie")
+        self.assertEqual(ip_value("cal_night"), "CAL-NIGHT")
 
-    def test_unknown_camel_case_is_not_passed_through(self):
-        # Only the known vocabulary is verbatim; a stray localized name that
-        # happens to be ASCII must still go through the name rules.
-        self.assertEqual(picture_mode_ip_value("Dynamique"), IP_DYNAMIC)
-        self.assertIsNone(picture_mode_ip_value("GameHDR"))
+    def test_a_typed_smartthings_id(self):
+        self.assertEqual(ip_value("modeFilmmakerMode"), "FilmmakerMode")
 
 
-class TestSmartThingsIds(unittest.TestCase):
-    """The SmartThings mode id wins whenever one is known."""
+class TestLabels(unittest.TestCase):
+    """Labels only where they cannot be wrong."""
 
-    def test_ids_resolve(self):
-        for mode_id, expected in (
-            ("modeDynamic", IP_DYNAMIC),
-            ("modeStandard", IP_STANDARD),
-            ("modeMovie", IP_MOVIE),
-            ("modeEco", IP_ECO),
-            ("modeFilmmaker", IP_FILMMAKER),
-            ("modeNatural", IP_NATURAL),
-        ):
-            with self.subTest(mode_id=mode_id):
-                self.assertEqual(picture_mode_ip_value("whatever", mode_id), expected)
+    def test_filmmaker_is_not_translated_by_samsung(self):
+        for name in ("FILMMAKER MODE", "Filmmaker Mode", "filmmaker"):
+            with self.subTest(name=name):
+                self.assertEqual(ip_value(name), "FilmmakerMode")
 
-
-class TestLocalisedNames(unittest.TestCase):
-    """Menu labels in other languages, as the SmartThings select hands them over."""
-
-    def test_names(self):
+    def test_the_four_remote_key_modes(self):
         cases = {
-            IP_DYNAMIC: ["Dynamic", "Dynamique", "Dynamisk", "Dynamický"],
-            IP_STANDARD: ["Standard", "Estándar", "Štandardný"],
-            IP_MOVIE: ["Movie", "Cinéma", "Film", "Película"],
-            IP_ECO: ["Eco", "Éco", "Öko"],
-            IP_FILMMAKER: ["FILMMAKER MODE", "Filmmaker Mode", "filmmaker"],
-            IP_NATURAL: ["Natural", "Naturel", "Natürlich", "Naturale", "Prirodzený"],
+            "Dynamic": ["Dynamique", "Dynamisch", "Dinamica"],
+            "Standard": ["Estándar", "Standaard"],
+            "Movie": ["Cinéma", "Película", "Film"],
+            "Eco": ["Éco", "Öko"],
         }
         for expected, names in cases.items():
             for name in names:
                 with self.subTest(name=name):
-                    self.assertEqual(picture_mode_ip_value(name), expected)
+                    self.assertEqual(ip_value(name), expected)
 
-    def test_filmmaker_beats_movie(self):
-        # "Filmmaker" contains "film": it must never resolve to Movie.
-        self.assertEqual(picture_mode_ip_value("FILMMAKER MODE"), IP_FILMMAKER)
-
-    def test_natural_is_not_movie(self):
-        # The WS resolver maps English "Natural" to the Movie key for legacy
-        # reasons; IP Control has a real Natural value, so it must not inherit that.
-        self.assertEqual(picture_mode_ip_value("Natural"), IP_NATURAL)
-
-
-class TestRefusals(unittest.TestCase):
-    """Nothing is sent when the mode cannot be named."""
-
-    def test_unknown_names(self):
-        for name in ("", "   ", "Ambient", "Game", "Sports"):
+    def test_no_guess_without_an_id(self):
+        # A translated Natural has no remote-key rule and is not guessed.
+        for name in ("", "   ", "Naturel", "Natürlich", "Game", "Ambient"):
             with self.subTest(name=name):
-                self.assertIsNone(picture_mode_ip_value(name))
+                self.assertIsNone(ip_value(name))
+
+
+class TestVariantsAndKeys(unittest.TestCase):
+    def test_base_of_a_variant(self):
+        self.assertEqual(ip_base("StandardHDR"), "Standard")
+        self.assertEqual(ip_base("FilmmakerModeHDR"), "FilmmakerMode")
+        self.assertEqual(ip_base("Movie"), "Movie")
+        # Not a known mode: left alone rather than cut at a guessed suffix.
+        self.assertEqual(ip_base("GamePCHDR"), "GamePCHDR")
+
+    def test_variant_retry_follows_what_the_tv_reports(self):
+        self.assertEqual(ip_variant("Movie", "StandardHDR"), "MovieHDR")
+        self.assertIsNone(ip_variant("Movie", "Standard"))
+        self.assertIsNone(ip_variant("Movie", None))
+        self.assertIsNone(ip_variant("MovieHDR", "StandardHDR"))
+
+    def test_option_keys_are_valid_translation_keys(self):
+        for value in _pmk.IP_PICTURE_MODES:
+            with self.subTest(value=value):
+                self.assertRegex(slug(value), r"^[a-z0-9_]+$")
+        self.assertEqual(slug("FilmmakerMode"), "filmmaker_mode")
+        self.assertEqual(slug("CAL-DAY"), "cal_day")
 
 
 if __name__ == "__main__":

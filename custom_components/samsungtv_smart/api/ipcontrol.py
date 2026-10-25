@@ -148,13 +148,13 @@ def _host_lock(host: str) -> _HostGate:
 DEFAULT_IP_CONTROL_PORT = 1516
 JSONRPC_VERSION = "2.0"
 COLOR_TONE_OPTIONS = ("Cool", "Standard", "Warm1", "Warm2")
-# pictureModeControl values accepted by a 2026 QD-OLED (TQ65S95H, Tizen 10).
-# These are the TV's internal names, the same in every menu language: the
-# French menu shows "Cinéma" for "Movie". The getter reports HDR variants such
-# as "StandardHDR" while HDR content plays; the select learns any value it
-# reads back and offers it alongside these. "Natural" is refused by that set
-# and is left out; a TV that reports it gets it added the same way.
-PICTURE_MODE_OPTIONS = ("Dynamic", "Standard", "Eco", "Movie", "FilmmakerMode")
+# pictureModeControl values offered by default: the TV's OCF names, the same
+# in every menu language (the French menu shows "Cinéma" for "Movie"). Both a
+# Frame 2024 (QE55LS03D) and a 2026 QD-OLED (TQ65S95H) accepted exactly these
+# and refused Natural, Entertainment, Relax, Intelligent and CAL-DAY/NIGHT with
+# -32002. A mode the TV reports that is not listed here is learned by the
+# select; the full predefined set is picture_mode_keys.IP_PICTURE_MODES.
+PICTURE_MODE_OPTIONS = ("Dynamic", "Standard", "Movie", "FilmmakerMode", "Eco")
 # speakerSelectControl public values (verified on Frame 2024/2025). "External"
 # is REPORTED by the getter when an external device (e.g. HDMI-eARC receiver)
 # is active, but SELECTING a specific external device goes through
@@ -681,12 +681,14 @@ class SamsungIPControl:
         }
 
     async def async_get_picture_mode(self) -> str:
-        """Return the current picture mode name via ``pictureModeControl``.
+        """Return the current picture mode via ``pictureModeControl``.
 
-        The value is the TV's internal English name (``Standard``, ``Movie``,
-        ``FilmmakerMode``, ``StandardHDR``, ...), not the localized menu label.
-        Models that do not implement the method answer ``-32601`` (raised as
-        :class:`SamsungIPControlUnsupportedError`); the 2024 Frame is one.
+        The value is the TV's OCF name (``Standard``, ``Movie``,
+        ``FilmmakerMode``, ``StandardHDR`` while HDR content plays), not the
+        translated menu label. The method sits in the firmware's none-ambient
+        dispatch map: it answers ``-32601`` (raised as
+        :class:`SamsungIPControlUnsupportedError`) while art or ambient is on
+        screen, and on models without it.
         """
         result = await self._async_request("pictureModeControl")
         value = result.get("pictureMode")
@@ -694,17 +696,29 @@ class SamsungIPControl:
             raise SamsungIPControlError(f"no pictureMode in response: {result!r}")
         return value
 
-    async def async_set_picture_mode(self, value: str) -> str:
+    async def async_set_picture_mode(
+        self, value: str, fallback: str | None = None
+    ) -> str:
         """Set the picture mode via ``pictureModeControl`` and return the echo.
 
-        ``value`` is the TV's internal name (see :data:`PICTURE_MODE_OPTIONS`).
-        A name the TV does not know for the current input answers ``-32002``,
-        which here means "no such mode", not a picture-mode gate — the method
-        is deliberately not in :data:`PICTURE_WRITE_METHODS`.
+        ``value`` is an OCF name (see :data:`PICTURE_MODE_OPTIONS`). A name the
+        TV does not offer on the current input answers ``-32002`` (raised as
+        :class:`SamsungIPControlModeLockedError`); ``fallback``, when given, is
+        tried once in that case (the HDR variant of the same mode).
         """
         if not isinstance(value, str) or not value:
             raise SamsungIPControlError("picture mode must not be empty")
-        result = await self._async_request("pictureModeControl", {"pictureMode": value})
+        try:
+            result = await self._async_request(
+                "pictureModeControl", {"pictureMode": value}
+            )
+        except SamsungIPControlModeLockedError:
+            if not fallback or fallback == value:
+                raise
+            value = fallback
+            result = await self._async_request(
+                "pictureModeControl", {"pictureMode": value}
+            )
         response_value = result.get("pictureMode", value)
         if not isinstance(response_value, str) or not response_value:
             raise SamsungIPControlError(f"invalid pictureMode response: {result!r}")

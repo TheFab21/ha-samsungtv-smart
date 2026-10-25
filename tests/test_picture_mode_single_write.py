@@ -64,9 +64,18 @@ class CallerTest(unittest.TestCase):
         )
 
     def test_a_verified_apply_stops_before_the_ws_key(self):
-        head = self.block[: self.block.index("mode_id = ")]
+        head = self.block[: self.block.index("ws_key = picture_mode_ws_key(")]
         self.assertIn("if applied:", head)
         self.assertIn("return", head)
+
+    def test_ip_control_goes_first_and_stops_the_chain(self):
+        # pictureModeControl echoes the applied mode: nothing to verify, so a
+        # success returns before SmartThings and the WS key.
+        ip_call = self.block.index("await self._async_ip_control_picture_mode(")
+        self.assertLess(
+            ip_call, self.block.index("async_set_picture_mode(picture_mode)")
+        )
+        self.assertIn("return", self.block[ip_call : ip_call + 120])
 
     def test_only_an_exact_true_counts_as_applied(self):
         # None (unverifiable) must NOT suppress the key.

@@ -1,4 +1,4 @@
-"""Map a picture mode to the remote key that selects it locally.
+"""Map a picture mode to what selects it locally: a remote key, or an IP Control value.
 
 Samsung TVs accept a handful of dedicated remote keys that jump straight to a
 picture mode. That is the only path left when the SmartThings cloud refuses
@@ -33,6 +33,7 @@ none:
 
 from __future__ import annotations
 
+import re
 import unicodedata
 
 KEY_DYNAMIC = "KEY_DYNAMIC"
@@ -101,51 +102,110 @@ def picture_mode_ws_key(display_name: str, mode_id: str = "") -> str | None:
     return None
 
 
-# IP Control ``pictureModeControl`` values, keyed by the WS key of the same
-# mode so the two resolvers share one set of name rules. Unlike the remote
-# keys, IP Control has values for Filmmaker and Natural as well.
-IP_DYNAMIC = "Dynamic"
-IP_STANDARD = "Standard"
-IP_MOVIE = "Movie"
-IP_ECO = "Eco"
-IP_FILMMAKER = "FilmmakerMode"
-IP_NATURAL = "Natural"
+# IP Control ``pictureModeControl`` takes the TV's OCF values: the SmartThings
+# mode ids without their "mode" prefix (modeFilmmakerMode <-> FilmmakerMode,
+# modeEntertainment <-> Entertainment). They are the same in every menu
+# language — the tvcontrol library of an EU Frame 2025 firmware maps each
+# internal mode to an OCF value and, separately, to its translated label — so
+# they are taken from the id whenever one is known, never guessed from a label.
+
+# The firmware's predefined OCF values. A TV accepts the subset it offers on
+# the current input and answers -32002 for the rest: a Frame 2024 (QE55LS03D)
+# and a 2026 S95H both took Dynamic, Standard, Movie, FilmmakerMode and Eco and
+# refused Natural, Entertainment, Relax, Intelligent, CAL-DAY and CAL-NIGHT.
+IP_PICTURE_MODES = (
+    "Dynamic",
+    "Standard",
+    "Natural",
+    "Movie",
+    "FilmmakerMode",
+    "Eco",
+    "Entertainment",
+    "Relax",
+    "Intelligent",
+    "CAL-DAY",
+    "CAL-NIGHT",
+)
+# The getter reports these variants while HDR or PC-classified content plays
+# (StandardHDR, GamePCHDR, ...). Longest first, so "PCHDR" wins over "HDR".
+_IP_VARIANT_SUFFIXES = ("PCHDR", "HDR", "PC")
 
 _IP_BY_KEY = {
-    KEY_DYNAMIC: IP_DYNAMIC,
-    KEY_STANDARD: IP_STANDARD,
-    KEY_MOVIE: IP_MOVIE,
-    KEY_ECO: IP_ECO,
+    KEY_DYNAMIC: "Dynamic",
+    KEY_STANDARD: "Standard",
+    KEY_MOVIE: "Movie",
+    KEY_ECO: "Eco",
 }
-_IP_VALUES = frozenset(
-    (IP_DYNAMIC, IP_STANDARD, IP_MOVIE, IP_ECO, IP_FILMMAKER, IP_NATURAL)
-)
 
-_IP_NATURAL_PREFIXES = ("natur", "prirod", "přiroz", "natuur", "luonno")
+
+def _split_ip_variant(value: str) -> tuple[str, str]:
+    """Split ``StandardHDR`` into ``("Standard", "HDR")``; no suffix -> ``""``."""
+    for suffix in _IP_VARIANT_SUFFIXES:
+        base = value[: -len(suffix)]
+        if value.endswith(suffix) and base in IP_PICTURE_MODES:
+            return base, suffix
+    return value, ""
+
+
+def picture_mode_ip_base(value: str) -> str:
+    """Return the mode behind an HDR / PC variant (``StandardHDR`` -> ``Standard``)."""
+    return _split_ip_variant(value)[0]
+
+
+def picture_mode_ip_variant(value: str, current: str | None) -> str | None:
+    """Return ``value`` with the suffix the TV currently reports, if any.
+
+    While HDR content plays the getter reports e.g. ``StandardHDR``. Whether
+    the setter then wants the plain name or the variant is unmeasured, so the
+    variant is kept as a second try for when the plain name is refused.
+    """
+    if not current or _split_ip_variant(value)[1]:
+        return None
+    suffix = _split_ip_variant(current)[1]
+    return f"{value}{suffix}" if suffix else None
+
+
+def picture_mode_slug(value: str) -> str:
+    """Return the option key of an OCF value (``FilmmakerMode`` -> ``filmmaker_mode``).
+
+    Home Assistant translation keys are lower-case snake case, so the select
+    offers these and translates them; the OCF value is what the TV receives.
+    """
+    snake = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", value)
+    return re.sub(r"[^a-z0-9]+", "_", snake.lower()).strip("_")
+
+
+_IP_BY_SLUG = {picture_mode_slug(value): value for value in IP_PICTURE_MODES}
 
 
 def picture_mode_ip_value(display_name: str, mode_id: str = "") -> str | None:
     """Return the IP Control ``pictureModeControl`` value for a picture mode.
 
-    Accepts the SmartThings id (``modeMovie``), a localized display name
-    (``Cinéma``), or an IP Control value verbatim (``StandardHDR``), which is
-    passed through so a value read back from the TV can be written back as is.
-    Returns None when the mode cannot be named safely.
+    Most reliable first:
+
+    1. the SmartThings id (``modeMovie`` -> ``Movie``), the same in every
+       language;
+    2. an OCF value as is (``Movie``, ``StandardHDR``), its option key
+       (``filmmaker_mode``) or a SmartThings id typed by hand;
+    3. the label: ``FILMMAKER MODE`` is not translated by Samsung, and the four
+       basic modes go through the remote-key name rules above — no second set
+       of per-language rules. Anything else (a translated "Natural", "Game")
+       returns None rather than a guess.
     """
+    if mode_id.startswith("mode") and len(mode_id) > len("mode"):
+        return mode_id[len("mode") :]
+
     raw = display_name.strip()
     if not raw:
         return None
-    # Verbatim IP Control values pass through, including the HDR variants the
-    # getter reports ("StandardHDR"), which have no other handle.
-    if raw in _IP_VALUES or (raw.endswith("HDR") and raw[:-3] in _IP_VALUES):
+    if picture_mode_ip_base(raw) in IP_PICTURE_MODES:
         return raw
+    if raw.lower() in _IP_BY_SLUG:
+        return _IP_BY_SLUG[raw.lower()]
+    if raw.startswith("mode") and raw[len("mode") :] in IP_PICTURE_MODES:
+        return raw[len("mode") :]
 
-    name = _normalise(raw)
-    if "filmmaker" in name or _normalise(mode_id) == "modefilmmaker":
-        return IP_FILMMAKER
-    if name.startswith(_IP_NATURAL_PREFIXES) or _normalise(mode_id) == "modenatural":
-        return IP_NATURAL
-    key = picture_mode_ws_key(raw, mode_id)
-    if key is None:
-        return None
-    return _IP_BY_KEY.get(key)
+    if "filmmaker" in _normalise(raw):
+        return "FilmmakerMode"
+    key = picture_mode_ws_key(raw)
+    return _IP_BY_KEY.get(key) if key else None

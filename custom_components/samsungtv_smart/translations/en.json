@@ -332,6 +332,17 @@
           "off": "Off",
           "always": "Always"
         }
+      },
+      "picture_mode": {
+        "name": "Picture mode",
+        "state": {
+          "dynamic": "Dynamic",
+          "standard": "Standard",
+          "natural": "Natural",
+          "movie": "Movie",
+          "filmmaker_mode": "FILMMAKER MODE",
+          "eco": "Eco"
+        }
       }
     }
   }

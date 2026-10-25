@@ -203,7 +203,12 @@ from .const import (
 )
 from .entity import SamsungTVEntity
 from .logo import LOGO_OPTION_DEFAULT, LocalImageUrl, Logo, LogoOption
-from .picture_mode_keys import picture_mode_ip_value, picture_mode_ws_key
+from .picture_mode_keys import (
+    picture_mode_ip_base,
+    picture_mode_ip_value,
+    picture_mode_ip_variant,
+    picture_mode_ws_key,
+)
 from .token_notify import (
     METHOD_IP_CONTROL,
     METHOD_LOCAL,
@@ -3532,10 +3537,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 data[ATTR_PICTURE_MODE_LIST] = picture_mode_list
         if ATTR_PICTURE_MODE not in data:
             # No SmartThings: the shared getTVStates snapshot carries the
-            # panel's own picture mode, and pictureModeControl takes the
-            # internal names listed in PICTURE_MODE_OPTIONS.
+            # panel's own picture mode as an OCF name (an HDR variant shown as
+            # its mode), and pictureModeControl takes the names listed in
+            # PICTURE_MODE_OPTIONS — the same in every menu language.
             if local_mode := self._get_ip_control_picture_mode():
-                data[ATTR_PICTURE_MODE] = local_mode
+                data[ATTR_PICTURE_MODE] = picture_mode_ip_base(local_mode)
                 data[ATTR_PICTURE_MODE_LIST] = list(PICTURE_MODE_OPTIONS)
 
         # Add Frame Art last result if available
@@ -4173,7 +4179,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return False
 
         try:
-            applied = await client.async_set_picture_mode(ip_value)
+            applied = await client.async_set_picture_mode(
+                ip_value,
+                picture_mode_ip_variant(ip_value, self._get_ip_control_picture_mode()),
+            )
         except SamsungIPControlError as ex:
             self._log.debug(
                 "IP Control picture mode %s not applied (%s); trying the "
@@ -4621,9 +4630,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             mode_id = self._st.picture_mode_map.get(picture_mode, "")
 
         # Local first: pictureModeControl sets the mode in one round trip and
-        # echoes the applied value, with no cloud and no per-input blocking.
-        # Not every model has it (the 2024 Frame answers -32601), so a refusal
-        # falls through to the SmartThings/WS chain unchanged.
+        # echoes the applied value, with no cloud lag to verify against. A
+        # refusal — a model without the method, or a mode the current input
+        # does not offer — falls through to the SmartThings/WS chain unchanged.
         if await self._async_ip_control_picture_mode(picture_mode, mode_id):
             return
 
