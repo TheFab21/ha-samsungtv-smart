@@ -72,12 +72,16 @@ class _STLoggerAdapter(logging.LoggerAdapter):
 API_BASEURL = "https://api.smartthings.com/v1"
 API_DEVICES = f"{API_BASEURL}/devices"
 
-# Seconds to wait after a setPictureMode + refresh before reading the mode
-# back to check the TV actually applied it. Long enough for the refresh to
-# propagate a fresh panel read to the cloud in the common case, short enough
-# that a wrongly-unconfirmed retry (a harmless duplicate send of the same
-# mode via the other capability) doesn't feel laggy.
-PICTURE_MODE_VERIFY_DELAY = 5
+# After a setPictureMode + refresh, the mode is read back every
+# PICTURE_MODE_VERIFY_INTERVAL seconds until it matches, for at most
+# PICTURE_MODE_VERIFY_TIMEOUT seconds. The cloud's copy of the panel lags by a
+# variable amount: on a Frame 2024 (QE55LS03D) it still showed the previous
+# mode 6.6 s after an accepted send the panel had already applied, and caught
+# up a few seconds later. A single read at 5 s took that lag for a refusal and
+# sent the same mode again through the next variant, which the TV answers on
+# screen with "function not available".
+PICTURE_MODE_VERIFY_INTERVAL = 3
+PICTURE_MODE_VERIFY_TIMEOUT = 15
 
 # Device types
 DEVICE_TYPE_OCF = "OCF"
@@ -158,6 +162,10 @@ class SmartThingsTV:
         # Seeded from persisted entry data at startup; tried first on every
         # change, with the other capability kept as fallback.
         self._verified_picture_mode_capability: str | None = None
+        # Bumped by every async_set_picture_mode call: an older call that sees
+        # a newer number stops instead of verifying against, or re-sending
+        # over, the mode the newer call asked for.
+        self._picture_mode_seq = 0
         # Optional callback (set by the media_player) invoked with the verified
         # capability name so it can be persisted across HA restarts.
         self.picture_mode_capability_persist_cb: Callable[[str], None] | None = None
@@ -1231,9 +1239,14 @@ class SmartThingsTV:
         ``custom.picturemode`` under self-published OAuth app clients (the
         official app / a PAT actuate the same panel fine, issue #116). So
         after each accepted send the mode is read back, and if the TV did
-        not apply it the other capability is tried too. A redundant send of
-        the same target mode is harmless.
+        not apply it the other capability is tried too — but only once the
+        read-back has had time to catch up (see _async_verify_picture_mode):
+        a redundant send of a mode the panel already applied is not harmless,
+        the TV answers it on screen with "function not available".
         """
+        self._picture_mode_seq += 1
+        seq = self._picture_mode_seq
+
         if self._state != STStatus.STATE_ON:
             self._log.debug(
                 "Cannot set picture mode: TV state is %s (not ON)", self._state
@@ -1301,6 +1314,13 @@ class SmartThingsTV:
         for capability, form in attempts:
             if capability in unsupported:
                 continue
+            if seq != self._picture_mode_seq:
+                self._log.debug(
+                    "Picture mode '%s' superseded by a newer request; not "
+                    "sending further variants",
+                    mode,
+                )
+                return None
             argument = forms[form]
             try:
                 await self._send_rest_command(
@@ -1343,6 +1363,9 @@ class SmartThingsTV:
                 form,
                 argument,
             )
+            # Whether an earlier variant of this call was accepted too: if so,
+            # a match now cannot tell which of the two the panel applied.
+            sent_before = any_sent
             any_sent = True
             self._picture_mode = mode
 
@@ -1356,11 +1379,14 @@ class SmartThingsTV:
             # Read the mode back: COMPLETED does not guarantee the panel
             # applied it (see docstring). None = could not verify — assume
             # applied rather than blind-firing the remaining attempts.
-            applied = await self._async_verify_picture_mode(mode, mode_id)
+            applied = await self._async_verify_picture_mode(mode, mode_id, seq)
             if applied:
                 # Confirmed on the panel: remember this (capability, form) so
                 # later changes go straight through (persisted across restarts).
-                self._remember_picture_mode_capability(f"{capability}|{form}")
+                # Not when an earlier variant was accepted as well — it may be
+                # the one that applied, late.
+                if not sent_before:
+                    self._remember_picture_mode_capability(f"{capability}|{form}")
                 return True
             if applied is None:
                 return None
@@ -1413,20 +1439,50 @@ class SmartThingsTV:
             except Exception as err:  # pylint: disable=broad-except
                 self._log.debug("Could not persist picture mode capability: %s", err)
 
-    async def _async_verify_picture_mode(self, mode: str, mode_id: str) -> bool | None:
+    async def _async_verify_picture_mode(
+        self, mode: str, mode_id: str, seq: int | None = None
+    ) -> bool | None:
         """Return whether the TV now reports the requested mode, None if unknown.
 
-        Waits a few seconds after the refresh command so the cloud has a
-        chance to re-read the panel, then GETs the capability status
-        directly. The ``pictureMode`` attribute reports the display NAME on
-        some models (Frame 2024: "Dynamique") and the internal id on others —
-        both representations of the target are accepted (normalized through
-        the name<->id map). Returns None when the read fails — the caller
-        must not treat that as "not applied".
+        Reads the capability status every PICTURE_MODE_VERIFY_INTERVAL seconds
+        after the refresh command, until it matches or
+        PICTURE_MODE_VERIFY_TIMEOUT has passed: the cloud catches up with the
+        panel after a variable delay. Returns False only when the TV answered
+        and never reported the mode, None when no read succeeded or a newer
+        request (``seq``) took over — the caller must not treat that as "not
+        applied".
         """
         if not self._device_id or not self._session:
             return None
-        await asyncio.sleep(PICTURE_MODE_VERIFY_DELAY)
+        answered = False
+        waited = 0
+        while waited < PICTURE_MODE_VERIFY_TIMEOUT:
+            await asyncio.sleep(PICTURE_MODE_VERIFY_INTERVAL)
+            waited += PICTURE_MODE_VERIFY_INTERVAL
+            if seq is not None and seq != self._picture_mode_seq:
+                return None
+            raw_mode = await self._async_read_picture_mode()
+            if raw_mode is None:
+                continue
+            answered = True
+            self._log.debug(
+                "Picture mode verify after %ds: TV reports '%s' (wanted '%s' / "
+                "id '%s')",
+                waited,
+                raw_mode,
+                mode,
+                mode_id,
+            )
+            if self._picture_mode_matches(raw_mode, mode, mode_id):
+                return True
+        return False if answered else None
+
+    async def _async_read_picture_mode(self) -> str | None:
+        """GET the picture mode capability status; None when unreadable.
+
+        The ``pictureMode`` attribute reports the display NAME on some models
+        (Frame 2024: "Dynamique") and the internal id on others.
+        """
         capability = self._picture_mode_capability or "samsungvd.pictureMode"
         url = (
             f"{API_DEVICES}/{self._device_id}"
@@ -1449,15 +1505,10 @@ class SmartThingsTV:
         except Exception as err:
             self._log.debug("Picture mode verify read failed: %s", err)
             return None
-        raw_mode = data.get("pictureMode", {}).get("value")
-        if not raw_mode:
-            return None
-        self._log.debug(
-            "Picture mode verify: TV reports '%s' (wanted '%s' / id '%s')",
-            raw_mode,
-            mode,
-            mode_id,
-        )
+        return data.get("pictureMode", {}).get("value") or None
+
+    def _picture_mode_matches(self, raw_mode: str, mode: str, mode_id: str) -> bool:
+        """Whether a reported mode is the target, as a name or as an id."""
         if raw_mode in (mode, mode_id):
             return True
         # Normalize through the map: raw may be a name where we hold the id,
