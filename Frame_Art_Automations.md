@@ -175,7 +175,7 @@ automation:
               data:
                 content_id: '{{ content_ids | random }}'
                 show: true
-                # Only the first pick may wake the TV (8.15.0+); later ones
+                # Only the first pick may wake the TV (8.14.1+); later ones
                 # are skipped unless Art Mode is already on screen.
                 wake: '{{ repeat.first }}'
             - delay:
@@ -189,7 +189,7 @@ Why it is built this way:
   night, and `art_select_image` powers the TV on and switches it to Art Mode
   by default: one pick per interval used to wake a sleeping Frame every hour,
   and to pull a TV out of the programme being watched. The first pick, right
-  after the slideshow is switched on, still wakes it. Needs 8.15.0 — on older
+  after the slideshow is switched on, still wakes it. Needs 8.14.1 — on older
   versions the unknown `wake` key is rejected; wrap the call in an `if` on
   `state_attr('<media_player>', 'art_mode_status') == 'on'` instead.
 - A `{% set %}` inside `{% if %}` does not survive the block in Jinja, hence
