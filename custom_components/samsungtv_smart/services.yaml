@@ -144,6 +144,17 @@ art_select_image:
       default: true
       selector:
         boolean:
+    wake:
+      name: Wake the TV
+      description: >-
+        If true (default), power the TV on and switch it to Art Mode first. If
+        false, only change the artwork while Art Mode is already on screen, and
+        do nothing otherwise — for slideshow loops that keep running while the
+        TV is off.
+      required: false
+      default: true
+      selector:
+        boolean:
 
 art_upload:
   name: Upload Artwork

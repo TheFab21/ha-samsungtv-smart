@@ -112,6 +112,7 @@ from .const import (
     ATTR_SHUFFLE,
     ATTR_STATUS,
     ATTR_TEXT,
+    ATTR_WAKE,
     AUTH_METHOD_OAUTH,
     AUTH_METHOD_ST_ENTRY,
     CONF_APP_LAUNCH_METHOD,
@@ -462,6 +463,7 @@ async def async_setup_entry(
             vol.Required(ATTR_CONTENT_ID): cv.string,
             vol.Optional(ATTR_CATEGORY_ID): cv.string,
             vol.Optional(ATTR_SHOW, default=True): cv.boolean,
+            vol.Optional(ATTR_WAKE, default=True): cv.boolean,
         },
         "async_art_select_image",
         supports_response=SupportsResponse.OPTIONAL,
@@ -5378,11 +5380,25 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         content_id: str,
         category_id: str | None = None,
         show: bool = True,
+        wake: bool = True,
     ) -> dict:
-        """Select and display a piece of artwork."""
+        """Select and display a piece of artwork.
+
+        By default the TV is powered on and switched to Art Mode first. With
+        ``wake`` false the artwork is only changed while Art Mode is already
+        on screen: a slideshow loop running all night otherwise powered a
+        sleeping Frame back on at every interval.
+        """
         if not await self._ensure_frame_tv_check():
             self._log.warning("Frame TV art mode is not supported on this device")
             return {"error": "Frame TV not supported"}
+
+        if not wake and self._art_mode_is_on() is not True:
+            self._log.debug(
+                "Frame Art: not selecting %s — Art Mode is not on and wake is off",
+                content_id,
+            )
+            return {"skipped": True, "content_id": content_id, "reason": "art_mode_off"}
 
         # Ensure TV is on and in Art Mode
         if not await self._ensure_art_mode_ready():
