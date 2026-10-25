@@ -747,7 +747,7 @@ These services require a Samsung **Frame TV** with Art Mode. They are called on 
 | `samsungtv_smart.art_set_artmode` | Enable or disable Art Mode |
 | `samsungtv_smart.art_available` | List all available artworks (optionally filtered by category) |
 | `samsungtv_smart.art_get_current` | Get info about the currently displayed artwork |
-| `samsungtv_smart.art_select_image` | Display a specific artwork by content ID |
+| `samsungtv_smart.art_select_image` | Display a specific artwork by content ID. Powers the TV on into Art Mode first, unless `wake: false` (then only acts while Art Mode is already on) |
 | `samsungtv_smart.art_upload` | Upload a local image to the TV — see [What happens to your image](#what-happens-to-your-image) |
 | `samsungtv_smart.art_upload_batch` | Upload every image in a folder — idempotent re-runs (skips unchanged files) + throttle for large batches + optional perceptual duplicate check |
 | `samsungtv_smart.art_identify` | Identify the current artwork (reverse image search + LLM) and return its metadata. Requires the Art Identification option to be configured |
