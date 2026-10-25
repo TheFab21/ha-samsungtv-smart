@@ -164,7 +164,11 @@
           "toggle_art_mode": "Botón de encendido alterna el modo Arte",
           "st_poll_on_interval": "Intervalo de SmartThings con TV encendida (s)",
           "content_list_interval": "Intervalo de actualización de la lista de obras (s)",
-          "ip_control_poll_interval": "Intervalo de IP Control (s)"
+          "ip_control_poll_interval": "Intervalo de IP Control (s)",
+          "art_exit_source": "Fuente al salir del Art Mode"
+        },
+        "data_description": {
+          "art_exit_source": "Entrada o aplicación a mostrar cuando el Art Mode se desactiva desde Home Assistant (switch Art Mode o art_set_artmode). Dejar vacío para mantener el comportamiento del TV: vuelve a la última fuente, a menudo TV (Samsung TV Plus) en una Frame. No se aplica al salir del Art Mode con el mando."
         }
       },
       "save_exit": {

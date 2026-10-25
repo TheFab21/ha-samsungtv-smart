@@ -363,6 +363,7 @@ After initial setup, click **Configure** on the integration card to access these
 | **Sync turn on/off** | Optional entity to mirror TV power state |
 | **External power entity** | Use an external sensor to determine power state |
 | **Toggle Art Mode** | Toggle Art Mode when turning on a Frame TV that is already in Art Mode |
+| **Source after leaving Art Mode** | Input or app (a name from the source or app list, or an id such as `HDMI1`) to switch to when Art Mode is turned off **from Home Assistant** — the Art Mode switch or `art_set_artmode`. Empty (default): the TV goes back to its last source, which on a Frame is often *TV*, i.e. Samsung TV Plus starting a channel. Not applied when Art Mode is left with the remote, so it never overrides what someone picks by hand |
 | **IP Control poll interval** | How often the local IP Control state is read (5–600 s, default 10). This snapshot carries the input source, picture/sound modes and — on the tuner — the channel number, so it decides how fast those follow a change made with the remote. Local LAN calls, no cloud quota: lower is fine on modern panels, raise it if an older TV is slow to answer |
 | **Ping port** | Port used to detect TV presence |
 | **WS name** | Name shown on the TV when pairing (default: `[Home Assistant]`) |

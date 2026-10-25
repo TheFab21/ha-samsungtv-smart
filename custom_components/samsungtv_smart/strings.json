@@ -210,7 +210,11 @@
           "toggle_art_mode": "Toggle Art Mode on Power",
           "st_poll_on_interval": "SmartThings interval when on (s)",
           "ip_control_poll_interval": "IP Control interval (s)",
-          "content_list_interval": "Art content list refresh interval (s)"
+          "content_list_interval": "Art content list refresh interval (s)",
+          "art_exit_source": "Source after leaving Art Mode"
+        },
+        "data_description": {
+          "art_exit_source": "Input or app to switch to when Art Mode is turned off from Home Assistant (Art Mode switch or art_set_artmode). Leave empty to keep the TV's own behaviour: it goes back to its last source, often TV (Samsung TV Plus) on a Frame. Not applied when Art Mode is left with the remote."
         }
       },
       "save_exit": {

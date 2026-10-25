@@ -164,7 +164,11 @@
           "toggle_art_mode": "Toggle Art Mode on Power",
           "st_poll_on_interval": "Intervalo SmartThings com TV ligada (s)",
           "content_list_interval": "Intervalo de atualização da lista de obras (s)",
-          "ip_control_poll_interval": "Intervalo do IP Control (s)"
+          "ip_control_poll_interval": "Intervalo do IP Control (s)",
+          "art_exit_source": "Fonte ao sair do Art Mode"
+        },
+        "data_description": {
+          "art_exit_source": "Entrada ou app a exibir quando o Art Mode é desativado pelo Home Assistant (switch Art Mode ou art_set_artmode). Deixe vazio para manter o comportamento da TV: ela volta à última fonte, muitas vezes TV (Samsung TV Plus) em uma Frame. Não é aplicado ao sair do Art Mode pelo controle remoto."
         }
       },
       "save_exit": {

@@ -136,6 +136,10 @@ def _constants(*names):
     }
 
 
+# Signals the switch sends (async_dispatcher_send), for the tests to inspect.
+DISPATCHED: list[str] = []
+
+
 def _switch_methods():
     tree = ast.parse(SWITCH_PATH.read_text())
     cls = next(
@@ -165,6 +169,8 @@ def _switch_methods():
         "Any": object,
         "priority_requests": _priority_requests,
         "settle_after_source_switch": _settle_after_source_switch,
+        "async_dispatcher_send": lambda hass, signal: DISPATCHED.append(signal),
+        "SIGNAL_ART_EXITED": "samsungtv_smart_art_exited",
         **_constants(
             "ART_MODE_BROADCAST_VERIFY_WINDOW",
             "ART_MODE_PANEL_READ_BACK_WINDOW",
@@ -379,6 +385,7 @@ class NoIpControlTest(_Base):
     """#290: the only read-back is the TV's own art_mode_changed broadcast."""
 
     async def test_on_off_on_off_within_the_cooldown(self):
+        DISPATCHED.clear()
         sw = _Switch(_ArtChannel(art_mode=False))
         await self.toggles(
             sw,
@@ -391,6 +398,8 @@ class NoIpControlTest(_Base):
         )
         self.assertEqual(sw.refused(), [])
         self.assertEqual(sw._art_api.writes, 4)
+        # Each OFF tells the media player, which applies the art exit source.
+        self.assertEqual(DISPATCHED, ["samsungtv_smart_art_exited_e"] * 2)
         await self.wait(5)  # the last OFF is verified when its broadcast lands
         self.assertIsNone(sw.guard.pending(True))
         self.assertIsNone(sw.guard.pending(False))

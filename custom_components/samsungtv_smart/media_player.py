@@ -118,6 +118,7 @@ from .const import (
     CONF_APP_LAUNCH_METHOD,
     CONF_APP_LIST,
     CONF_APP_LOAD_METHOD,
+    CONF_ART_EXIT_SOURCE,
     CONF_ART_PORT,
     CONF_AUTH_METHOD,
     CONF_CHANNEL_LIST,
@@ -192,6 +193,7 @@ from .const import (
     SERVICE_SEND_TEXT,
     SERVICE_START_HUE_SYNC,
     SERVICE_STOP_HUE_SYNC,
+    SIGNAL_ART_EXITED,
     SIGNAL_CONFIG_ENTITY,
     ST_POLL_OFF_INTERVAL,
     STD_APP_LIST,
@@ -264,6 +266,10 @@ KEYPRESS_MIN_DELAY = 0.2
 # the TV reject it with an on-screen "not available" error (reported by Preston,
 # #40). Mirrors the manual "home, wait, source" workaround.
 SOURCE_WAKE_DELAY = 1.5
+# Seconds between a confirmed Art Mode exit and the switch to the configured
+# art exit source: the art app first returns the panel to its last source, and
+# a key sent in the middle of that hand-over can be dropped.
+ART_EXIT_SOURCE_DELAY = 3
 MAX_ST_ERROR_COUNT = 4
 # Consecutive authorization failures from SmartThings before we treat the
 # device as gone rather than the cloud as flaky, and slow the poll right down.
@@ -1732,6 +1738,15 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass, SIGNAL_CONFIG_ENTITY, self._update_config_options
+            )
+        )
+        # The Art Mode switch reports a confirmed exit so the configured art
+        # exit source can be applied.
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_ART_EXITED}_{self._entry_id}",
+                self._on_art_exited,
             )
         )
 
@@ -4526,12 +4541,41 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Record an input switch, so art-mode writes wait for CEC to settle."""
         self._art_write_guard().note_source_switch()
 
+    @callback
+    def _on_art_exited(self) -> None:
+        """Art Mode was turned off from Home Assistant: apply the exit source."""
+        self.hass.async_create_task(self._async_apply_art_exit_source())
+
+    async def _async_apply_art_exit_source(self) -> None:
+        """Switch to the configured source after Art Mode was turned off.
+
+        Only reached from Home Assistant's own Art Mode off (the switch, or
+        art_set_artmode): an exit made with the remote is somebody choosing
+        what to watch, and is left alone. Empty option: the TV goes back to
+        its last source, which on a Frame is often TV — Samsung TV Plus.
+        """
+        source = str(self._get_option(CONF_ART_EXIT_SOURCE) or "").strip()
+        if not source:
+            return
+        await asyncio.sleep(ART_EXIT_SOURCE_DELAY)
+        self._log.info(
+            "Art Mode turned off: switching to '%s' (art exit source option)", source
+        )
+        # The panel is on — Art Mode was just left — even if the media player
+        # state still reads OFF from Art Mode: going through the turn-on path
+        # here would send a power key to a TV that is already on.
+        await self._async_select_source(source, assume_on=True)
+
     async def async_select_source(self, source):
         """Select input source."""
+        await self._async_select_source(source)
+
+    async def _async_select_source(self, source, *, assume_on: bool = False):
+        """Select input source; ``assume_on`` skips the power-on handling."""
         running_app = DEFAULT_APP
         self._delayed_set_source = None
 
-        if self.state != MediaPlayerState.ON:
+        if not assume_on and self.state != MediaPlayerState.ON:
             if await self._async_turn_on():
                 self._delayed_set_source = source
                 self._delayed_set_source_time = dt_util.utcnow()
@@ -4869,9 +4913,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._art_write_guard(), self._log, "art_set_artmode"
         )
         try:
-            await self._art_api.set_artmode(enabled)
+            applied = await self._art_api.set_artmode(enabled)
             result = {"service": "art_set_artmode", "success": True, "enabled": enabled}
             self._store_art_result(result)
+            if applied and not enabled:
+                self.hass.async_create_task(self._async_apply_art_exit_source())
             return result
         except Exception as ex:
             result = {"service": "art_set_artmode", "error": str(ex)}

@@ -164,7 +164,11 @@
           "toggle_art_mode": "Art módra váltó bekapcsológomb (kizárólag Frame TV esetén)",
           "st_poll_on_interval": "SmartThings időköz bekapcsolt TV-nél (mp)",
           "content_list_interval": "Műalkotáslista frissítési időköze (mp)",
-          "ip_control_poll_interval": "IP Control időköz (mp)"
+          "ip_control_poll_interval": "IP Control időköz (mp)",
+          "art_exit_source": "Forrás az Art Mode elhagyásakor"
+        },
+        "data_description": {
+          "art_exit_source": "Bemenet vagy alkalmazás, amelyre váltani kell, amikor az Art Mode-ot a Home Assistant kapcsolja ki (Art Mode kapcsoló vagy art_set_artmode). Hagyja üresen a TV saját viselkedéséhez: visszatér az utolsó forráshoz, Frame-en gyakran TV (Samsung TV Plus). Távirányítóval történő kilépéskor nem érvényes."
         }
       },
       "save_exit": {

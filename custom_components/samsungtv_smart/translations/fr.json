@@ -209,7 +209,11 @@
           "toggle_art_mode": "Bouton d'alimentation bascule vers le mode Art",
           "st_poll_on_interval": "Intervalle SmartThings, TV allumée (s)",
           "ip_control_poll_interval": "Intervalle IP Control (s)",
-          "content_list_interval": "Intervalle de rafraîchissement de la liste d'œuvres (s)"
+          "content_list_interval": "Intervalle de rafraîchissement de la liste d'œuvres (s)",
+          "art_exit_source": "Source en sortant de l'Art Mode"
+        },
+        "data_description": {
+          "art_exit_source": "Entrée ou application à afficher quand l'Art Mode est désactivé depuis Home Assistant (switch Art Mode ou art_set_artmode). Laisser vide pour garder le comportement du TV : il revient à la dernière source, souvent TV (Samsung TV Plus) sur une Frame. Non appliqué quand on quitte l'Art Mode avec la télécommande."
         }
       },
       "save_exit": {
