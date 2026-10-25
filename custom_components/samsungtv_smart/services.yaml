@@ -8,7 +8,9 @@ select_picture_mode:
     picture_mode:
       name: Picture Mode
       description: Name of the picture mode to switch to. Possible options
-        can be found in the picture_mode_list state attribute.
+        can be found in the picture_mode_list state attribute. Applied over
+        IP Control when paired and the TV supports it, then SmartThings,
+        then a remote key.
       required: true
       example: "Standard"
       selector:

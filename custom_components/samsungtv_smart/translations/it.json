@@ -251,6 +251,17 @@
           "off": "Disattivato",
           "always": "Sempre"
         }
+      },
+      "picture_mode": {
+        "name": "Modalità immagine",
+        "state": {
+          "dynamic": "Dinamica",
+          "standard": "Standard",
+          "natural": "Naturale",
+          "movie": "Film",
+          "filmmaker_mode": "FILMMAKER MODE",
+          "eco": "Eco"
+        }
       }
     },
     "switch": {

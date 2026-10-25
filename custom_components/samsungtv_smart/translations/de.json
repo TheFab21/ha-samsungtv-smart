@@ -50,6 +50,17 @@
           "off": "Aus",
           "always": "Immer"
         }
+      },
+      "picture_mode": {
+        "name": "Bildmodus",
+        "state": {
+          "dynamic": "Dynamisch",
+          "standard": "Standard",
+          "natural": "Natürlich",
+          "movie": "Film",
+          "filmmaker_mode": "FILMMAKER MODE",
+          "eco": "Eco"
+        }
       }
     },
     "switch": {

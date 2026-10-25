@@ -251,6 +251,17 @@
           "off": "Ki",
           "always": "Mindig"
         }
+      },
+      "picture_mode": {
+        "name": "Képmód",
+        "state": {
+          "dynamic": "Dinamikus",
+          "standard": "Normál",
+          "natural": "Természetes",
+          "movie": "Film",
+          "filmmaker_mode": "FILMMAKER MODE",
+          "eco": "Eco"
+        }
       }
     },
     "switch": {
