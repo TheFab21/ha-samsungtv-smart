@@ -177,6 +177,9 @@ CONF_REST_PORT = "rest_port"
 # remote channel's correct 8002, forcing an 8001 -> 8002 re-heal on every
 # restart (observed on 192.168.1.161). Falls back to CONF_PORT when unset.
 CONF_ART_PORT = "art_port"
+# Source (input or app name) to switch to after Art Mode is turned off from
+# Home Assistant. Empty: the TV goes back to its last source, as it always did.
+CONF_ART_EXIT_SOURCE = "art_exit_source"
 CONF_SHOW_CHANNEL_NR = "show_channel_number"
 CONF_SOURCE_LIST = "source_list"
 CONF_SYNC_TURN_OFF = "sync_turn_off"
@@ -341,6 +344,9 @@ ATTR_DELAY = "delay"
 ATTR_ART_PICTURE_MODE = "art_picture_mode"
 
 SIGNAL_CONFIG_ENTITY = f"{DOMAIN}_config"
+# Sent by the Art Mode switch, suffixed with the entry id, once it has turned
+# Art Mode off: the media player then applies CONF_ART_EXIT_SOURCE.
+SIGNAL_ART_EXITED = f"{DOMAIN}_art_exited"
 
 STD_APP_LIST = {
     "org.tizen.browser": {

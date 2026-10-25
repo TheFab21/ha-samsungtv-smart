@@ -23,6 +23,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
@@ -53,6 +54,7 @@ from .const import (
     DATA_CFG,
     DEFAULT_PORT,
     DOMAIN,
+    SIGNAL_ART_EXITED,
     WS_PREFIX,
     ip_control_port,
 )
@@ -1017,6 +1019,11 @@ class FrameArtModeSwitch(SwitchEntity):
                         self._available = True
                         self.async_write_ha_state()
                         self._log.info("Art Mode turned OFF for %s", self._device_name)
+                        # Lets the media player switch to the configured art
+                        # exit source, if any.
+                        async_dispatcher_send(
+                            self._hass, f"{SIGNAL_ART_EXITED}_{self._entry.entry_id}"
+                        )
 
                         # Keep the optimistic state and let the media_player
                         # state-change listener correct it authoritatively once

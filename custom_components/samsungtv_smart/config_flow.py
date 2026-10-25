@@ -43,6 +43,7 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
 )
 
 from . import (
@@ -66,6 +67,7 @@ from .const import (
     CONF_APP_LAUNCH_METHOD,
     CONF_APP_LIST,
     CONF_APP_LOAD_METHOD,
+    CONF_ART_EXIT_SOURCE,
     CONF_ART_IDENTIFY_ENABLE,
     CONF_ART_IDENTIFY_PERSONAL,
     CONF_ART_LLM_API_KEY,
@@ -168,6 +170,7 @@ CONF_AUTH_METHOD_SELECT = "auth_method"
 
 ADVANCED_OPTIONS = [
     CONF_APP_LAUNCH_METHOD,
+    CONF_ART_EXIT_SOURCE,
     CONF_CONTENT_LIST_INTERVAL,
     CONF_DUMP_APPS,
     CONF_EXT_POWER_ENTITY,
@@ -1771,6 +1774,19 @@ class OptionsFlowHandler(OptionsFlow):
             return await self.async_step_menu()
         return self._async_adv_opt_form()
 
+    def _art_exit_source_selector(self) -> SelectSelector | TextSelector:
+        """Sources and apps the user configured, or a free text field."""
+        names = sorted({*(self._source_list or {}), *(self._app_list or {})})
+        if not names:
+            return TextSelector()
+        return SelectSelector(
+            SelectSelectorConfig(
+                options=names,
+                custom_value=True,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
+
     @callback
     def _async_adv_opt_form(self) -> ConfigFlowResult:
         """Return configuration form for advanced options."""
@@ -1810,6 +1826,12 @@ class OptionsFlowHandler(OptionsFlow):
                     CONF_TOGGLE_ART_MODE,
                     default=options.get(CONF_TOGGLE_ART_MODE, False),
                 ): bool,
+                vol.Optional(
+                    CONF_ART_EXIT_SOURCE,
+                    description={
+                        "suggested_value": options.get(CONF_ART_EXIT_SOURCE, "")
+                    },
+                ): self._art_exit_source_selector(),
                 vol.Required(
                     CONF_CONTENT_LIST_INTERVAL,
                     default=options.get(
