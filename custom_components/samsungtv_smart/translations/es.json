@@ -168,7 +168,7 @@
           "art_exit_source": "Fuente al salir del Art Mode"
         },
         "data_description": {
-          "art_exit_source": "Entrada o aplicación a mostrar cuando el Art Mode se desactiva desde Home Assistant (switch Art Mode o art_set_artmode). Dejar vacío para mantener el comportamiento del TV: vuelve a la última fuente, a menudo TV (Samsung TV Plus) en una Frame. No se aplica al salir del Art Mode con el mando."
+          "art_exit_source": "Entrada o aplicación a mostrar cuando el Art Mode se desactiva desde Home Assistant (switch Art Mode o art_set_artmode). Dejar vacío para mantener el comportamiento del TV: vuelve a la última fuente, a menudo TV (Samsung TV Plus) en una Frame. No se aplica al salir del Art Mode con el mando. Necesita una fuente que el TV pueda alcanzar: una lista detectada automáticamente desde SmartThings solo contiene claves ST_, que recurren a la tecla WebSocket equivalente (ST_HDMI3 -> KEY_HDMI3) cuando SmartThings no está disponible. Algunos modelos ignoran las teclas HDMI numeradas; el registro lo indica si el TV no cambió de entrada."
         }
       },
       "save_exit": {

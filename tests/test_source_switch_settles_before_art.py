@@ -216,7 +216,7 @@ def test_waiting_twice_does_not_wait_twice():
 
 class WiringTest(unittest.TestCase):
     def test_selecting_an_input_records_the_switch(self):
-        start = MEDIA_PLAYER.index("    async def async_select_source")
+        start = MEDIA_PLAYER.index("    async def _async_select_source")
         block = MEDIA_PLAYER[start : MEDIA_PLAYER.index("\n    async def ", start + 1)]
         # Both input branches: the display name and the technical id.
         self.assertEqual(block.count("self._note_source_switch()"), 2)
@@ -227,7 +227,7 @@ class WiringTest(unittest.TestCase):
     def test_launching_an_app_does_not_record_a_switch(self):
         # An app launch runs no CEC negotiation, so delaying art mode after
         # one would be a cost with no cause.
-        start = MEDIA_PLAYER.index("    async def async_select_source")
+        start = MEDIA_PLAYER.index("    async def _async_select_source")
         block = MEDIA_PLAYER[start : MEDIA_PLAYER.index("\n    async def ", start + 1)]
         app_branch = block[block.index("elif self._app_list and source in") :]
         self.assertNotIn("_note_source_switch", app_branch)

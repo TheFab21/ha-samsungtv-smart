@@ -168,7 +168,7 @@
           "art_exit_source": "Forrás az Art Mode elhagyásakor"
         },
         "data_description": {
-          "art_exit_source": "Bemenet vagy alkalmazás, amelyre váltani kell, amikor az Art Mode-ot a Home Assistant kapcsolja ki (Art Mode kapcsoló vagy art_set_artmode). Hagyja üresen a TV saját viselkedéséhez: visszatér az utolsó forráshoz, Frame-en gyakran TV (Samsung TV Plus). Távirányítóval történő kilépéskor nem érvényes."
+          "art_exit_source": "Bemenet vagy alkalmazás, amelyre váltani kell, amikor az Art Mode-ot a Home Assistant kapcsolja ki (Art Mode kapcsoló vagy art_set_artmode). Hagyja üresen a TV saját viselkedéséhez: visszatér az utolsó forráshoz, Frame-en gyakran TV (Samsung TV Plus). Távirányítóval történő kilépéskor nem érvényes. Olyan forrás kell, amelyet a TV el tud érni: a SmartThings által automatikusan felderített lista csak ST_ kulcsokat tartalmaz, amelyek a megfelelő WebSocket gombra esnek vissza (ST_HDMI3 -> KEY_HDMI3), ha a SmartThings nem elérhető. Egyes modellek figyelmen kívül hagyják a számozott HDMI gombokat; ilyenkor a napló jelzi, hogy a TV nem váltott bemenetet."
         }
       },
       "save_exit": {

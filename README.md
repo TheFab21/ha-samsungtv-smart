@@ -348,7 +348,7 @@ After initial setup, click **Configure** on the integration card to access these
 
 | Option | Description |
 |---|---|
-| **Source list** | Define custom input sources (JSON: `{"HDMI 1": "KEY_HDMI1", ...}`); on supported IP Control TVs, local sources can use values such as `IP_HDMI1` |
+| **Source list** | Define custom input sources (JSON: `{"HDMI 1": "KEY_HDMI1", ...}`); on supported IP Control TVs, local sources can use values such as `IP_HDMI1`. A list left empty is auto-discovered from SmartThings and then holds `ST_` keys only — see [Which channel a source key uses](#which-channel-a-source-key-uses) |
 | **App list** | Define custom app shortcuts (JSON) |
 | **App load method** | How to load the app list: All, Default, or Disabled |
 | **App launch method** | Standard, Remote, or REST |
@@ -392,6 +392,49 @@ IP Control must be paired and enabled under **Reconfigure → IP Control**.
 
 Support for `inputSourceControl` is model- and firmware-dependent.
 TVs that do not expose this method may return `-32601 "Method not found"`.
+
+#### Which channel a source key uses
+
+The prefix on a source-list value decides the channel, and there is no
+negotiation: `IP_…` goes over local IP Control, `ST_…` over the SmartThings
+cloud, and anything else is sent as a WebSocket key.
+
+That matters because **a source list left empty is auto-discovered from
+SmartThings**, and the discovered list contains `ST_` keys only:
+
+```
+loaded sources list from SmartThings: {'TV': 'ST_TV', 'CINEMA 60': 'ST_HDMI3'}
+```
+
+Until 8.14.3 an unreachable cloud therefore took every source switch with it,
+including the **Source after leaving Art Mode** option, which resolves through
+the same path. Since 8.14.3, a `ST_` key whose cloud is not configured or not
+available falls back to the equivalent **WebSocket key** — `ST_HDMI3` →
+`KEY_HDMI3`, `ST_TV` → `KEY_TV`, and the channel/volume step keys. It is the
+right order of preference now that SmartThings API access is a paid plan: the
+key is local and costs nothing.
+
+Three caveats worth knowing:
+
+- **Only exact equivalents fall back.** `ST_MUTE` / `ST_UNMUTE` ask for a
+  *state* while `KEY_MUTE` toggles, and `ST_VOL<n>`, `ST_CH<n>` and `ST_VD:…`
+  set values no single key expresses. Those still need SmartThings, and say so
+  in the log rather than sending something that only half works.
+- **The numbered HDMI keys are not guaranteed.** `docs/Key_codes.md` lists the
+  generic `KEY_HDMI` but not `KEY_HDMI1`…`KEY_HDMI4`, so whether a model
+  honours them is a per-set question. Because a WebSocket key is
+  fire-and-forget, the integration reads the input back through
+  `getTVStates.inputSource` when IP Control is paired and warns if the TV did
+  not move — so a set that ignores the key is visible in the log instead of
+  failing quietly.
+- **On a Frame, the WebSocket key is the only local option.**
+  `inputSourceControl` is not implemented on Frame 2024, so `IP_HDMI3` answers
+  `-32601` there. Input selection on a Frame is a WebSocket key or SmartThings,
+  nothing else.
+
+**If you want source switching that never needs the cloud**, define the list
+yourself rather than leaving it to discovery: `IP_HDMI1` on a TV that supports
+`inputSourceControl`, `KEY_HDMI1` otherwise.
 
 ---
 ### How control works — and what *App launch method* actually does

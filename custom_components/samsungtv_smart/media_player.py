@@ -270,6 +270,23 @@ SOURCE_WAKE_DELAY = 1.5
 # art exit source: the art app first returns the panel to its last source, and
 # a key sent in the middle of that hand-over can be dropped.
 ART_EXIT_SOURCE_DELAY = 3
+# SmartThings source keys whose WebSocket key does exactly the same thing, for
+# the fallback in _smartthings_keys. Only exact equivalents belong here:
+# ST_MUTE / ST_UNMUTE ask for a STATE while KEY_MUTE toggles, ST_VOL<n> and
+# ST_CH<n> set a value no single key expresses, and an ST_VD: source has no key
+# at all. ST_HDMI<n> -> KEY_HDMI<n> is handled by pattern alongside this map.
+ST_KEY_WS_EQUIVALENT = {
+    "ST_TV": "KEY_TV",
+    "ST_CHUP": "KEY_CHUP",
+    "ST_CHDOWN": "KEY_CHDOWN",
+    "ST_VOLUP": "KEY_VOLUP",
+    "ST_VOLDOWN": "KEY_VOLDOWN",
+}
+# How long the TV is given to act on a fallback input key before its input is
+# read back. The read is the only way to tell a key that worked from one the
+# model ignores: a WebSocket key is fire-and-forget, and KEY_HDMI<n> is NOT in
+# docs/Key_codes.md (only the generic KEY_HDMI is), so it cannot be promised.
+ST_FALLBACK_VERIFY_DELAY = 2.0
 MAX_ST_ERROR_COUNT = 4
 # Consecutive authorization failures from SmartThings before we treat the
 # device as gone rather than the cloud as flaky, and slow the poll right down.
@@ -2550,18 +2567,96 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._source = found_source
         return self._source
 
+    @staticmethod
+    def _ws_key_for_st_key(source_key: str) -> str | None:
+        """The WebSocket key that does the same as this ST_ key, if any."""
+        if direct := ST_KEY_WS_EQUIVALENT.get(source_key):
+            return direct
+        suffix = source_key.removeprefix("ST_HDMI")
+        if suffix != source_key and suffix.isdigit():
+            return f"KEY_HDMI{suffix}"
+        return None
+
+    @staticmethod
+    def _input_for_ws_key(ws_key: str) -> str | None:
+        """The getTVStates.inputSource value this key should produce, if any."""
+        if ws_key == "KEY_TV":
+            return "TV"
+        suffix = ws_key.removeprefix("KEY_HDMI")
+        if suffix != ws_key and suffix.isdigit():
+            return f"HDMI{suffix}"
+        return None
+
+    async def _async_st_key_over_ws(self, source_key: str, reason: str) -> bool:
+        """Send a ST_ key's WebSocket equivalent when SmartThings cannot be used.
+
+        The art exit source option (and every other source switch) resolves to
+        whatever key the source list holds, and a list auto-discovered from
+        SmartThings holds only ST_ keys. The cloud being unreachable therefore
+        took the whole feature down with it, which is the wrong order of
+        preference now that SmartThings API access is a paid plan: the key goes
+        over the LAN, costs nothing, and on a Frame is the ONLY local way to
+        pick an input (IP Control's inputSourceControl is not implemented
+        there — see IP_Control_Protocol_Reference.md).
+
+        Nothing is promised about the key landing. A WebSocket key is
+        fire-and-forget, so an input key is read back through IP Control when
+        that is available; a model that ignores KEY_HDMI<n> then says so in the
+        log instead of failing silently.
+        """
+        ws_key = self._ws_key_for_st_key(source_key)
+        if ws_key is None:
+            self._log.warning(
+                "SmartThings %s. Command not sent: %s (no WebSocket key does "
+                "the same thing)",
+                reason,
+                source_key,
+            )
+            return False
+
+        self._log.info(
+            "SmartThings %s; sending %s over the WebSocket instead of %s",
+            reason,
+            ws_key,
+            source_key,
+        )
+        if not await self.async_send_command(ws_key):
+            self._log.warning("Could not send %s over the WebSocket", ws_key)
+            return False
+
+        expected = self._input_for_ws_key(ws_key)
+        client = self._get_ip_control_client()
+        if expected is None or client is None:
+            # Nothing to read back against: report the send, not the outcome.
+            return True
+
+        await asyncio.sleep(ST_FALLBACK_VERIFY_DELAY)
+        try:
+            states = await client.async_get_tv_states()
+        except SamsungIPControlError as ex:
+            self._log.debug("Could not read the input back after %s: %s", ws_key, ex)
+            return True
+
+        actual = states.get("inputSource")
+        if actual == expected:
+            self._log.debug("%s applied: the TV reports input %s", ws_key, actual)
+            return True
+        self._log.warning(
+            "%s was sent but the TV still reports input %s, not %s — this "
+            "model appears to ignore the numbered HDMI keys, so this source "
+            "needs SmartThings or an IP_ entry in the source list",
+            ws_key,
+            actual,
+            expected,
+        )
+        return False
+
     async def _smartthings_keys(self, source_key: str):
         """Manage the SmartThings key commands."""
         if not self._st:
-            self._log.error(
-                "SmartThings not configured. Command not valid: %s", source_key
-            )
-            return False
+            return await self._async_st_key_over_ws(source_key, "is not configured")
         if self._st.state != STStatus.STATE_ON:
-            self._log.warning(
-                "SmartThings not available. Command not sent: %s", source_key
-            )
-            return False
+            return await self._async_st_key_over_ws(source_key, "is not available")
 
         if source_key.startswith("ST_HDMI"):
             await self._st.async_select_source(source_key.replace("ST_", ""))
