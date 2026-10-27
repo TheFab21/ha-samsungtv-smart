@@ -6,6 +6,16 @@ If [SmartThings API](https://github.com/ollo69/ha-samsungtv-smart/blob/master/do
 
 The list of accepted keys may vary depending on the TV model, but the following list has some common key codes and their descriptions.
 
+> **Note on the numbered HDMI keys.** `KEY_HDMI1` … `KEY_HDMI4` are **not** in
+> the list below — only the generic `KEY_HDMI`, which cycles through the
+> inputs. The numbered keys are nonetheless the documented way to select a
+> specific input on a Frame, where IP Control's `inputSourceControl` is not
+> implemented, and they are what a `ST_HDMI<n>` source key falls back to when
+> SmartThings is unavailable. Whether a given model honours them is a per-set
+> question: because a WebSocket key is fire-and-forget, the integration reads
+> the input back through `getTVStates.inputSource` when IP Control is paired
+> and warns if the TV did not move.
+
 *Power Keys*
 ____________
 Key|Description

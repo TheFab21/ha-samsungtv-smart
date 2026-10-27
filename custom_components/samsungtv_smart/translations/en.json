@@ -214,7 +214,7 @@
           "art_exit_source": "Source after leaving Art Mode"
         },
         "data_description": {
-          "art_exit_source": "Input or app to switch to when Art Mode is turned off from Home Assistant (Art Mode switch or art_set_artmode). Leave empty to keep the TV's own behaviour: it goes back to its last source, often TV (Samsung TV Plus) on a Frame. Not applied when Art Mode is left with the remote."
+          "art_exit_source": "Input or app to switch to when Art Mode is turned off from Home Assistant (Art Mode switch or art_set_artmode). Leave empty to keep the TV's own behaviour: it goes back to its last source, often TV (Samsung TV Plus) on a Frame. Not applied when Art Mode is left with the remote. Needs a source the TV can reach: a list auto-discovered from SmartThings holds ST_ keys, which fall back to the equivalent WebSocket key (ST_HDMI3 -> KEY_HDMI3) when SmartThings is unavailable. Some models ignore the numbered HDMI keys; the log says so when the TV did not move."
         }
       },
       "save_exit": {
