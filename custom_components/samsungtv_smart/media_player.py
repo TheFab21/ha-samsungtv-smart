@@ -4701,7 +4701,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             await self._async_set_channel(source_key)
             return
         else:
-            self._log.error("Unsupported source")
+            self._log_unsupported_source(source)
             return
 
         self._running_app = running_app
@@ -4715,6 +4715,29 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # after launching an app.
         await self._update_media()
         self.async_write_ha_state()
+
+    def _log_unsupported_source(self, source: str) -> None:
+        """Say what was asked for, and what would have worked.
+
+        "Unsupported source" named neither the value nor the alternatives, and
+        the value most likely to land here is a raw KEY where a source NAME
+        belongs: a source list maps a name to a key, so the key goes on the
+        right-hand side of that list and the name on its left is what every
+        other field takes. Reported on a QE55LS03D, where the art exit source
+        option held `KEY_HDMI3` and the panel simply went nowhere.
+        """
+        known = ", ".join(self.source_list or []) or "none"
+        if source.startswith(("KEY_", "ST_", "IP_")):
+            self._log.error(
+                "Source '%s' is a key, not a source name. A key belongs on the "
+                'right-hand side of the Source list ({"CINEMA 60": "%s"}); the '
+                "name on its left is what goes here. Known sources: %s",
+                source,
+                source,
+                known,
+            )
+            return
+        self._log.error("Unsupported source '%s'. Known sources: %s", source, known)
 
     async def _async_select_source_delayed(self, source):
         """Select input source with delayed ST option."""

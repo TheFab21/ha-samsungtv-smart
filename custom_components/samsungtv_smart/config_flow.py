@@ -11,6 +11,7 @@ import uuid
 import voluptuous as vol
 
 from homeassistant.components.binary_sensor import DOMAIN as BS_DOMAIN
+from homeassistant.components.media_player import DOMAIN as MP_DOMAIN
 from homeassistant.config_entries import (
     SOURCE_RECONFIGURE,
     ConfigEntry,
@@ -1774,9 +1775,35 @@ class OptionsFlowHandler(OptionsFlow):
             return await self.async_step_menu()
         return self._async_adv_opt_form()
 
+    def _live_source_names(self) -> list[str]:
+        """The source_list this entry's media player currently publishes.
+
+        That attribute is sources + apps + channels, which is exactly the set
+        async_select_source accepts, and it is what the user sees in the UI.
+        """
+        for entity_id in _async_get_entry_entities(self.hass, self._entry_id):
+            if not entity_id.startswith(f"{MP_DOMAIN}."):
+                continue
+            state = self.hass.states.get(entity_id)
+            names = state.attributes.get("source_list") if state else None
+            if names:
+                return sorted(str(name) for name in names)
+        return []
+
     def _art_exit_source_selector(self) -> SelectSelector | TextSelector:
-        """Sources and apps the user configured, or a free text field."""
+        """Sources and apps to pick from, or a free text field.
+
+        The CONFIGURED lists are usually empty: a source list left blank is
+        discovered from SmartThings at runtime and never written back to the
+        options. So this offered a bare text box to exactly the users who most
+        need the list, and a KEY typed here in place of a source NAME passes
+        the form and only fails later at the TV — reported on a QE55LS03D,
+        where `KEY_HDMI3` in this field logged "Unsupported source" and the
+        panel went nowhere. Fall back to what the media player publishes.
+        """
         names = sorted({*(self._source_list or {}), *(self._app_list or {})})
+        if not names:
+            names = self._live_source_names()
         if not names:
             return TextSelector()
         return SelectSelector(
