@@ -207,7 +207,7 @@ from .const import (
 from .entity import SamsungTVEntity
 from .logo import LOGO_OPTION_DEFAULT, LocalImageUrl, Logo, LogoOption
 from .picture_mode_keys import (
-    picture_mode_ip_base,
+    picture_mode_ip_reported,
     picture_mode_ip_value,
     picture_mode_ip_variant,
     picture_mode_ws_key,
@@ -3650,10 +3650,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if ATTR_PICTURE_MODE not in data:
             # No SmartThings: the shared getTVStates snapshot carries the
             # panel's own picture mode as an OCF name (an HDR variant shown as
-            # its mode), and pictureModeControl takes the names listed in
+            # its mode, a generated AI Mode id as Intelligent), and
+            # pictureModeControl takes the names listed in
             # PICTURE_MODE_OPTIONS — the same in every menu language.
             if local_mode := self._get_ip_control_picture_mode():
-                data[ATTR_PICTURE_MODE] = picture_mode_ip_base(local_mode)
+                data[ATTR_PICTURE_MODE] = picture_mode_ip_reported(local_mode)
                 data[ATTR_PICTURE_MODE_LIST] = list(PICTURE_MODE_OPTIONS)
 
         # Add Frame Art last result if available

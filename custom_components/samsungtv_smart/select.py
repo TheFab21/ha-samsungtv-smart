@@ -55,7 +55,7 @@ from .const import (
     ip_control_port,
 )
 from .picture_mode_keys import (
-    picture_mode_ip_base,
+    picture_mode_ip_reported,
     picture_mode_ip_value,
     picture_mode_ip_variant,
     picture_mode_slug,
@@ -914,7 +914,7 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
     def _apply_tv_value(self, value: str) -> None:
         """Show what the TV reported, learning a mode not offered yet."""
         self._tv_value = value
-        base = picture_mode_ip_base(value)
+        base = picture_mode_ip_reported(value)
         option = picture_mode_slug(base)
         if option not in self._ocf_by_option:
             self._ocf_by_option[option] = base

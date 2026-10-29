@@ -58,6 +58,7 @@ you can tune.
   - [Integration not appearing in Add Integration](#integration-not-appearing-in-add-integration)
   - [Art Mode won't turn on from standby (some 2020 Frames)](#art-mode-wont-turn-on-from-standby-some-2020-frames)
   - [SmartThings stops working: "Forbidden"](#smartthings-stops-working-forbidden-in-the-log)
+  - [Picture mode shows "AI Mode"](#picture-mode-shows-ai-mode)
   - [Picture mode does not change the TV at all](#picture-mode-does-not-change-the-tv-at-all)
   - [Art Mode no longer toggles, even with the TV's own remote](#art-mode-no-longer-toggles-even-with-the-tvs-own-remote)
   - [IP Control reports Art Mode "on" when it isn't](#ip-control-reports-art-mode-on-when-it-isnt)
@@ -513,7 +514,7 @@ The **Requires** column below says what each one needs.
 | `media_player.<tv_name>` | Media Player | — | Main TV control entity |
 | `remote.<tv_name>` | Remote | — | Send remote key sequences |
 | `switch.<tv_name>_power` | Switch | — | Power the TV on/off (uses SmartThings when configured, WebSocket/WOL otherwise) |
-| `select.<tv_name>_picture_mode` | Select | SmartThings **or** IP Control | Change picture mode (Standard, Movie, etc.). With SmartThings the options are the TV's per-input list, as named in its menu. Without it, IP Control offers Dynamic, Standard, Movie, FILMMAKER MODE and Eco (plus any other mode the TV reports), translated by Home Assistant and stable across TV menu languages — measured on a Frame 2024 and a 2026 S95H. Available in normal viewing, not in Art Mode |
+| `select.<tv_name>_picture_mode` | Select | SmartThings **or** IP Control | Change picture mode (Standard, Movie, etc.). With SmartThings the options are the TV's per-input list, as named in its menu. Without it, IP Control offers Dynamic, Standard, Movie, FILMMAKER MODE and Eco (plus any other mode the TV reports), translated by Home Assistant and stable across TV menu languages — measured on a Frame 2024 and a 2026 S95H. While AI Mode is on the TV reports a generated id rather than a mode name; those all show as one **AI Mode** option, with the raw value in `tv_picture_mode`. Available in normal viewing, not in Art Mode |
 | `select.<tv_name>_speaker_select` | Select | SmartThings **or** IP Control | Audio output — TV speaker, external, or Q-Symphony when a compatible soundbar is paired |
 | `select.<tv_name>_color_tone` | Select | **IP Control** | Colour tone / white balance preset |
 | `number.<tv_name>_backlight` | Number | **IP Control** | Panel backlight level |
@@ -1316,6 +1317,28 @@ The SmartThings `supportedInputSources` attribute returns empty on some 2024 Fra
 ### Picture mode not updating after change
 
 SmartThings caches the picture mode value. This fork automatically sends a `refresh` command after any `setPictureMode` call to force the TV to report the new value. If the `select` entity still shows a stale value, wait a few seconds for the next poll cycle.
+
+### Picture mode shows "AI Mode"
+
+While AI Mode is on, the TV stops naming a picture mode over IP Control and
+reports a generated id instead — `Gen_589828`, `Gen_327705`, `Gen_589826` — and
+that id changes with what is on screen. All of them are reported as a single
+**AI Mode** option, and the id the TV actually sent stays on the entity for
+diagnostics:
+
+```yaml
+# select.lounge_tv_picture_mode
+state: intelligent           # shown as "AI Mode" in the UI
+tv_picture_mode: Gen_589828  # what the TV reported
+```
+
+The option appears once the TV has reported AI Mode at least once, so after a
+restart it comes back on the first poll taken in that mode.
+
+Selecting it sends `Intelligent`, the firmware's own name for the mode. A Frame
+2024 and a 2026 S95H both **refuse** that name (`-32002`, "not offered on this
+input"), so on those models AI Mode can be read here but has to be switched on
+from the TV itself. If your TV accepts it, it applies like any other mode.
 
 ### Picture mode does not change the TV at all
 
