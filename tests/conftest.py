@@ -15,6 +15,9 @@
 #
 # See here for more info: https://docs.pytest.org/en/latest/fixture.html (note that
 # pytest includes fixtures OOB which you can use as defined on this page)
+from importlib.util import find_spec
+import sys
+from types import ModuleType
 from unittest.mock import patch
 
 import pytest
@@ -39,3 +42,28 @@ def skip_notifications_fixture():
         "homeassistant.components.persistent_notification.async_dismiss"
     ):
         yield
+
+
+# pysmartthings is not in requirements_test, and the integration imports it at
+# module level, so each test file that reaches integration code stubs it. Every
+# stub is guarded by `if "pysmartthings" not in sys.modules`, which means the
+# FIRST one collected serves the whole session — and they did not all carry the
+# same names. A run of the whole directory therefore died at collection on
+# `from pysmartthings import Capability, Command` in switch.py, because the
+# first stub to land happened to define no Command. One stub here, installed
+# before any test module is imported, settles it for every run; the per-file
+# guards then find it already there and leave it alone.
+if "pysmartthings" not in sys.modules and find_spec("pysmartthings") is None:
+    _pysmartthings = ModuleType("pysmartthings")
+
+    class _Names:
+        """Any attribute is its own name, which is all the integration uses."""
+
+        def __getattr__(self, name):
+            return name
+
+    _pysmartthings.Attribute = _Names()
+    _pysmartthings.Capability = _Names()
+    _pysmartthings.Command = _Names()
+    _pysmartthings.SmartThings = object
+    sys.modules["pysmartthings"] = _pysmartthings

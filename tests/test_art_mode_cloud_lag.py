@@ -76,8 +76,20 @@ def _device(*, st_state, broadcast, st_state_at=None, art_mode=True):
     device._st = SimpleNamespace(state=st_state, channel_name=None)
     device._st_state_at = time.monotonic() if st_state_at is None else st_state_at
     device._ws = SimpleNamespace(artmode_status=ArtModeStatus.Unsupported)
+    # The sequence async_select_picture_mode stamps its writes with, as
+    # __init__ sets it; the picture-mode tests below go through that path.
+    device._picture_mode_seq = 0
+    device._entry_data = {}
+    device._ip_control_client = None
+    device._ip_control_token_cached = None
     art_api = SimpleNamespace(art_mode=art_mode, art_mode_last_broadcast=broadcast)
-    device.hass = SimpleNamespace(data={DOMAIN: {ENTRY_ID: {DATA_ART_API: art_api}}})
+    device.hass = SimpleNamespace(
+        data={DOMAIN: {ENTRY_ID: {DATA_ART_API: art_api}}},
+        # No IP Control on this TV: the entry lookup finds nothing, so no
+        # token, which is what the picture-mode write walks through on its
+        # way to SmartThings.
+        config_entries=SimpleNamespace(async_get_entry=lambda _entry_id: None),
+    )
     return device
 
 
