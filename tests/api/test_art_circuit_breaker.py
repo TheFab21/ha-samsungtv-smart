@@ -91,7 +91,11 @@ async def test_art_requests_are_serialized(art_client, monkeypatch):
     active = 0
     max_active = 0
 
-    async def fake_send(_request, _wait_for_event, _timeout):
+    # Four positionals, as _send_art_request passes them: a stand-in that is
+    # one short raises TypeError inside the task instead of running, so
+    # first_started is never set and the test waits for ever rather than
+    # failing. alias_keys came later than this test did.
+    async def fake_send(_request, _wait_for_event, _timeout, _alias_keys=None):
         nonlocal active, max_active
         active += 1
         max_active = max(max_active, active)
@@ -119,7 +123,7 @@ async def test_recovery_cooldown_drops_requests(art_client, monkeypatch):
 
     called = False
 
-    async def fake_send(_request, _wait_for_event, _timeout):
+    async def fake_send(_request, _wait_for_event, _timeout, _alias_keys=None):
         nonlocal called
         called = True
 
