@@ -254,6 +254,12 @@ def _getter_device(*, supported=None, broadcast=None):
     device._ip_art_mode = None
     device._ip_art_mode_at = None
     device._ip_art_mode_failures = 0
+    # The refresh-coalescing state, as __init__ sets it: _refresh_ip_art_mode
+    # reads all three before doing anything, so a double without them raises
+    # instead of running.
+    device._ip_art_mode_refreshing = False
+    device._ip_art_mode_refresh_again = False
+    device._ip_art_mode_last_refresh = 0.0
     device._ip_art_getter_supported = supported
     device._clear_ip_control_token_problem = MagicMock()
     device.async_write_ha_state = MagicMock()

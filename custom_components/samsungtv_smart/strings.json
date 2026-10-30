@@ -345,7 +345,9 @@
           "natural": "Natural",
           "movie": "Movie",
           "filmmaker_mode": "FILMMAKER MODE",
-          "eco": "Eco"
+          "eco": "Eco",
+          "intelligent": "AI Optimized",
+          "ai_customization": "AI Customization"
         }
       }
     }

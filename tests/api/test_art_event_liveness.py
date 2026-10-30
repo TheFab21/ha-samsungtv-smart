@@ -84,10 +84,55 @@ async def test_stale_event_beyond_window_forces_the_reconnect(art_client, monkey
     import art
 
     _arm_breaker(art_client, monkeypatch)
-    # Last event is older than the liveness window: the app went quiet, treat it
-    # as possibly dead and recover.
+    # Which window applies depends on the channel: one that has answered a read
+    # is held alive for ART_WS_EVENT_LIVENESS_WINDOW, a broadcast-only one for
+    # the much longer ART_WS_BROADCAST_ONLY_LIVENESS_WINDOW (#326). This is the
+    # first kind.
+    art_client._answered_request_since_connect = True
+    # Last event is older than that window: the app went quiet, treat it as
+    # possibly dead and recover.
     art_client._last_event_at = (
         time.monotonic() - art.ART_WS_EVENT_LIVENESS_WINDOW - 5
+    )
+
+    _trip(art_client)
+
+    assert art_client._force_close_task is not None
+    art_client._force_close_task.cancel()
+
+
+async def test_a_broadcast_only_channel_keeps_its_longer_window(
+    art_client, monkeypatch
+):
+    """Silence a channel that answered reads would die for is normal here.
+
+    A 0.97 Frame answers no read, so a read timeout says nothing about the app,
+    and it can go minutes between transitions. Tearing it down on the short
+    window is what lost the broadcasts in #326.
+    """
+    import art
+
+    _arm_breaker(art_client, monkeypatch)
+    assert art_client._answered_request_since_connect is False
+    art_client._last_event_at = (
+        time.monotonic() - art.ART_WS_EVENT_LIVENESS_WINDOW - 5
+    )
+
+    _trip(art_client)
+
+    assert art_client._force_close_task is None
+    assert art_client._timeout_streak == 0
+
+
+async def test_a_broadcast_only_channel_still_recovers_once_truly_silent(
+    art_client, monkeypatch
+):
+    """Past its own window, even a broadcast-only channel is treated as dead."""
+    import art
+
+    _arm_breaker(art_client, monkeypatch)
+    art_client._last_event_at = (
+        time.monotonic() - art.ART_WS_BROADCAST_ONLY_LIVENESS_WINDOW - 5
     )
 
     _trip(art_client)

@@ -13,6 +13,7 @@ Control reading, because a 2025 Frame reports ``standby`` while Art Mode is ON.
 """
 
 import sys
+import time
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -149,6 +150,10 @@ def _panel_reporting_standby(ip_art_mode):
     device._state = MediaPlayerState.OFF  # a Frame showing art reads OFF in HA
     device._end_of_power_off = None
     device._device_info = {"device": {"PowerState": "standby"}}
+    # The stamp that goes with that reading: __init__ declares it None and only
+    # a successful read sets it, and _art_mode_is_on weighs the reading's age
+    # against the last broadcast.
+    device._device_info_at = time.monotonic()
     device._running_app = None
     device._ip_art_mode = ip_art_mode
     device._ip_art_mode_at = None

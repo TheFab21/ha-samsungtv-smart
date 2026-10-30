@@ -152,30 +152,43 @@ def picture_mode_ip_base(value: str) -> str:
     return _split_ip_variant(value)[0]
 
 
-# While AI Mode is on, the getter stops naming a mode and reports a generated
-# id that changes with the content: ``Gen_589828`` most of the time, with
-# ``Gen_327705``, ``Gen_589826`` and ``Gen_589829`` on other polls over two
-# days of one Frame Pro (#352). They are not modes — nothing selects them, and
-# each new one used to become its own untranslated option in the select. The
-# same TV reported ``Intelligent``, the firmware's own OCF name for AI Mode,
-# for the single poll in which AI Mode was switched on, so that is the mode
-# every generated id is reported as. Not anchored at the end: the getter
-# decorates the predefined modes with HDR / PC suffixes and may decorate these
-# the same way, which is unobserved so far.
+# With AI Mode on, a TV offers two picture modes and nothing else: Samsung
+# calls them AI Optimised, which adapts to the room and the content, and AI
+# Customisation, which keeps saved settings per kind of content. Over
+# ``pictureModeControl`` the first is the predefined OCF name ``Intelligent``;
+# the second has no name of its own and is reported as a generated id, which
+# follows what is on screen rather than the app. Measured on a Frame Pro
+# (26_RSM_FTV, T-RSMHDEUC-0100-1078.6) in #352:
+#
+#   Gen_589828  0x9_0004  SDR video, in three different apps alike
+#   Gen_589829  0x9_0005  HDR video
+#   Gen_327705  0x5_0019  the home screen, and the seconds between two apps
+#   Gen_589826  0x9_0002  one afternoon only, unexplained
+#
+# Setting matters as much as reading. ``Intelligent`` was accepted and held,
+# and so was the generated id the TV was reporting at that moment — but
+# another generated id, for a screen that was not up, answered ``-32002``. So
+# the only value that selects AI Customisation is the one the TV is reporting
+# right then, which is why the select stores it afresh on every poll and never
+# a fixed name.
+#
+# 8.15.0 reported every generated id as ``Intelligent``, on the strength of
+# one poll seen as AI Mode came on (probably the TV passing through AI
+# Optimised). That showed AI Customisation under AI Optimised's name, and
+# picking it moved the TV from one to the other. The two are kept apart now.
+#
+# Not anchored at the end: the getter decorates the predefined modes with HDR
+# / PC suffixes and may decorate these the same way, which is unobserved.
 _IP_GENERATED_MODE = re.compile(r"^Gen_\d+")
 
+# The option key the select offers for the whole generated family, since no
+# single value names it.
+PICTURE_MODE_GENERATED_OPTION = "ai_customization"
 
-def picture_mode_ip_reported(value: str) -> str:
-    """Return the mode a value the TV reported stands for.
 
-    Like :func:`picture_mode_ip_base`, but a generated AI Mode id reports as
-    ``Intelligent`` instead of as itself. Use this for anything that turns a
-    reported value into a mode a user sees or picks; the raw value stays
-    available for diagnostics.
-    """
-    if _IP_GENERATED_MODE.match(value):
-        return "Intelligent"
-    return picture_mode_ip_base(value)
+def picture_mode_ip_is_generated(value: str) -> bool:
+    """Return whether the TV reported a generated AI Customisation id."""
+    return bool(_IP_GENERATED_MODE.match(value))
 
 
 def picture_mode_ip_variant(value: str, current: str | None) -> str | None:

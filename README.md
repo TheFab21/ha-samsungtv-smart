@@ -57,8 +57,9 @@ you can tune.
 - [Troubleshooting](#troubleshooting)
   - [Integration not appearing in Add Integration](#integration-not-appearing-in-add-integration)
   - [Art Mode won't turn on from standby (some 2020 Frames)](#art-mode-wont-turn-on-from-standby-some-2020-frames)
+  - [Art Mode said ON but the screen stayed dark](#art-mode-said-on-but-the-screen-stayed-dark)
   - [SmartThings stops working: "Forbidden"](#smartthings-stops-working-forbidden-in-the-log)
-  - [Picture mode shows "AI Mode"](#picture-mode-shows-ai-mode)
+  - [Picture mode with AI Mode on](#picture-mode-with-ai-mode-on)
   - [Picture mode does not change the TV at all](#picture-mode-does-not-change-the-tv-at-all)
   - [Art Mode no longer toggles, even with the TV's own remote](#art-mode-no-longer-toggles-even-with-the-tvs-own-remote)
   - [IP Control reports Art Mode "on" when it isn't](#ip-control-reports-art-mode-on-when-it-isnt)
@@ -536,7 +537,7 @@ The **Requires** column below says what each one needs.
 | `media_player.<tv_name>` | Media Player | — | Main TV control entity |
 | `remote.<tv_name>` | Remote | — | Send remote key sequences |
 | `switch.<tv_name>_power` | Switch | — | Power the TV on/off (uses SmartThings when configured, WebSocket/WOL otherwise) |
-| `select.<tv_name>_picture_mode` | Select | SmartThings **or** IP Control | Change picture mode (Standard, Movie, etc.). With SmartThings the options are the TV's per-input list, as named in its menu. Without it, IP Control offers Dynamic, Standard, Movie, FILMMAKER MODE and Eco (plus any other mode the TV reports), translated by Home Assistant and stable across TV menu languages — measured on a Frame 2024 and a 2026 S95H. While AI Mode is on the TV reports a generated id rather than a mode name; those all show as one **AI Mode** option, with the raw value in `tv_picture_mode`. Available in normal viewing, not in Art Mode |
+| `select.<tv_name>_picture_mode` | Select | SmartThings **or** IP Control | Change picture mode (Standard, Movie, etc.). With SmartThings the options are the TV's per-input list, as named in its menu. Without it, IP Control offers Dynamic, Standard, Movie, FILMMAKER MODE and Eco (plus any other mode the TV reports), translated by Home Assistant and stable across TV menu languages — measured on a Frame 2024 and a 2026 S95H. With AI Mode on, a TV offers AI Optimised and AI Customisation instead — see [Picture mode with AI Mode on](#picture-mode-with-ai-mode-on). Available in normal viewing, not in Art Mode |
 | `select.<tv_name>_speaker_select` | Select | SmartThings **or** IP Control | Audio output — TV speaker, external, or Q-Symphony when a compatible soundbar is paired |
 | `select.<tv_name>_color_tone` | Select | **IP Control** | Colour tone / white balance preset |
 | `number.<tv_name>_backlight` | Number | **IP Control** | Panel backlight level |
@@ -1214,6 +1215,37 @@ What to do:
 Once the TV is awake, Art Mode activation itself uses IP Control and works
 normally.
 
+### Art Mode said ON but the screen stayed dark
+
+Before 8.15.2 a wake the TV ignored could end with the switch showing Art Mode
+**ON** over a dark panel, and the remaining attempts abandoned. Two things
+allowed it, and both are fixed:
+
+- the readiness check asked the **art channel**, and a Frame in standby answers
+  it — so the integration logged `TV ready after 1 seconds` one second after a
+  power-on the TV never acted on;
+- `get_artmode` on a sleeping Frame returns its **stored** art flag — what it
+  will show when it wakes, not what is on screen — and that was taken as proof
+  Art Mode was already live.
+
+The TV's power state now has to agree before either counts, so a wake that did
+not land ends the way it should:
+
+```
+Art Mode ON for <name>: the TV did not answer within 20s of the power-on request
+(likely in deep standby / off the network) — art mode deferred until it is back online
+```
+
+The switch stays off, and the art-mode request is re-applied by itself once the
+TV reports in.
+
+If you see that line often, the **wake** is what needs fixing, not Art Mode: the
+magic packet is not reaching the TV, or its Wi-Fi has dropped. Raise **WOL
+repeat count** (Configure → Advanced Options) when the packet is merely being
+lost — and note that one reported TV needed two separate bursts before it
+answered at all, so calling `media_player.turn_on` twice a few seconds apart in
+the automation is a fair workaround while the network side is sorted out.
+
 ### Recurring "IP Control state read failed" / "Host is unreachable" errors
 
 If your log shows repeated errors like this, spaced minutes apart, for a TV that is otherwise powered on and working:
@@ -1340,27 +1372,46 @@ The SmartThings `supportedInputSources` attribute returns empty on some 2024 Fra
 
 SmartThings caches the picture mode value. This fork automatically sends a `refresh` command after any `setPictureMode` call to force the TV to report the new value. If the `select` entity still shows a stale value, wait a few seconds for the next poll cycle.
 
-### Picture mode shows "AI Mode"
+### Picture mode with AI Mode on
 
-While AI Mode is on, the TV stops naming a picture mode over IP Control and
-reports a generated id instead — `Gen_589828`, `Gen_327705`, `Gen_589826` — and
-that id changes with what is on screen. All of them are reported as a single
-**AI Mode** option, and the id the TV actually sent stays on the entity for
-diagnostics:
+With AI Mode on, the TV's own Picture Mode menu offers two entries and nothing
+else — **AI Optimised**, which adapts to the room and the content, and **AI
+Customisation**, which keeps your saved settings per kind of content. The
+traditional modes come back only when AI Mode is switched off. The select
+follows that, with one difference you can see in its attributes:
+
+| TV menu | Option | What the TV reports | Can the integration set it? |
+|---|---|---|---|
+| AI Optimised | `intelligent` | `Intelligent` | Yes, where the TV accepts the name |
+| AI Customisation | `ai_customization` | `Gen_589828`, `Gen_589829`, … | Only while it is already the current mode |
+
+AI Customisation has no name of its own over IP Control: the TV reports a
+generated id, and that id follows **what is on screen**, not the app. Measured
+on a Frame Pro (`26_RSM_FTV`): `Gen_589828` while SDR video plays in any of
+three apps, `Gen_589829` on 4K HDR, `Gen_327705` on the home screen and during
+the seconds between two apps. They are all reported as the one
+`ai_customization` option, with the raw id kept on the entity:
 
 ```yaml
 # select.lounge_tv_picture_mode
-state: intelligent           # shown as "AI Mode" in the UI
-tv_picture_mode: Gen_589828  # what the TV reported
+state: ai_customization      # shown as "AI Customization" in the UI
+tv_picture_mode: Gen_589828  # what the TV reported for the content on screen
 ```
 
-The option appears once the TV has reported AI Mode at least once, so after a
-restart it comes back on the first poll taken in that mode.
+The TV takes back only the id it is reporting at that moment — another one,
+for a screen that is not up, answers `-32002`. So AI Customisation reads
+correctly here but there is no value that switches *into* it; turn it on from
+the TV's AI Mode settings. Selecting it says as much rather than failing with
+a bare error.
 
-Selecting it sends `Intelligent`, the firmware's own name for the mode. A Frame
-2024 and a 2026 S95H both **refuse** that name (`-32002`, "not offered on this
-input"), so on those models AI Mode can be read here but has to be switched on
-from the TV itself. If your TV accepts it, it applies like any other mode.
+`Intelligent` is accepted on that Frame Pro and refused with `-32002` on a
+Frame 2024 and a 2026 S95H, which have no AI Mode. The AI Mode switch itself
+is not reachable over `pictureModeControl`, so a traditional mode chosen while
+AI Mode is on is for the TV to refuse.
+
+> Before 8.15.2 every generated id was reported as `Intelligent`. That showed
+> AI Customisation under AI Optimised's name, and picking that option moved the
+> TV from one to the other.
 
 ### Picture mode does not change the TV at all
 
