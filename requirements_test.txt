@@ -1,5 +1,8 @@
 # Strictly for tests
 pytest==8.3.5
+# The Tests workflow passes --timeout: pytest-timeout is not listed here
+# because pytest-homeassistant-custom-component already pins it (2.3.1), and
+# asking for any other version is an unsolvable conflict.
 #pytest-cov==2.9.0
 #pytest-homeassistant
 pytest-homeassistant-custom-component==0.13.254
