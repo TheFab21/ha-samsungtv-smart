@@ -57,6 +57,7 @@ you can tune.
 - [Troubleshooting](#troubleshooting)
   - [Integration not appearing in Add Integration](#integration-not-appearing-in-add-integration)
   - [Art Mode won't turn on from standby (some 2020 Frames)](#art-mode-wont-turn-on-from-standby-some-2020-frames)
+  - [Art Mode said ON but the screen stayed dark](#art-mode-said-on-but-the-screen-stayed-dark)
   - [SmartThings stops working: "Forbidden"](#smartthings-stops-working-forbidden-in-the-log)
   - [Picture mode with AI Mode on](#picture-mode-with-ai-mode-on)
   - [Picture mode does not change the TV at all](#picture-mode-does-not-change-the-tv-at-all)
@@ -1213,6 +1214,37 @@ What to do:
 
 Once the TV is awake, Art Mode activation itself uses IP Control and works
 normally.
+
+### Art Mode said ON but the screen stayed dark
+
+Before 8.15.2 a wake the TV ignored could end with the switch showing Art Mode
+**ON** over a dark panel, and the remaining attempts abandoned. Two things
+allowed it, and both are fixed:
+
+- the readiness check asked the **art channel**, and a Frame in standby answers
+  it — so the integration logged `TV ready after 1 seconds` one second after a
+  power-on the TV never acted on;
+- `get_artmode` on a sleeping Frame returns its **stored** art flag — what it
+  will show when it wakes, not what is on screen — and that was taken as proof
+  Art Mode was already live.
+
+The TV's power state now has to agree before either counts, so a wake that did
+not land ends the way it should:
+
+```
+Art Mode ON for <name>: the TV did not answer within 20s of the power-on request
+(likely in deep standby / off the network) — art mode deferred until it is back online
+```
+
+The switch stays off, and the art-mode request is re-applied by itself once the
+TV reports in.
+
+If you see that line often, the **wake** is what needs fixing, not Art Mode: the
+magic packet is not reaching the TV, or its Wi-Fi has dropped. Raise **WOL
+repeat count** (Configure → Advanced Options) when the packet is merely being
+lost — and note that one reported TV needed two separate bursts before it
+answered at all, so calling `media_player.turn_on` twice a few seconds apart in
+the automation is a fair workaround while the network side is sorted out.
 
 ### Recurring "IP Control state read failed" / "Host is unreachable" errors
 

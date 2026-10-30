@@ -735,21 +735,44 @@ class FrameArtModeSwitch(SwitchEntity):
             return False
 
     async def _wait_for_tv_ready(self, max_wait: int = 15) -> bool:
-        """Wait for TV to be ready after turning on."""
+        """Wait until the TV is awake AND answering on the art channel.
+
+        The art channel alone proves nothing. A Frame in standby accepts the
+        connection on port 8001 and answers ``ms.channel.ready``, so probing it
+        reported the TV ready one second after a power-on it had ignored
+        (#319: "TV ready after 1 seconds" logged against an unbroken run of
+        ``PowerState='standby'``, after which the art write went nowhere and
+        the panel stayed dark). The whole point of this wait is to tell a TV
+        that is cold-booting from one that never answered the power-on, so the
+        power state has to agree before it is over.
+        """
         self._log.debug("Waiting for TV to be ready (max %ds)...", max_wait)
 
         for i in range(max_wait):
             await asyncio.sleep(1)
 
             # Try to connect to Art API
+            art_ready = False
             try:
                 async with asyncio.timeout(3):
-                    is_supported = await self._art_api.supported()
-                    if is_supported:
-                        self._log.debug("TV ready after %d seconds", i + 1)
-                        return True
+                    art_ready = bool(await self._art_api.supported())
             except Exception:
                 pass
+
+            if art_ready:
+                # _is_tv_on counts a Frame displaying art as on, so waking
+                # straight into Art Mode is not mistaken for still asleep.
+                if await self._is_tv_on():
+                    self._log.debug("TV ready after %d seconds", i + 1)
+                    return True
+                self._log.debug(
+                    "TV not ready yet, waiting... (%d/%d: the art channel "
+                    "answers, which a TV in standby also does, but the TV "
+                    "still reads as off)",
+                    i + 1,
+                    max_wait,
+                )
+                continue
 
             self._log.debug("TV not ready yet, waiting... (%d/%d)", i + 1, max_wait)
 
@@ -929,6 +952,24 @@ class FrameArtModeSwitch(SwitchEntity):
                                 if guard.pending(True) is not None
                                 else await self._art_api.get_artmode()
                             )
+                            # On a TV that is not awake, this answer is the
+                            # STORED art flag — what the Frame will show when
+                            # it wakes, not what is on screen. Taking it as
+                            # success reported Art Mode ON for a dark panel and
+                            # abandoned the remaining attempts (#319: 'on'
+                            # returned at 19:45:21 while every other live
+                            # signal said otherwise — REST PowerState
+                            # 'standby' for 55 s either side of it, and IP
+                            # Control reading artModeControl=False every 5 s).
+                            if actual == "on" and not await self._is_tv_on():
+                                self._log.debug(
+                                    "Art Mode get_artmode says 'on' for %s but"
+                                    " the TV does not read as awake — that is"
+                                    " its stored flag, not the panel; not"
+                                    " taking it as applied",
+                                    self._device_name,
+                                )
+                                actual = None
                             if actual == "on":
                                 self._log.info(
                                     "Art Mode is already ON for %s"
