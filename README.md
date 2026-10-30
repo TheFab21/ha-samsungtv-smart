@@ -4,6 +4,7 @@
 [![Version](https://img.shields.io/github/v/release/TheFab21/ha-samsungtv-smart?style=flat&color=blue)](https://github.com/TheFab21/ha-samsungtv-smart/releases/latest)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-%3E%3D2025.6.0-green.svg)](https://www.home-assistant.io)
 [![License: LGPL v2.1](https://img.shields.io/badge/License-LGPL%20v2.1-yellow.svg)](https://www.gnu.org/licenses/lgpl-2.1)
+[![Tests](https://img.shields.io/github/actions/workflow/status/TheFab21/ha-samsungtv-smart/tests.yaml?branch=master&label=tests)](https://github.com/TheFab21/ha-samsungtv-smart/actions/workflows/tests.yaml)
 
 A custom integration for Home Assistant to control Samsung Smart TVs (Tizen OS), based on the excellent work of [ollo69/ha-samsungtv-smart](https://github.com/ollo69/ha-samsungtv-smart).
 
@@ -63,6 +64,7 @@ you can tune.
   - [Picture mode does not change the TV at all](#picture-mode-does-not-change-the-tv-at-all)
   - [Art Mode no longer toggles, even with the TV's own remote](#art-mode-no-longer-toggles-even-with-the-tvs-own-remote)
   - [IP Control reports Art Mode "on" when it isn't](#ip-control-reports-art-mode-on-when-it-isnt)
+- [Development](#development)
 - [Credits](#credits)
 
 ---
@@ -1558,6 +1560,43 @@ This typically appears **after a TV factory reset and re-pairing** of the IP Con
 2. **Factory reset the TV.** If you need IP Control for Art Mode and the flag is wedged, the only known way to clear the stuck `artModeControl` flag on the TV side is a **factory reset of the TV** (Settings → General → Reset), followed by re-pairing. There is no remote/API command that unsticks it.
 
 Once a firmware update reports `artModeControl` correctly again, you can re-enable **Switch Art Mode over IP Control** under **Reconfigure → IP Control**.
+
+---
+
+## Development
+
+Every push and pull request runs the test suite, plus flake8, isort and black
+on `custom_components`. The same checks locally:
+
+```bash
+python3.13 -m venv .venv && source .venv/bin/activate
+pip install -r requirements_test.txt   # pytest and the Home Assistant test harness
+pip install -r requirements.txt        # the linters
+
+pytest tests -q                        # the whole suite, about half a minute
+flake8 custom_components
+isort --check custom_components
+black --line-length 88 --check custom_components
+```
+
+**Python 3.13 or newer**, which is what `pytest-homeassistant-custom-component`
+requires.
+
+Two things in `requirements_test.txt` are worth knowing before you edit it:
+
+- `pycares` is bounded below 5. The `aiodns` that this Home Assistant version
+  pulls in calls an API pycares 5 removed, so without the bound
+  `import homeassistant` fails before a single test is collected.
+- `pytest-timeout` is deliberately **not** listed, although CI passes
+  `--timeout`: the test harness already pins it, and asking for any other
+  version makes the install unsolvable.
+
+CI passes `--timeout=120 --timeout-method=signal`, so a test that hangs fails
+by name with a stack and the rest of the suite still runs. That is worth
+copying locally if you are debugging something that waits on an event.
+
+The integration's version lives in `custom_components/samsungtv_smart/manifest.json`
+and is bumped in the same pull request as the change it ships.
 
 ---
 
