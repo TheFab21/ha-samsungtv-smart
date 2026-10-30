@@ -1,5 +1,17 @@
 # Strictly for tests
 pytest==8.3.5
+# The Tests workflow passes --timeout: pytest-timeout is not listed here
+# because pytest-homeassistant-custom-component already pins it (2.3.1), and
+# asking for any other version is an unsolvable conflict.
+#
+# aiodns, which homeassistant 2025.6.3 requires, is 3.5.0 here and calls
+# pycares.ares_query_a_result at import time — removed in pycares 5. Nothing
+# bounds pycares, so pip takes 5.x and `import homeassistant` dies before a
+# single test is collected:
+#   AttributeError: module 'pycares' has no attribute 'ares_query_a_result'
+# Drop this bound once a homeassistant version whose aiodns supports pycares 5
+# is pinned above.
+pycares<5
 #pytest-cov==2.9.0
 #pytest-homeassistant
 pytest-homeassistant-custom-component==0.13.254

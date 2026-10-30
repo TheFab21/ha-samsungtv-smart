@@ -1,0 +1,36 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+      - v8-json-rpc
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    # The suite runs in about half a minute, so this cap is not about length.
+    # It is for the failure this job was added after: a test stand-in one
+    # argument short raised TypeError inside a task, the event the test waited
+    # on was never set, and the run hung for ever instead of failing — taking
+    # the ~750 tests behind it with it.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+      - name: Install dependencies
+        run: pip install -r requirements_test.txt
+      - name: pytest
+        # --timeout makes a hang a named failing test with a stack, rather
+        # than a job killed with nothing to go on. signal, not thread, so the
+        # rest of the suite still runs after one.
+        run: pytest tests -q --timeout=120 --timeout-method=signal
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
