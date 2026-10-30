@@ -55,7 +55,9 @@ from .const import (
     ip_control_port,
 )
 from .picture_mode_keys import (
-    picture_mode_ip_reported,
+    PICTURE_MODE_GENERATED_OPTION,
+    picture_mode_ip_base,
+    picture_mode_ip_is_generated,
     picture_mode_ip_value,
     picture_mode_ip_variant,
     picture_mode_slug,
@@ -914,11 +916,18 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
     def _apply_tv_value(self, value: str) -> None:
         """Show what the TV reported, learning a mode not offered yet."""
         self._tv_value = value
-        base = picture_mode_ip_reported(value)
-        option = picture_mode_slug(base)
+        if picture_mode_ip_is_generated(value):
+            # AI Customisation: one option for the whole generated family, and
+            # the value behind it is refreshed every poll, because the TV takes
+            # back only the id it is reporting for what is on screen (#352).
+            option = PICTURE_MODE_GENERATED_OPTION
+            ocf = value
+        else:
+            ocf = picture_mode_ip_base(value)
+            option = picture_mode_slug(ocf)
         if option not in self._ocf_by_option:
-            self._ocf_by_option[option] = base
             self._attr_options = [*self._attr_options, option]
+        self._ocf_by_option[option] = ocf
         self._attr_current_option = option
 
     async def async_select_option(self, option: str) -> None:
@@ -952,6 +961,14 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
             # -32002 here is the TV refusing the NAME (e.g. a mode the current
             # input does not offer), not a transport fault: keep the entity
             # available so another choice can be made right away.
+            if option == PICTURE_MODE_GENERATED_OPTION:
+                raise HomeAssistantError(
+                    f"The TV refused picture mode '{option}' ({ex}). It takes "
+                    "only the code it is reporting for what is on screen right "
+                    f"then, and the last one read was '{self._tv_value}'. Turn "
+                    "AI Customisation on from the TV's own AI Mode settings "
+                    "instead."
+                ) from ex
             raise HomeAssistantError(
                 f"The TV refused picture mode '{option}': {ex}"
             ) from ex

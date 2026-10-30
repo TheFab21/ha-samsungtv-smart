@@ -60,7 +60,8 @@
           "movie": "Film",
           "filmmaker_mode": "FILMMAKER MODE",
           "eco": "Eco",
-          "intelligent": "AI-modus"
+          "intelligent": "AI-optimalisatie",
+          "ai_customization": "AI-aanpassing"
         }
       }
     },

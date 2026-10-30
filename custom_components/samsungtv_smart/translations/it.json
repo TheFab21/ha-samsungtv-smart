@@ -265,7 +265,8 @@
           "movie": "Film",
           "filmmaker_mode": "FILMMAKER MODE",
           "eco": "Eco",
-          "intelligent": "Modalità AI"
+          "intelligent": "Ottimizzazione AI",
+          "ai_customization": "Personalizzazione AI"
         }
       }
     },

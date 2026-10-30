@@ -265,7 +265,8 @@
           "movie": "Film",
           "filmmaker_mode": "FILMMAKER MODE",
           "eco": "Eco",
-          "intelligent": "AI mód"
+          "intelligent": "AI optimalizálás",
+          "ai_customization": "AI testreszabás"
         }
       }
     },
