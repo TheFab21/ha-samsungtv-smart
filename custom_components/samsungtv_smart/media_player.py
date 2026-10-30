@@ -243,6 +243,24 @@ CMD_RUN_APP_REST = "run_app_rest"
 CMD_SEND_KEY = "send_key"
 CMD_SEND_TEXT = "send_text"
 
+# What the App launch method option calls each of them, for a message a user
+# can act on.
+APP_LAUNCH_METHOD_NAMES = {
+    CMD_RUN_APP: "Standard",
+    CMD_RUN_APP_REMOTE: "Remote",
+    CMD_RUN_APP_REST: "REST",
+}
+
+# Both WebSocket launches are fire-and-forget: a 2026 Frame Pro accepts
+# ms.application.start and ed.apps.launch and leaves the screen alone, while
+# the player shows the app optimistically and falls back a poll later without
+# a word (#351). The REST status is the read that found it — it answers on
+# that TV, and a wrong id answers 404 — so a launch that went nowhere can be
+# told apart from an app that is merely slow to appear. Four reads over 12 s:
+# long enough for a heavy app to come up, so only a launch the TV really
+# dropped is reported.
+APP_LAUNCH_VERIFY_DELAYS = (3.0, 3.0, 3.0, 3.0)
+
 DELAYED_SOURCE_TIMEOUT = 80
 # Timeout for the periodic power probe of a TV we ALREADY believe is off.
 # DEFAULT_TIMEOUT (6 s) is longer than SCAN_INTERVAL (5 s), so a TV that has
@@ -766,6 +784,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._source = None
         self._running_app = None
         self._yt_app_id = None
+        self._app_launch_ignored_logged = False
 
         # prepare TV lists options
         self._default_source_used = False
@@ -4428,6 +4447,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if self._app_list:
             if app_id_from_list := self._app_list.get(app_id):
                 app_id = app_id_from_list
+        # Kept before the meta-data suffix below, because the REST status
+        # check wants the app id on its own.
+        bare_app_id = app_id
         if meta_data:
             app_id += f",,{meta_data}"
             method = CMD_RUN_APP_REMOTE
@@ -4449,6 +4471,63 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 method = CMD_RUN_APP
 
         await self.async_send_command(app_id, method)
+
+        if method != CMD_RUN_APP_REST and not self._app_launch_ignored_logged:
+            self.hass.async_create_task(
+                self._async_check_app_launched(bare_app_id, method)
+            )
+
+    async def _async_check_app_launched(self, app_id: str, method: str) -> None:
+        """Say so once when a launch left the app closed (#351).
+
+        Nothing in either WebSocket launch reports failure: the TV accepts the
+        message and may do nothing, and the only earlier sign was the app
+        quietly disappearing from the player a poll later. Reading the app's
+        own REST status turns that into one actionable line.
+
+        Deliberately quiet unless the TV says, more than once, that the app is
+        closed: an unreadable status or a missing ``visible`` is no verdict,
+        and a wrong warning here would send users changing a working option.
+        """
+        for delay in APP_LAUNCH_VERIFY_DELAYS:
+            await asyncio.sleep(delay)
+            try:
+                status = await self._rest_api.async_rest_app_status(app_id)
+            except Exception as ex:  # noqa: BLE001 - best-effort diagnostic
+                self._log.debug(
+                    "Could not read the REST status of app %s after a %s launch: %s",
+                    app_id,
+                    method,
+                    ex,
+                )
+                return
+            visible = status.get("visible") if isinstance(status, dict) else None
+            if visible is None:
+                self._log.debug(
+                    "App %s reports no 'visible' status after a %s launch, so "
+                    "whether it came up cannot be told from here",
+                    app_id,
+                    method,
+                )
+                return
+            if visible:
+                return
+
+        if self._app_launch_ignored_logged:
+            return
+        self._app_launch_ignored_logged = True
+        self._log.warning(
+            "The TV accepted the %s launch of app %s but the app never came "
+            "up: its REST status still reported it closed %.0f s later. Some "
+            "sets, 2026 Frames among them, accept both WebSocket launch "
+            "methods and ignore them. Set this TV's 'App launch method' "
+            "option to REST, or send a single app that way with "
+            "media_player.play_media and media_content_id "
+            "'<app name>@run_app_rest'. Logged once per reload",
+            APP_LAUNCH_METHOD_NAMES.get(method, method),
+            app_id,
+            sum(APP_LAUNCH_VERIFY_DELAYS),
+        )
 
     def _get_youtube_app_id(self):
         """Search youtube app id used to launch video."""

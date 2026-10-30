@@ -452,10 +452,32 @@ used to **launch an application**. It has no effect on power, keys, volume, sour
 |---|---|
 | **Standard** | `ms.application.start` over the control WebSocket channel (falls back to remote). Recommended. |
 | **Remote** | `ed.apps.launch` over the remote WebSocket channel (same channel as key presses). |
-| **REST** | `POST /api/v2/applications/{id}` over HTTP. Deprecated by Samsung on recent Tizen — often a no-op on 2022+ sets, and the integration reports success even when nothing launched. |
+| **REST** | `POST /api/v2/applications/{id}` over HTTP. Samsung deprecated it and it is often a no-op on 2022+ sets — but not everywhere: on a 2026 Frame Pro (QE75LS03HWUXXH) it is the **only** method that launches anything, and a wrong id answers 404 there, so it is genuinely being processed (#351). |
 
-> **Recommendation:** leave this on **Standard**. Switch to **Remote** only if a specific app
-> won't launch. **REST** is mainly relevant to older TVs.
+> **Recommendation:** leave this on **Standard**, and switch if launches do nothing —
+> **Remote** first, then **REST**. Both WebSocket methods are fire-and-forget, so a TV
+> that ignores them reports no error; since 8.15.1 the integration reads the app's REST
+> status after a WebSocket launch and logs a warning, once per reload, naming the option to
+> change when the app never came up.
+
+#### Launching one app with a different method
+
+The option is per TV, but a single app can be sent another way without changing it:
+append `@run_app`, `@run_app_remote` or `@run_app_rest` to the app name in a
+`media_player.play_media` call.
+
+```yaml
+action: media_player.play_media
+target:
+  entity_id: media_player.lounge_tv
+data:
+  media_content_type: app
+  media_content_id: YouTube@run_app_rest
+```
+
+Use it in the `play_media` call, **not** in the `app_list` option: the value stored there
+is also what the integration asks the TV about to know which app is running, and a
+suffix on it would stop that app ever being detected as the current source.
 
 #### Connection layers (the architecture — they coexist)
 
