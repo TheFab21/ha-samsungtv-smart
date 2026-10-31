@@ -307,6 +307,12 @@ class SamsungTVAsyncArt:
         # latch of #273, so it must never outrank the panel.
         self.art_mode_last_broadcast: tuple[bool, float] | None = None
 
+        # When the panel last announced go_to_standby. The event is too
+        # ambiguous to move art_mode (see the handler), but it is the TV
+        # saying it is on its way off, and that is exactly what a caller
+        # about to send it an input key needs to know.
+        self.standby_last_broadcast: float | None = None
+
         # Async handling
         self._pending_requests: dict[str, asyncio.Future] = {}
         # set_artmode() waiters: some Frames never echo the matching
@@ -1131,6 +1137,11 @@ class SamsungTVAsyncArt:
             # flipping art_mode_status to "off" while artwork was still on
             # screen. Leave self.art_mode untouched and let the event
             # callback trigger an authoritative re-check instead.
+            #
+            # Stamped all the same: ambiguous about art mode is not ambiguous
+            # about power, and a caller that is about to act on the panel can
+            # weigh it (#319 family — a key sent into a power transition).
+            self.standby_last_broadcast = time.monotonic()
             self._fire_art_event()
         elif sub_event in (
             "image_selected",

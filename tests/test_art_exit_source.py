@@ -13,6 +13,7 @@ import asyncio
 from enum import Enum
 from pathlib import Path
 import textwrap
+import time
 from types import SimpleNamespace
 import unittest
 
@@ -39,7 +40,9 @@ def _method(name):
 def _load():
     namespace = {
         "asyncio": asyncio,
+        "time": time,
         "ART_EXIT_SOURCE_DELAY": 0,
+        "ART_EXIT_SOURCE_STANDBY_GRACE": 3.0,
         "CONF_ART_EXIT_SOURCE": "art_exit_source",
         "DEFAULT_APP": "TV/HDMI",
         "MediaPlayerState": _State,
@@ -63,9 +66,12 @@ class _Log:
 
 
 class _Device:
-    def __init__(self, option=None, state=_State.OFF):
+    def __init__(self, option=None, state=_State.OFF, standby_at=None):
         self._log = _Log()
         self._options = {"art_exit_source": option} if option is not None else {}
+        # The art channel, which stamps go_to_standby. None stands for a TV
+        # whose art API is not up: no announcement to weigh.
+        self._art_api = SimpleNamespace(standby_last_broadcast=standby_at)
         self.state = state
         self._source_list = {"HDMI 1": "KEY_HDMI1"}
         self._app_list = {"Netflix": "3201907018807"}
@@ -135,6 +141,45 @@ class ApplyTest(unittest.TestCase):
         device = _Device("Netflix")
         _run(_apply(device))
         self.assertIn(("app", "3201907018807"), device.calls)
+
+
+class StandbyTest(unittest.TestCase):
+    """On a Frame, Art Mode off IS the TV off, and then there is no source.
+
+    Measured on a QE55LS03D, 31 October: art off at 11:11:00.4,
+    art_mode_changed 'off' at :00.7, go_to_standby at :03.5, and the exit
+    source sent KEY_HDMI3 at :04.8 — 0.3 s before both WebSocket threads
+    terminated and the TV read standby.
+    """
+
+    def test_an_announcement_during_the_wait_stops_the_switch(self):
+        device = _Device("HDMI 1", standby_at=time.monotonic())
+        _run(_apply(device))
+        self.assertEqual(device.calls, [])
+
+    def test_an_announcement_just_before_the_exit_stops_it_too(self):
+        # The TV chooses the order of its own events, so the window reaches
+        # back as well as forward.
+        device = _Device("HDMI 1", standby_at=time.monotonic() - 2.0)
+        _run(_apply(device))
+        self.assertEqual(device.calls, [])
+
+    def test_an_older_announcement_does_not_stop_it(self):
+        # A standby from an earlier power cycle says nothing about this exit.
+        device = _Device("HDMI 1", standby_at=time.monotonic() - 60.0)
+        _run(_apply(device))
+        self.assertIn(("select", "HDMI 1", True), device.calls)
+
+    def test_no_announcement_at_all_switches_as_before(self):
+        device = _Device("HDMI 1", standby_at=None)
+        _run(_apply(device))
+        self.assertIn(("select", "HDMI 1", True), device.calls)
+
+    def test_a_tv_without_an_art_channel_switches_as_before(self):
+        device = _Device("HDMI 1")
+        device._art_api = None
+        _run(_apply(device))
+        self.assertIn(("select", "HDMI 1", True), device.calls)
 
 
 class SelectSourceTest(unittest.TestCase):

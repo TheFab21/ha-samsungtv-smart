@@ -288,6 +288,10 @@ SOURCE_WAKE_DELAY = 1.5
 # art exit source: the art app first returns the panel to its last source, and
 # a key sent in the middle of that hand-over can be dropped.
 ART_EXIT_SOURCE_DELAY = 3
+# A go_to_standby heard within this much of the exit means the TV is powering
+# off, not changing source. The two events arrive in the TV's own order, so the
+# window reaches back before the exit as well as forward through the delay.
+ART_EXIT_SOURCE_STANDBY_GRACE = 3.0
 # SmartThings source keys whose WebSocket key does exactly the same thing, for
 # the fallback in _smartthings_keys. Only exact equivalents belong here:
 # ST_MUTE / ST_UNMUTE ask for a STATE while KEY_MUTE toggles, ST_VOL<n> and
@@ -4734,7 +4738,25 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         source = str(self._get_option(CONF_ART_EXIT_SOURCE) or "").strip()
         if not source:
             return
+        standby_since = time.monotonic() - ART_EXIT_SOURCE_STANDBY_GRACE
         await asyncio.sleep(ART_EXIT_SOURCE_DELAY)
+
+        # On a Frame, turning Art Mode off IS turning the TV off, and then
+        # there is no source to switch to. Measured on a QE55LS03D, 31
+        # October: art off at 11:11:00.4, art_mode_changed 'off' at :00.7,
+        # go_to_standby at :03.5, and this switch sent KEY_HDMI3 at :04.8 —
+        # 0.3 s before both WebSocket threads terminated and the TV read
+        # standby. The announcement was already in hand 1.3 s earlier.
+        heard = self._art_api.standby_last_broadcast if self._art_api else None
+        if heard is not None and heard >= standby_since:
+            self._log.info(
+                "Art Mode turned off but the TV announced it is going to "
+                "standby: not switching to '%s' (art exit source option) — "
+                "there is nothing to switch to on a TV that is powering off",
+                source,
+            )
+            return
+
         self._log.info(
             "Art Mode turned off: switching to '%s' (art exit source option)", source
         )
