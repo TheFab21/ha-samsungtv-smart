@@ -14,6 +14,11 @@ from pysmartthings import SmartThings
 
 from homeassistant.util import Throttle
 
+if __package__:
+    from .shared_read import shared_json_get
+else:
+    from shared_read import shared_json_get
+
 # Capability names as strings (pysmartthings v6.0+ compatibility)
 CAP_SWITCH = "switch"
 CAP_AUDIO_VOLUME = "audioVolume"
@@ -569,7 +574,8 @@ class SmartThingsTV:
             )
             self._log.debug("Samsung TV: fetching input sources via REST: %s", cap_name)
             try:
-                async with self._session.get(
+                async with shared_json_get(
+                    self._session,
                     url,
                     headers={
                         "Authorization": f"Bearer {api_key}",
@@ -747,7 +753,8 @@ class SmartThingsTV:
             f"/components/main/capabilities/{capability}/status"
         )
         try:
-            async with self._session.get(
+            async with shared_json_get(
+                self._session,
                 url,
                 headers={
                     "Authorization": f"Bearer {api_key}",

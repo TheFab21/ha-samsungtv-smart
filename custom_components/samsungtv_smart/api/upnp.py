@@ -7,6 +7,11 @@ import xml.etree.ElementTree as ET
 from aiohttp import ClientSession
 import async_timeout
 
+if __package__:
+    from .shared_read import shared_session_read
+else:
+    from shared_read import shared_session_read
+
 DEFAULT_TIMEOUT = 0.2
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,7 +48,8 @@ class SamsungUPnP:
                     </u:{action}>
                     </s:Body>
                 </s:Envelope>"""
-        try:
+
+        async def read():
             async with async_timeout.timeout(timeout):
                 async with self._session.post(
                     f"http://{self._host}:9197/upnp/control/{protocole}1",
@@ -51,8 +57,18 @@ class SamsungUPnP:
                     data=body,
                     raise_for_status=True,
                 ) as resp:
-                    response = await resp.content.read()
-                    self._connected = True
+                    return await resp.content.read()
+
+        try:
+            if action in ("GetVolume", "GetMute"):
+                response = await shared_session_read(
+                    self._session,
+                    (self._host, action, arguments, protocole, timeout),
+                    read,
+                )
+            else:
+                response = await read()
+            self._connected = True
         except Exception as exc:  # pylint: disable=broad-except
             # A timeout's str() is empty: this used to log a blank line.
             _LOGGER.debug("UPnP %s on %s failed: %r", action, self._host, exc)
