@@ -757,6 +757,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     # The app whose icon the media image shows (see _media_icon_app).
     _last_icon_app: str | None = None
     _ip_art_power_off_at: float | None = None
+    _ip_input_source_supported: bool | None = None
+    _ip_input_source_context: tuple | None = None
 
     def __init__(
         self,
@@ -1475,6 +1477,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 self._ip_control_token_cached = None
             self._ip_absolute_volume_supported = None
             self._ip_art_getter_supported = None
+            self._ip_input_source_supported = None
             return None
 
         port = ip_control_port(entry.data)
@@ -1490,6 +1493,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._ip_control_token_cached = token
             self._ip_absolute_volume_supported = None
             self._ip_art_getter_supported = None
+            self._ip_input_source_supported = None
 
         return self._ip_control_client
 
@@ -2774,16 +2778,31 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     async def _smartthings_keys(self, source_key: str):
         """Manage the SmartThings key commands."""
+        if source_key == "ST_TV" or source_key.startswith("ST_HDMI"):
+            if await self._async_ip_source_fallback(source_key):
+                return True
+            if self._st and self._st.state == STStatus.STATE_ON:
+                try:
+                    await self._st.async_select_source(
+                        "digitalTv" if source_key == "ST_TV" else source_key[3:]
+                    )
+                    return True
+                except (
+                    ClientConnectionError,
+                    ClientResponseError,
+                    asyncio.TimeoutError,
+                ):
+                    self._log.debug("SmartThings input fallback failed")
+            return await self._async_st_key_over_ws(
+                source_key, "input command unavailable"
+            )
+
         if not self._st:
             return await self._async_st_key_over_ws(source_key, "is not configured")
         if self._st.state != STStatus.STATE_ON:
             return await self._async_st_key_over_ws(source_key, "is not available")
 
-        if source_key.startswith("ST_HDMI"):
-            await self._st.async_select_source(source_key.replace("ST_", ""))
-        elif source_key == "ST_TV":
-            await self._st.async_select_source("digitalTv")
-        elif source_key.startswith("ST_VD:"):
+        if source_key.startswith("ST_VD:"):
             if cmd := source_key.replace("ST_VD:", ""):
                 await self._st.async_select_vd_source(cmd)
         elif source_key == "ST_CHUP":
@@ -2810,6 +2829,26 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             raise ValueError(f"Unsupported SmartThings command: {source_key}")
 
         return True
+
+    async def _async_ip_source_fallback(self, source_key: str) -> bool:
+        ws_key = self._ws_key_for_st_key(source_key)
+        expected = self._input_for_ws_key(ws_key) if ws_key else None
+        client = self._get_ip_control_client() if expected is not None else None
+        if client is not None:
+            entries = getattr(getattr(self, "hass", None), "config_entries", None)
+            entry = entries.async_get_entry(self._entry_id) if entries else None
+            context = (
+                id(client),
+                entry.data.get(CONF_IP_CONTROL_FW_VERSION) if entry else None,
+            )
+            if context != self._ip_input_source_context:
+                self._ip_input_source_context = context
+                self._ip_input_source_supported = None
+            if self._ip_input_source_supported is False:
+                return False
+            if await self._async_ip_control_source("IP_" + expected, verify=True):
+                return True
+        return False
 
     def _log_st_error(self, st_error: bool):
         """Log start or end problem in ST communication"""
@@ -4413,7 +4452,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         return await self.async_send_command(url, CMD_OPEN_BROWSER)
 
-    async def _async_ip_control_source(self, source_key: str) -> bool:
+    async def _async_ip_control_source(
+        self, source_key: str, *, verify: bool = False
+    ) -> bool:
         """Select an input source through local Samsung IP Control."""
         input_source = source_key.removeprefix("IP_")
         if not input_source:
@@ -4428,10 +4469,29 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             )
             return False
 
+        source_written = False
         try:
             selected_source = await client.async_set_input_source(input_source)
+            source_written = True
+            if verify:
+                await asyncio.sleep(ST_FALLBACK_VERIFY_DELAY)
+                states = await client.async_get_tv_states()
+                if states.get("inputSource") != input_source:
+                    self._log.debug("Local input command was not confirmed")
+                    return False
+                self._ip_input_source_supported = True
+        except SamsungIPControlUnsupportedError as ex:
+            if (
+                not source_written
+                and self._ip_input_source_supported is None
+                and not self._panel_may_be_ambient()
+            ):
+                self._ip_input_source_supported = False
+            self._log.debug("IP Control input source is unavailable: %s", ex)
+            return False
         except SamsungIPControlError as ex:
-            self._log.error("IP Control input source %s failed: %s", input_source, ex)
+            log = self._log.debug if verify else self._log.error
+            log("IP Control input source %s failed: %s", input_source, ex)
             return False
 
         # Keep media_player.source and the existing diagnostic input-source
@@ -4532,7 +4592,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                         if not await self._async_ip_control_source(this_key):
                             return False
                     elif this_key.startswith("ST_"):
-                        await self._smartthings_keys(this_key)
+                        sent = await self._smartthings_keys(this_key)
+                        if not sent and (
+                            this_key == "ST_TV" or this_key.startswith("ST_HDMI")
+                        ):
+                            # Later keys must not land on the previous input.
+                            return False
                     else:
                         await self.async_send_command(this_key)
 
