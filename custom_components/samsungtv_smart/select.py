@@ -298,6 +298,10 @@ async def async_setup_entry(
                 device_name,
             )
 
+    # The media player's sources as a select: the Home Assistant mobile app's
+    # media player dialog showed only the current source of the list.
+    entities.append(SamsungTVSourceSelect(hass, entry, device_name, device_unique_id))
+
     if entities:
         async_add_entities(entities)
 
@@ -2713,3 +2717,117 @@ class SamsungTVQuickSettingSelect(SelectEntity):
             )
         self._refresh()
         self.async_write_ha_state()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Source (mirror of the media player's source list)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class SamsungTVSourceSelect(SelectEntity):
+    """The media player's source list and source, as a select.
+
+    Reported on a Frame 2024: the media player published
+    ``source_list: TV, CINEMA 60``, yet the Home Assistant mobile app's media
+    player dialog offered TV alone. A select shows every option on every
+    client and is easy to use on a dashboard or in an automation. It mirrors
+    the media player's published state (no request of its own) and selecting
+    calls ``media_player.select_source``, so it takes the same path: inputs,
+    apps and channels alike.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_translation_key = "source"
+    _attr_icon = "mdi:import"
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        device_name: str,
+        device_unique_id: str,
+    ) -> None:
+        self.hass = hass
+        self._entry_id = entry.entry_id
+        self._device_name = device_name
+        self._device_unique_id = device_unique_id
+        self._attr_unique_id = f"{device_unique_id}_source"
+        self._attr_options: list[str] = []
+        self._attr_current_option: str | None = None
+        self._attr_available = False
+        self._mp_entity_id: str | None = None
+        self._unsub: Callable[[], None] | None = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(identifiers={(DOMAIN, self._device_unique_id)})
+
+    def _media_player_entity_id(self) -> str | None:
+        registry = er.async_get(self.hass)
+        for entity in registry.entities.get_entries_for_config_entry_id(self._entry_id):
+            if entity.domain == "media_player":
+                return entity.entity_id
+        return None
+
+    def _apply(self, state) -> bool:
+        """Copy the media player's sources; True when what is shown changed."""
+        options: list[str] = []
+        current = None
+        available = False
+        if state is not None and state.state not in (
+            STATE_OFF,
+            "unavailable",
+            "unknown",
+        ):
+            raw = state.attributes.get("source_list") or []
+            for item in raw:
+                if isinstance(item, str) and item and item not in options:
+                    options.append(item)
+            source = state.attributes.get("source")
+            current = source if source in options else None
+            available = bool(options)
+        if not options:
+            # Keep the last list while the TV is off, so the entity's options
+            # (and automations that name them) do not vanish.
+            options = self._attr_options
+        changed = (
+            options != self._attr_options
+            or current != self._attr_current_option
+            or available != self._attr_available
+        )
+        self._attr_options = options
+        self._attr_current_option = current
+        self._attr_available = available
+        return changed
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._mp_entity_id = self._media_player_entity_id()
+        if self._mp_entity_id is None:
+            return
+        self._apply(self.hass.states.get(self._mp_entity_id))
+        self._unsub = async_track_state_change_event(
+            self.hass, [self._mp_entity_id], self._media_player_changed
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub is not None:
+            self._unsub()
+            self._unsub = None
+        await super().async_will_remove_from_hass()
+
+    @callback
+    def _media_player_changed(self, event) -> None:
+        if self._apply(event.data.get("new_state")):
+            self.async_write_ha_state()
+
+    async def async_select_option(self, option: str) -> None:
+        if self._mp_entity_id is None:
+            raise HomeAssistantError(f"No media player found for {self._device_name}.")
+        await self.hass.services.async_call(
+            "media_player",
+            "select_source",
+            {"entity_id": self._mp_entity_id, "source": option},
+            blocking=True,
+        )
