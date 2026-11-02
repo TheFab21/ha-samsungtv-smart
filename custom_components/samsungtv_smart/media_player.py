@@ -720,6 +720,9 @@ class ArtModeSupport(Enum):
 
 # Quick-settings layer of the sound mode (api/mobilebff.py).
 SOUND_MODE_LAYER = "s/setting.layer.soundmode"
+# media_image_url marker for an app icon fetched from the TV (get.icon),
+# served from memory by async_get_media_image.
+TV_APP_ICON_URL = "samsungtv-smart-icon://"
 # Seconds the running app opened over the quick-settings channel is kept
 # while nothing confirms or contradicts it.
 LOCAL_APP_LAUNCH_HOLD = 20.0
@@ -774,6 +777,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._attr_media_title = None
         self._attr_media_image_url = None
         self._attr_media_image_remotely_accessible = False
+        # Tizen app id -> its icon image, fetched from the TV once (get.icon).
+        self._tv_app_icons: dict[str, bytes] = {}
 
         # Assume that the TV is not muted and volume is 0
         self._attr_is_volume_muted = False
@@ -3316,7 +3321,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             media_image_url = self._art_mode_media_image()
         elif (
             media_image_url := await self._local_media_image(new_media_title)
-        ) is None:
+        ) is None and (media_image_url := await self._tv_app_icon_url()) is None:
             media_image_url = await self._logo.async_find_match(new_media_title)
             remote_access = media_image_url is not None
 
@@ -3404,6 +3409,39 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if media_title and media_title != DEFAULT_APP:
             return media_title
         return None
+
+    async def _tv_app_icon_url(self) -> str | None:
+        """A media image URL for the running app's own icon, fetched from the TV.
+
+        The home-screen tiles name each app's icon file and get.icon returns
+        it (a 152x152 PNG) over the quick-settings channel. It replaces the
+        online logo match, which picked "awesometv" for Swisscom blue TV.
+        Each icon is fetched once and kept in memory; the URL is a marker
+        served by async_get_media_image, so nothing is written to disk.
+        """
+        if self._running_app in (None, DEFAULT_APP) or not self._app_list:
+            return None
+        app_id = self._app_list.get(self._running_app)
+        client = self._quick_settings_client()
+        tile = client.find_app(app_id) if client and app_id else None
+        if tile is None or not tile.icon_path:
+            return None
+        if app_id not in self._tv_app_icons:
+            if not client.connected:
+                return None
+            data = await client.async_get_icon(tile.icon_path)
+            if not data:
+                return None
+            self._tv_app_icons[app_id] = data
+        return f"{TV_APP_ICON_URL}{app_id}"
+
+    async def async_get_media_image(self) -> tuple[bytes | None, str | None]:
+        """Serve an app icon fetched from the TV; anything else as usual."""
+        url = self.media_image_url
+        if url and url.startswith(TV_APP_ICON_URL):
+            data = self._tv_app_icons.get(url[len(TV_APP_ICON_URL) :])
+            return (data, "image/png") if data else (None, None)
+        return await super().async_get_media_image()
 
     async def _local_media_image(self, media_title):
         """Get local media image if available."""

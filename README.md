@@ -1465,6 +1465,8 @@ Input switching and sound mode go local first too, over the TV's quick-settings 
 
 Apps come from the TV's home screen over the same channel when the remote channel lists none (a Frame 2024 never answered its app-list request, which left the source list without apps): each web-app tile carries its Tizen id, so the apps join the source list and a plain launch opens them locally, with the remote-channel launch as the fallback. A deep link or an explicit launch method keeps the remote channel.
 
+While one of those apps is on screen, the media player's picture is the app's own icon, fetched from the TV over the same channel (each tile names its icon file and the TV returns it, a 152x152 PNG), once per app and kept in memory. Your local logos and the bundled ones still come first; the online logo match is only the last resort.
+
 ### Frame Art services not working
 
 - These services require a Samsung **Frame** TV with Art Mode capability.

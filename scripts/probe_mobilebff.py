@@ -17,6 +17,7 @@ with an explicit option, and each one is undone by the script:
   --toggle-setting LAYER   the same for any quick setting (colortone, ...)
   --switch-source NAME     launch.extsource: to that input, then back
   --apps                   get.apptiles / recent / recommended (read-only)
+  --icons                  fetch a few app/input icons, two ways (read-only)
   --launch-app NAME        launch.app: open that app tile, then back to TV
   --vconf KEY / --vconf-defaults
                            request.vconf.info reads (read-only)
@@ -120,6 +121,42 @@ def _decode(value):
     if isinstance(value, list):
         return [_decode(v) for v in value]
     return value
+
+
+def _image_ext(data: bytes) -> str | None:
+    if data.startswith(b"\x89PNG"):
+        return "png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpg"
+    head = data[:200].lstrip().lower()
+    if head.startswith((b"<svg", b"<?xml")):
+        return "svg"
+    return None
+
+
+def _find_image(value, path="") -> tuple[str, bytes] | None:
+    """The first string in a decoded message that base64-decodes to an image."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            found = _find_image(item, f"{path}.{key}")
+            if found:
+                return found
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            found = _find_image(item, f"{path}[{index}]")
+            if found:
+                return found
+    elif isinstance(value, str) and len(value) > 200:
+        text = value.split(",", 1)[1] if value.startswith("data:") else value
+        try:
+            data = base64.b64decode(text, validate=False)
+        except (ValueError, TypeError):
+            return None
+        if _image_ext(data):
+            return path, data
+    return None
 
 
 class Probe:
@@ -367,6 +404,146 @@ class Probe:
                 return key, tile[key]
         return None, None
 
+    def _save_image(self, label: str, message) -> None:
+        found = _find_image(message)
+        if found is None:
+            print(f"   {label}: no image in the answer")
+            return
+        where, data = found
+        folder = self.out.parent / "probe_icons"
+        folder.mkdir(exist_ok=True)
+        safe = "".join(c if c.isalnum() else "_" for c in label)[:40]
+        target = folder / f"{safe}.{_image_ext(data)}"
+        target.write_bytes(data)
+        print(f"   {label}: {len(data)} bytes ({where}) -> {target}")
+
+    async def icons_mobilebff(self, ws) -> None:
+        """get.icon on the quick-settings channel for a few tiles; read-only."""
+        tiles = (self.latest.get("get.apptiles") or {}).get("response") or []
+        sources = (self.latest.get("get.extsources") or {}).get("response") or []
+        print("\n== get.icon (quick-settings channel)")
+        for item in [*tiles[:3], *sources[:2]]:
+            request_id = item.get("appId") or item.get("sourceId")
+            if not request_id:
+                continue
+            self.latest.pop("get.icon", None)
+            await self._send(ws, "get.icon", {"requestId": request_id})
+            answer = await self._wait_for("get.icon", timeout=5)
+            label = item.get("title") or request_id
+            if answer is not None:
+                self._save_image(f"bff_{label}", answer)
+
+    async def icon_variants(self, ws) -> None:
+        """Try get.icon with several parameter shapes for one app tile.
+
+        The first capture got {"requestId": "", "base64": ""} for a tile id
+        as requestId: the answer has the right shape, but the TV did not
+        recognise the parameter. The decompiled firmware only names
+        "requestId", so try what it could hold, and a few other keys.
+        """
+        tiles = (self.latest.get("get.apptiles") or {}).get("response") or []
+        tile = next((t for t in tiles if "webapp" in str(t.get("appId"))), None)
+        if tile is None:
+            print("! No web app tile to try; skipping --icon-variants")
+            return
+        app_id = tile["appId"]
+        tizen_id = app_id.rpartition("@")[2]
+        icon_path = tile.get("iconPath", "")
+        variants = [
+            {"requestId": icon_path},
+            {"requestId": tizen_id},
+            {"requestId": app_id, "iconPath": icon_path},
+            {"iconPath": icon_path},
+            {"path": icon_path},
+            {"appId": app_id},
+            {"id": app_id},
+            {"requestId": app_id, "type": "icon"},
+        ]
+        print(f"\n== get.icon variants for {tile.get('title')!r}")
+        for params in variants:
+            self.latest.pop("get.icon", None)
+            await self._send(ws, "get.icon", params)
+            answer = await self._wait_for("get.icon", timeout=4)
+            response = (answer or {}).get("response") or {}
+            size = (
+                len(response.get("base64") or "") if isinstance(response, dict) else 0
+            )
+            print(
+                f"   {params} -> base64 {size} chars, echo {response.get('requestId')!r}"
+                if isinstance(response, dict)
+                else f"   {params} -> {answer}"
+            )
+            if size:
+                self._save_image(f"variant_{tile.get('title')}", answer)
+
+    async def icons_remote(self, session, name: str, token: str | None) -> None:
+        """ed.apps.icon on the remote-control channel (needs the token); read-only.
+
+        Asks for the iconPath the tiles report; the TV answers on the same
+        event with the image in base64 when it supports it.
+        """
+        tiles = (self.latest.get("get.apptiles") or {}).get("response") or []
+        sources = (self.latest.get("get.extsources") or {}).get("response") or []
+        paths = [
+            (t.get("title"), t.get("iconPath")) for t in tiles[:3] if t.get("iconPath")
+        ] + [(x.get("title"), x.get("icon")) for x in sources[:2] if x.get("icon")]
+        if not paths:
+            print("! No icon paths to ask for; skipping ed.apps.icon")
+            return
+        if not token:
+            print("! No token for the remote-control channel; skipping ed.apps.icon")
+            return
+        url = (
+            f"wss://{self.host}:8002/api/v2/channels/samsung.remote.control"
+            f"?name={_b64(name)}&token={token}"
+        )
+        print("\n== ed.apps.icon (remote-control channel, integration's token)")
+        try:
+            remote = await asyncio.wait_for(
+                session.ws_connect(url, ssl=_ssl_context(), heartbeat=20), timeout=10
+            )
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as ex:
+            print(f"! Remote channel connection failed: {ex!r}")
+            return
+        try:
+            msg = await remote.receive(timeout=10)
+            event = (
+                (_decode(msg.data) or {}).get("event")
+                if msg.type == aiohttp.WSMsgType.TEXT
+                else None
+            )
+            if event != "ms.channel.connect":
+                print(f"! Remote channel did not connect: {msg.type} {event}")
+                return
+            for label, icon_path in paths:
+                outer = {
+                    "method": "ms.channel.emit",
+                    "params": {
+                        "event": "ed.apps.icon",
+                        "to": "host",
+                        "data": {"iconPath": icon_path},
+                    },
+                }
+                self._record("->", outer)
+                await remote.send_str(json.dumps(outer))
+                end = time.monotonic() + 5
+                while (left := end - time.monotonic()) > 0:
+                    try:
+                        reply = await remote.receive(timeout=left)
+                    except asyncio.TimeoutError:
+                        break
+                    if reply.type != aiohttp.WSMsgType.TEXT:
+                        break
+                    decoded = _decode(reply.data)
+                    if (decoded or {}).get("event") == "ed.apps.icon":
+                        self._record("<-", reply.data)
+                        self._save_image(f"remote_{label}", decoded)
+                        break
+                else:
+                    print(f"   remote_{label}: no ed.apps.icon answer")
+        finally:
+            await remote.close()
+
     async def launch_app(self, ws, target: str) -> None:
         """Launch one app tile by (part of) its title, then go back to TV."""
         tiles = (self.latest.get("get.apptiles") or {}).get("response")
@@ -431,8 +608,15 @@ class Probe:
                 await self.toggle_setting(ws, name)
             if actions.switch_source:
                 await self.switch_source(ws, actions.switch_source)
-            if actions.apps or actions.launch_app:
+            if actions.apps or actions.launch_app or actions.icons:
                 await self.read_apps(ws)
+            if actions.icon_variants:
+                if not actions.icons and not actions.apps:
+                    await self.read_apps(ws)
+                await self.icon_variants(ws)
+            if actions.icons:
+                await self.icons_mobilebff(ws)
+                await self.icons_remote(actions.session, actions.name, actions.token)
             if actions.launch_app:
                 await self.launch_app(ws, actions.launch_app)
             print(
@@ -495,6 +679,18 @@ async def main() -> int:
         "back to the TV input",
     )
     parser.add_argument(
+        "--icon-variants",
+        action="store_true",
+        help="try get.icon with several parameter shapes for one app; read-only",
+    )
+    parser.add_argument(
+        "--icons",
+        action="store_true",
+        help="fetch a few app and input icons (get.icon here, ed.apps.icon on the "
+        "remote-control channel with the integration's token); read-only, saved "
+        "to OUT_DIR/probe_icons",
+    )
+    parser.add_argument(
         "--apps",
         action="store_true",
         help="read the app tiles (get.apptiles, recent, recommended); read-only",
@@ -523,6 +719,7 @@ async def main() -> int:
         if ws is None and token and args.port == 8002:
             ws = await probe.connect(session, name, token)
         if ws is not None:
+            args.session, args.name, args.token = session, name, token
             await probe.run(ws, args)
     probe.save()
     return 0 if ws is not None else 1
