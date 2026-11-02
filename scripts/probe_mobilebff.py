@@ -19,6 +19,7 @@ with an explicit option, and each one is undone by the script:
   --apps                   get.apptiles / recent / recommended (read-only)
   --icons                  fetch a few app/input icons, two ways (read-only)
   --extras                 tile functions/previews, Multi View, rotator (read-only)
+  --vconf-list             try to list vconf keys by prefix (read-only)
   --launch-app NAME        launch.app: open that app tile, then back to TV
   --vconf KEY / --vconf-defaults
                            request.vconf.info reads (read-only)
@@ -434,6 +435,33 @@ class Probe:
             if answer is not None:
                 self._save_image(f"bff_{label}", answer)
 
+    async def vconf_list(self, ws) -> None:
+        """Ask for key prefixes, untyped and typed, hoping for a key list.
+
+        The decompiled firmware names request.vconf.info.int/.string/.bool
+        only; an unknown key answers "0" / "" / "False" like a real one, so
+        keys cannot be guessed. If the bare request, or a prefix as the key,
+        returns a list of sub-keys, the light-sensor key could be found.
+        Read-only; any answer is recorded as is.
+        """
+        prefixes = ["", "memory", "memory/", "db", "db/", "memory/sensor", "db/menu"]
+        print("\n== vconf key listing attempts")
+        for request in (
+            "request.vconf.info",
+            "request.vconf.info.string",
+            "request.vconf.list",
+            "get.vconf.list",
+        ):
+            for prefix in prefixes:
+                self.latest.pop(request, None)
+                await self._send(ws, request, {"key": prefix})
+                answer = await self._wait_for(request, timeout=3)
+                text = json.dumps((answer or {}).get("response"), ensure_ascii=False)
+                print(f"   {request} key={prefix!r}: {text[:200]}")
+                if answer is None and prefix == "":
+                    # No answer at all for this request name: skip its prefixes.
+                    break
+
     async def read_extras(self, ws) -> None:
         """The remaining read requests of the decompiled list; read-only.
 
@@ -643,6 +671,8 @@ class Probe:
                 await self.switch_source(ws, actions.switch_source)
             if actions.apps or actions.launch_app or actions.icons:
                 await self.read_apps(ws)
+            if actions.vconf_list:
+                await self.vconf_list(ws)
             if actions.extras:
                 if not (actions.icons or actions.apps or actions.launch_app):
                     await self.read_apps(ws)
@@ -714,6 +744,11 @@ async def main() -> int:
         metavar="NAME",
         help="launch.app: open the app tile whose title contains NAME, then go "
         "back to the TV input",
+    )
+    parser.add_argument(
+        "--vconf-list",
+        action="store_true",
+        help="try to list vconf keys (bare request, key prefixes); read-only",
     )
     parser.add_argument(
         "--extras",
