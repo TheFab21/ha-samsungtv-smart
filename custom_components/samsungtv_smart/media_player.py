@@ -128,6 +128,7 @@ from .const import (
     CONF_IP_CONTROL_ART_MODE,
     CONF_IP_CONTROL_FW_VERSION,
     CONF_IP_CONTROL_MODEL_ID,
+    CONF_IP_CONTROL_POLL_INTERVAL,
     CONF_IP_CONTROL_TOKEN,
     CONF_LOGO_OPTION,
     CONF_OAUTH_TOKEN,
@@ -156,6 +157,7 @@ from .const import (
     DATA_IP_CONTROL_STATE_COORDINATOR,
     DATA_OPTIONS,
     DEFAULT_APP,
+    DEFAULT_IP_CONTROL_POLL_INTERVAL,
     DEFAULT_PORT,
     DEFAULT_SOURCE_LIST,
     DEFAULT_ST_POLL_ON_INTERVAL,
@@ -733,6 +735,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     # without ever having answered, while nothing suggested art. Reset with the
     # client, like _ip_absolute_volume_supported.
     _ip_art_getter_supported: bool | None = None
+    _ip_art_power_off_at: float | None = None
 
     def __init__(
         self,
@@ -1558,7 +1561,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         ``extra_state_attributes`` as the authoritative source for
         ``art_mode_status`` when this TV is paired.
 
-        The power state is read FIRST (powerControl): artModeControl alone
+        A fresh getTVStates snapshot supplies Art Mode without another request.
+        Older snapshots cannot replace a newer direct read or mode-change event.
+        Otherwise the power state is read FIRST (powerControl): artModeControl alone
         cannot tell a powered-off TV from one displaying art — it keeps
         answering with the last mode even when the panel is off. powerControl,
         by contrast, reports 'powerOn' while Art Mode is displayed and
@@ -1618,42 +1623,47 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # default) this cache stayed None whenever the TV was on.
         read_at = time.monotonic()
         try:
-            power = await client.async_get_power_state()
-            if power == "powerOff":
-                # TV is really off — art cannot be displayed. Don't query
-                # artModeControl: it would answer with the last mode.
-                value = False
-            elif (
-                self.support_art_mode == ArtModeSupport.UNSUPPORTED
-                or self._ip_art_getter_supported is False
-            ):
-                # Not a Frame (this timer runs for every TV), or one whose IP
-                # Control has no art-mode getter: power-only guard, the other
-                # sources decide.
-                value = None
+            shared = self._shared_ip_art_reading()
+            if shared is not None:
+                value, read_at = shared
+                power = "powerOn"
             else:
-                try:
-                    value = await client.async_get_art_mode(power_state=power)
-                except SamsungIPControlUnsupportedError as ex:
-                    # artModeControl is in the open dispatch map and answers
-                    # in art, so a -32601 from a getter that has never
-                    # answered on this client means it is missing. Waiting
-                    # while art may be on is only a precaution; a getter that
-                    # has answered is never switched off by one refusal.
-                    if (
-                        self._ip_art_getter_supported is None
-                        and not self._panel_may_be_ambient()
-                    ):
-                        self._ip_art_getter_supported = False
-                        self._log.debug(
-                            "IP Control art-mode getter not available on %s "
-                            "(%s); using the other art-mode sources",
-                            self._host,
-                            ex,
-                        )
+                power = await client.async_get_power_state()
+                if power == "powerOff":
+                    # TV is really off — art cannot be displayed. Don't query
+                    # artModeControl: it would answer with the last mode.
+                    value = False
+                elif (
+                    self.support_art_mode == ArtModeSupport.UNSUPPORTED
+                    or self._ip_art_getter_supported is False
+                ):
+                    # Not a Frame (this timer runs for every TV), or one whose IP
+                    # Control has no art-mode getter: power-only guard, the other
+                    # sources decide.
                     value = None
                 else:
-                    self._ip_art_getter_supported = True
+                    try:
+                        value = await client.async_get_art_mode(power_state=power)
+                    except SamsungIPControlUnsupportedError as ex:
+                        # artModeControl is in the open dispatch map and answers
+                        # in art, so a -32601 from a getter that has never
+                        # answered on this client means it is missing. Waiting
+                        # while art may be on is only a precaution; a getter that
+                        # has answered is never switched off by one refusal.
+                        if (
+                            self._ip_art_getter_supported is None
+                            and not self._panel_may_be_ambient()
+                        ):
+                            self._ip_art_getter_supported = False
+                            self._log.debug(
+                                "IP Control art-mode getter not available on %s "
+                                "(%s); using the other art-mode sources",
+                                self._host,
+                                ex,
+                            )
+                        value = None
+                    else:
+                        self._ip_art_getter_supported = True
         except SamsungIPControlAuthError as ex:
             self._log.warning(
                 "IP Control art-mode read for %s: token rejected (%s) — "
@@ -1707,6 +1717,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._ip_art_mode_failures = 0
         self._clear_ip_control_token_problem()
         self._ip_art_mode_at = None if power == "powerOff" else read_at
+        self._ip_art_power_off_at = read_at if power == "powerOff" else None
         if value != self._ip_art_mode:
             self._log.debug(
                 "IP Control art-mode for %s changed: %s -> %s (writing state)",
@@ -1727,6 +1738,44 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             broadcast = self._latest_art_broadcast()
             if value is not None and broadcast is not None and broadcast[0] != value:
                 self.async_write_ha_state()
+
+    def _shared_ip_art_reading(self) -> tuple[bool, float] | None:
+        if self.hass is None:
+            return None
+        if self.support_art_mode == ArtModeSupport.UNSUPPORTED:
+            return None
+        coordinator = self._get_ip_control_state_coordinator()
+        if not getattr(coordinator, "last_update_success", False):
+            return None
+        data = getattr(coordinator, "data", None)
+        if not isinstance(data, dict) or data.get("powered_off"):
+            return None
+        tv = data.get("tv")
+        mode = tv.get("pictureMode") if isinstance(tv, dict) else None
+        observed_at = data.get("polled_at")
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        interval = (entry.options if entry else {}).get(
+            CONF_IP_CONTROL_POLL_INTERVAL, DEFAULT_IP_CONTROL_POLL_INTERVAL
+        )
+        if (
+            not isinstance(mode, str)
+            or not mode.strip()
+            or mode.strip().casefold() in {"unknown", "unavailable", "none", "null"}
+            or type(observed_at) not in (int, float)
+            or not 0 <= time.monotonic() - observed_at <= max(30.0, 2 * interval)
+        ):
+            return None
+        if (
+            self._ip_art_power_off_at is not None
+            and observed_at <= self._ip_art_power_off_at
+        ):
+            return None
+        if self._ip_art_mode_at is not None and observed_at < self._ip_art_mode_at:
+            return None
+        broadcast = self._latest_art_broadcast()
+        if broadcast is not None and observed_at < broadcast[1]:
+            return None
+        return mode.strip() == "Ambient", observed_at
 
     async def _refresh_device_information(self, _now=None) -> None:
         """Refresh the TV's model / firmware via IP Control and persist it.
