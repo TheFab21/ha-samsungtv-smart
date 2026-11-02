@@ -751,6 +751,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     _ip_art_getter_supported: bool | None = None
     # Until when an app opened locally stays the running app (monotonic).
     _local_app_hold_until: float = 0.0
+    # The app a local launch replaced; stale readings of it are ignored
+    # during the hold (see _get_running_app).
+    _local_app_replaced: str | None = None
     # The app whose icon the media image shows (see _media_icon_app).
     _last_icon_app: str | None = None
     _ip_art_power_off_at: float | None = None
@@ -2316,23 +2319,30 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         st_running_app = None
         running_before = self._running_app
+        holding = (
+            running_before not in (None, DEFAULT_APP)
+            and time.monotonic() < self._local_app_hold_until
+        )
+        # While an app opened locally is held, a reading that the app it
+        # replaced is still running is the last scan's, not news: the scan runs
+        # every ~9 s, and taking it put YouTube back on the card 75 ms after
+        # CANAL+ was opened, for 14 s. Any other app still wins at once.
+        replaced = self._local_app_replaced if holding else None
         if self._app_list is not None:
             for app, app_id in self._app_list.items():
                 if app_running := self._ws.is_app_running(app_id):
+                    if app == replaced and app != running_before:
+                        continue
                     self._running_app = app
                     return
                 if app_running is False:
                     continue
                 if self._st and self._st.channel_name != "":
                     st_app_id = self._app_list_st.get(app, "")
-                    if st_app_id == self._st.channel_name:
+                    if st_app_id == self._st.channel_name and app != replaced:
                         st_running_app = app
 
-        if (
-            st_running_app is None
-            and running_before not in (None, DEFAULT_APP)
-            and time.monotonic() < self._local_app_hold_until
-        ):
+        if st_running_app is None and holding:
             # Just opened over the quick-settings channel: the app's own status
             # takes a scan or two to say it is running, and SmartThings lags
             # further (it still named TV Plus 30 s later). Without this hold the
@@ -5089,6 +5099,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return False
         self._log.debug("App %s opened locally (%s)", app_id, tile.tile_id)
         self._local_app_hold_until = time.monotonic() + LOCAL_APP_LAUNCH_HOLD
+        # Still the app on screen before this launch (the caller sets the new
+        # one after this returns).
+        self._local_app_replaced = self._running_app
         return True
 
     async def _async_local_sound_mode(self, sound_mode: str) -> bool:
