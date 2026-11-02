@@ -16,6 +16,8 @@ with an explicit option, and each one is undone by the script:
   --toggle-sound-mode      set.settings.data: sound mode to another option, back
   --toggle-setting LAYER   the same for any quick setting (colortone, ...)
   --switch-source NAME     launch.extsource: to that input, then back
+  --apps                   get.apptiles / recent / recommended (read-only)
+  --launch-app NAME        launch.app: open that app tile, then back to TV
   --vconf KEY / --vconf-defaults
                            request.vconf.info reads (read-only)
 
@@ -331,6 +333,79 @@ class Probe:
             await self._send(ws, "get.extsources")
             await asyncio.sleep(1)
 
+    async def read_apps(self, ws) -> None:
+        """Read the app tiles (home screen, recent, recommended); read-only.
+
+        The TV did not answer the remote channel's ed.installedApp.get on a
+        Frame 2024 (no reply in 3 minutes), so the media player's source list
+        had no apps. These requests may list them locally instead.
+        """
+        print("\n== App tiles: get.apptiles, get.recent.apptiles, ...")
+        for request in (
+            "get.apptiles",
+            "get.recent.apptiles",
+            "get.recommended.apptiles",
+        ):
+            self.latest.pop(request, None)
+            await self._send(ws, request)
+            await self._wait_for(request, timeout=6)
+        tiles = (self.latest.get("get.apptiles") or {}).get("response")
+        if isinstance(tiles, list):
+            for tile in tiles[:40]:
+                if isinstance(tile, dict):
+                    short = {
+                        k: v
+                        for k, v in tile.items()
+                        if "icon" not in k.lower() and not isinstance(v, (dict, list))
+                    }
+                    print(f"   tile: {short}")
+
+    @staticmethod
+    def _tile_request_id(tile: dict):
+        for key in ("requestId", "tileId", "id", "appId"):
+            if tile.get(key):
+                return key, tile[key]
+        return None, None
+
+    async def launch_app(self, ws, target: str) -> None:
+        """Launch one app tile by (part of) its title, then go back to TV."""
+        tiles = (self.latest.get("get.apptiles") or {}).get("response")
+        if not isinstance(tiles, list):
+            self.latest.pop("get.apptiles", None)
+            await self._send(ws, "get.apptiles")
+            await self._wait_for("get.apptiles", timeout=6)
+            tiles = (self.latest.get("get.apptiles") or {}).get("response") or []
+        wanted = target.casefold()
+        tile = next(
+            (
+                t
+                for t in tiles
+                if isinstance(t, dict)
+                and wanted in str(t.get("title") or t.get("name") or "").casefold()
+            ),
+            None,
+        )
+        if tile is None:
+            titles = [
+                t.get("title") or t.get("name") for t in tiles if isinstance(t, dict)
+            ]
+            print(f"! No app tile matching {target!r} in {titles}; skipping")
+            return
+        key, request_id = self._tile_request_id(tile)
+        if request_id is None:
+            print(f"! The tile has no id field to launch it with: {tile}; skipping")
+            return
+        print(f"\n== Launch app {tile.get('title')!r} (requestId from {key}), 12 s")
+        await self._send(ws, "launch.app", {"requestId": request_id})
+        await asyncio.sleep(12)
+        sources = (self.latest.get("get.extsources") or {}).get("response") or []
+        tv = next(
+            (x for x in sources if str(x.get("sourceId", "")).endswith("@TV")), None
+        )
+        if tv is not None:
+            await self._send(ws, "launch.extsource", {"requestId": tv["sourceId"]})
+            await asyncio.sleep(5)
+
     async def read_vconf(self, ws, keys: list[str]) -> None:
         """Read each key as int, string and bool; the TV answers the right one."""
         print(f"\n== vconf reads: {keys}")
@@ -356,6 +431,10 @@ class Probe:
                 await self.toggle_setting(ws, name)
             if actions.switch_source:
                 await self.switch_source(ws, actions.switch_source)
+            if actions.apps or actions.launch_app:
+                await self.read_apps(ws)
+            if actions.launch_app:
+                await self.launch_app(ws, actions.launch_app)
             print(
                 f"\n== Listening {self.listen:.0f} s: change the picture mode, "
                 "switch input, open the quick settings now.\n"
@@ -408,6 +487,17 @@ async def main() -> int:
         "--switch-source",
         metavar="NAME",
         help="launch.extsource: switch to this input (title or source id), then back",
+    )
+    writes.add_argument(
+        "--launch-app",
+        metavar="NAME",
+        help="launch.app: open the app tile whose title contains NAME, then go "
+        "back to the TV input",
+    )
+    parser.add_argument(
+        "--apps",
+        action="store_true",
+        help="read the app tiles (get.apptiles, recent, recommended); read-only",
     )
     parser.add_argument(
         "--vconf",
