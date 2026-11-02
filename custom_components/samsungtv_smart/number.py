@@ -32,11 +32,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api.art import SamsungTVAsyncArt
 from .api.ipcontrol import (
@@ -59,6 +55,7 @@ from .const import (
     WS_PREFIX,
     ip_control_port,
 )
+from .coordinator_entity import ChangedCoordinatorEntity
 from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_problem
 
 _LOGGER = logging.getLogger(__name__)
@@ -515,7 +512,7 @@ class IPControlVideoCoordinator(DataUpdateCoordinator):
         return data
 
 
-class SamsungTVIPControlPictureNumber(CoordinatorEntity, NumberEntity):
+class SamsungTVIPControlPictureNumber(ChangedCoordinatorEntity, NumberEntity):
     """Settable slider for one IP Control expert picture setting.
 
     Reads its value from the shared getVideoStates coordinator; writes through
