@@ -194,6 +194,7 @@ class AppTile:
 
     tile_id: str  # e.g. d/webapp@3201907018807, s/livetv@TVPLUS
     title: str
+    icon_path: str | None = None  # a file on the TV, fetched with get.icon
 
     @property
     def app_id(self) -> str | None:
@@ -211,8 +212,13 @@ def parse_app_tiles(response: Any) -> tuple[AppTile, ...] | None:
         if not isinstance(item, dict) or not isinstance(item.get("appId"), str):
             continue
         title = item.get("title")
+        icon_path = item.get("iconPath")
         tiles.append(
-            AppTile(item["appId"], title if isinstance(title, str) else item["appId"])
+            AppTile(
+                item["appId"],
+                title if isinstance(title, str) else item["appId"],
+                icon_path if isinstance(icon_path, str) and icon_path else None,
+            )
         )
     return tuple(tiles)
 
@@ -629,6 +635,23 @@ class SamsungMobileBFF:
             _LOGGER.debug("App tile %s refused: %s", tile_id, answer)
             return False
         return True
+
+    async def async_get_icon(self, icon_path: str) -> bytes | None:
+        """The image file at ``icon_path`` on the TV, or None.
+
+        get.icon takes the file path in ``requestId`` (a tile or Tizen id
+        returned an empty ``base64``) and answers it in base64: the
+        SmartThings tile's 152x152 PNG came back as 15 kB on a Frame 2024.
+        """
+        answer = await self._request("get.icon", {"requestId": icon_path})
+        response = (answer or {}).get("response")
+        encoded = response.get("base64") if isinstance(response, dict) else None
+        if not isinstance(encoded, str) or not encoded:
+            return None
+        try:
+            return base64.b64decode(encoded, validate=False)
+        except (ValueError, TypeError):
+            return None
 
     def find_app(self, app_id: str) -> AppTile | None:
         """The home-screen tile of a Tizen app id."""
