@@ -43,6 +43,7 @@ import requests
 import websocket
 from websocket._exceptions import WebSocketProtocolException
 
+from .shared_read import shared_session_read
 from .shortcuts import SamsungTVShortcuts
 
 DEFAULT_POWER_ON_DELAY = 120
@@ -238,16 +239,24 @@ class SamsungTVAsyncRest:
     ) -> dict[str, Any]:
         """Perform a single async rest request against a specific port."""
         url = _format_rest_url(self._host, target, port)
-        if method == "POST":
-            req = self._session.post(url, timeout=self._timeout, verify_ssl=False)
-        elif method == "PUT":
-            req = self._session.put(url, timeout=self._timeout, verify_ssl=False)
-        elif method == "DELETE":
-            req = self._session.delete(url, timeout=self._timeout, verify_ssl=False)
-        else:
-            req = self._session.get(url, timeout=self._timeout, verify_ssl=False)
-        async with req as resp:
-            return _process_api_response(await resp.text())
+
+        async def read():
+            if method == "POST":
+                req = self._session.post(url, timeout=self._timeout, verify_ssl=False)
+            elif method == "PUT":
+                req = self._session.put(url, timeout=self._timeout, verify_ssl=False)
+            elif method == "DELETE":
+                req = self._session.delete(url, timeout=self._timeout, verify_ssl=False)
+            else:
+                req = self._session.get(url, timeout=self._timeout, verify_ssl=False)
+            async with req as resp:
+                return _process_api_response(await resp.text())
+
+        if method == "GET":
+            return await shared_session_read(
+                self._session, ("TV_REST", url, self._timeout), read
+            )
+        return await read()
 
     async def _rest_request(self, target: str, method: str = "GET") -> dict[str, Any]:
         """Perform async rest request.

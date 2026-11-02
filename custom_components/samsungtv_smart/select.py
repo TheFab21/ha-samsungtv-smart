@@ -37,6 +37,7 @@ from .api.ipcontrol import (
     SamsungIPControlUnsupportedError,
     resolve_speaker_select_option,
 )
+from .api.shared_read import shared_json_get
 from .const import (
     AUTH_METHOD_OAUTH,
     CONF_API_KEY,
@@ -1339,7 +1340,8 @@ class SamsungTVSTMediaOutputSelect(SelectEntity):
             f"/components/main/capabilities/{self._CAPABILITY}/status"
         )
         try:
-            async with self._session.get(
+            async with shared_json_get(
+                self._session,
                 url,
                 headers={
                     "Authorization": f"Bearer {self._get_api_key()}",
@@ -1904,7 +1906,8 @@ class SamsungTVPictureModeSelect(SelectEntity):
             f"/components/main/capabilities/{capability}/status"
         )
         try:
-            async with self._session.get(
+            async with shared_json_get(
+                self._session,
                 url,
                 headers={
                     "Authorization": f"Bearer {api_key}",
