@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from enum import Enum
 import logging
+import time
 from typing import NoReturn
 
 from aiohttp import ClientResponse, ClientResponseError, ClientSession
@@ -90,6 +91,8 @@ DEVICE_TYPE_NAMES = ["Samsung OCF TV", "x.com.st.d.monitor"]
 
 # Component name
 COMPONENT_MAIN = "main"
+PERIODIC_REFRESH_INTERVAL = 60.0
+PERIODIC_REFRESH_MAX_BACKOFF = 15 * 60.0
 
 
 class STStatus(Enum):
@@ -102,6 +105,11 @@ class STStatus(Enum):
 
 class SmartThingsTV:
     """Class to read status for TV registered in SmartThings cloud using pysmartthings."""
+
+    _refresh_failures = 0
+    _next_periodic_refresh = 0.0
+    _periodic_refresh_in_progress = False
+    _refresh_request_seq = 0
 
     def __init__(
         self,
@@ -204,8 +212,12 @@ class SmartThingsTV:
         """Get API key used to connect to SmartThings."""
         if self._api_key_callback is not None:
             if api_key := self._api_key_callback():
-                self._api_key = api_key
-                self._st.authenticate(api_key)
+                if api_key != self._api_key:
+                    self._api_key = api_key
+                    self._st.authenticate(api_key)
+                    self._refresh_failures = 0
+                    self._next_periodic_refresh = 0.0
+                    self._refresh_request_seq += 1
         return self._api_key
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -336,7 +348,7 @@ class SmartThingsTV:
         capability: str,
         command: str,
         arguments: list | None = None,
-    ) -> None:
+    ) -> bool:
         """Send a command via direct REST API.
 
         Used instead of pysmartthings Command class, which is an Enum in
@@ -344,7 +356,7 @@ class SmartThingsTV:
         """
         if not self._device_id or not self._session:
             self._log.error("Cannot send REST command: device_id or session missing")
-            return
+            return False
 
         api_key = self._get_api_key()
         url = f"{API_DEVICES}/{self._device_id}/commands"
@@ -393,6 +405,8 @@ class SmartThingsTV:
                     capability,
                     command,
                 )
+                return False
+            return True
 
     async def _raise_command_refused(
         self, resp: ClientResponse, capability: str, command: str
@@ -1521,31 +1535,53 @@ class SmartThingsTV:
                 return True  # raw is the id of our target name
         return False
 
-    async def _async_refresh_device_status(self) -> None:
+    async def _async_refresh_device_status(self) -> bool:
         """Send a 'refresh' command to force SmartThings to re-read TV state.
 
         The SmartThings app does this when opened, which is why the API
         returns correct values after opening the app. Samsung confirmed
         this is the recommended workaround for stale capability values.
         """
+        self._refresh_request_seq += 1
+        request_seq = self._refresh_request_seq
         try:
-            await self._send_rest_command(
+            self._get_api_key()
+            request_seq = self._refresh_request_seq
+            result = await self._send_rest_command(
                 capability="refresh",
                 command="refresh",
             )
-            self._log.debug("Sent refresh command to update SmartThings state")
+            succeeded = result is True
         except Exception as err:
+            succeeded = False
             self._log.debug("Refresh command failed (non-critical): %s", err)
+        if request_seq == self._refresh_request_seq:
+            self._refresh_failures = (
+                0 if succeeded else min(self._refresh_failures + 1, 4)
+            )
+            interval = min(
+                PERIODIC_REFRESH_INTERVAL * 2**self._refresh_failures,
+                PERIODIC_REFRESH_MAX_BACKOFF,
+            )
+            self._next_periodic_refresh = time.monotonic() + interval
+            self._log.debug(
+                "SmartThings active refresh %s; next background attempt in %.0fs",
+                "accepted" if succeeded else "failed",
+                interval,
+            )
+        return succeeded
 
-    @Throttle(timedelta(seconds=60))
     async def _periodic_refresh(self) -> None:
-        """Periodically refresh SmartThings state during polling.
-
-        Ensures that changes made via the TV remote control or other
-        sources are reflected in the SmartThings API. Throttled to
-        once per 60 seconds to avoid API rate limiting.
-        """
-        await self._async_refresh_device_status()
+        """Back off background refreshes; command verification bypasses this method."""
+        now = time.monotonic()
+        if self._periodic_refresh_in_progress or now < self._next_periodic_refresh:
+            return
+        self._periodic_refresh_in_progress = True
+        self._next_periodic_refresh = now + PERIODIC_REFRESH_INTERVAL
+        try:
+            await self._async_refresh_device_status()
+        finally:
+            self._periodic_refresh_in_progress = False
 
 
 class InvalidSmartThingsSoundMode(RuntimeError):
