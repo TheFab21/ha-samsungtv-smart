@@ -6,7 +6,7 @@ on:
       - master
       - v8-json-rpc
   pull_request:
-    branches: ["*"]
+    branches: ["**"]
 
 jobs:
   lint:
