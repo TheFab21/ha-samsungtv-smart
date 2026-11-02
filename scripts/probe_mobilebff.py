@@ -18,6 +18,7 @@ with an explicit option, and each one is undone by the script:
   --switch-source NAME     launch.extsource: to that input, then back
   --apps                   get.apptiles / recent / recommended (read-only)
   --icons                  fetch a few app/input icons, two ways (read-only)
+  --extras                 tile functions/previews, Multi View, rotator (read-only)
   --launch-app NAME        launch.app: open that app tile, then back to TV
   --vconf KEY / --vconf-defaults
                            request.vconf.info reads (read-only)
@@ -433,6 +434,38 @@ class Probe:
             if answer is not None:
                 self._save_image(f"bff_{label}", answer)
 
+    async def read_extras(self, ws) -> None:
+        """The remaining read requests of the decompiled list; read-only.
+
+        get.apptile.functions / get.apptile.previews per app tile (with the
+        tile id as requestId, the shape launch.app accepted), the saved
+        Multi View layouts, the rotating-accessory probe and the AI Mode
+        flags. Nothing here changes the TV.
+        """
+        tiles = (self.latest.get("get.apptiles") or {}).get("response") or []
+        wanted = [t for t in tiles if t.get("title") in ("Netflix", "YouTube")]
+        wanted = wanted or tiles[:2]
+        print("\n== Extras: tile functions/previews, Multi View, rotator, AI")
+        for tile in wanted:
+            for request in ("get.apptile.functions", "get.apptile.previews"):
+                self.latest.pop(request, None)
+                await self._send(ws, request, {"requestId": tile.get("appId")})
+                answer = await self._wait_for(request, timeout=6)
+                text = json.dumps((answer or {}).get("response"), ensure_ascii=False)
+                print(f"   {request} {tile.get('title')}: {text[:300]}")
+        for request in (
+            "get.multiview.saved.tiles",
+            "get.RotatorSupport",
+            "get.aitech.support",
+            "get.aitech.enable",
+            "get.gamepad.support",
+        ):
+            self.latest.pop(request, None)
+            await self._send(ws, request)
+            answer = await self._wait_for(request, timeout=6)
+            text = json.dumps((answer or {}).get("response"), ensure_ascii=False)
+            print(f"   {request}: {text[:300]}")
+
     async def icon_variants(self, ws) -> None:
         """Try get.icon with several parameter shapes for one app tile.
 
@@ -610,6 +643,10 @@ class Probe:
                 await self.switch_source(ws, actions.switch_source)
             if actions.apps or actions.launch_app or actions.icons:
                 await self.read_apps(ws)
+            if actions.extras:
+                if not (actions.icons or actions.apps or actions.launch_app):
+                    await self.read_apps(ws)
+                await self.read_extras(ws)
             if actions.icon_variants:
                 if not actions.icons and not actions.apps:
                     await self.read_apps(ws)
@@ -677,6 +714,12 @@ async def main() -> int:
         metavar="NAME",
         help="launch.app: open the app tile whose title contains NAME, then go "
         "back to the TV input",
+    )
+    parser.add_argument(
+        "--extras",
+        action="store_true",
+        help="tile functions/previews, saved Multi View layouts, rotator and AI "
+        "flags; read-only",
     )
     parser.add_argument(
         "--icon-variants",
