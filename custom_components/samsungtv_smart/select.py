@@ -40,7 +40,7 @@ from .api.ipcontrol import (
     SamsungIPControlUnsupportedError,
     resolve_speaker_select_option,
 )
-from .api.mobilebff import SamsungMobileBFF, picture_mode_ocf
+from .api.mobilebff import SamsungMobileBFF, SettingLayer, picture_mode_ocf
 from .api.shared_read import shared_json_get
 from .const import (
     AUTH_METHOD_OAUTH,
@@ -54,6 +54,7 @@ from .const import (
     CONF_WS_NAME,
     DATA_ART_API,
     DATA_CFG,
+    DATA_MOBILEBFF,
     DEFAULT_PORT,
     DOMAIN,
     WS_PREFIX,
@@ -233,10 +234,10 @@ async def async_setup_entry(
         f"{WS_PREFIX} {ws_name} Settings",
         lambda: _tv_normal_viewing(hass, entry.entry_id),
     )
-    mobilebff_used = False
+    # Shared with the media player (local input switch and sound mode).
+    hass.data[DOMAIN][entry.entry_id][DATA_MOBILEBFF] = mobilebff
 
     if api_key and device_id:
-        mobilebff_used = True
         picture_mode_select = SamsungTVPictureModeSelect(
             hass=hass,
             entry=entry,
@@ -277,7 +278,6 @@ async def async_setup_entry(
             # unavailable on TVs that lack it, instead of being added only
             # after a successful probe — that would hide it until the TV is
             # on for the first time.
-            mobilebff_used = True
             async_add_entities(
                 [
                     SamsungTVIPControlPictureModeSelect(
@@ -311,13 +311,37 @@ async def async_setup_entry(
             f"samsungtv_matte_options_{entry.entry_id}",
         )
 
-    if mobilebff_used:
-        # Cancelled with the entry on unload, which closes the socket.
-        mobilebff.start(
-            lambda coro: entry.async_create_background_task(
-                hass, coro, f"samsungtv_quick_settings_{entry.entry_id}"
-            )
+    # One select per quick setting the TV reports, added the first time it
+    # reports it: a TV without the channel, or without a given setting, gets
+    # no entity that could never work.
+    quick_layers = dict(QUICK_SETTING_LAYERS)
+    if _ip_control_active(entry):
+        # The IP Control color tone select already covers it.
+        quick_layers.pop("s/setting.layer.colortone", None)
+    added_layers: set[str] = set()
+
+    @callback
+    def _quick_setting_seen(layer: SettingLayer) -> None:
+        key = quick_layers.get(layer.layer_id)
+        if key is None or layer.layer_id in added_layers:
+            return
+        added_layers.add(layer.layer_id)
+        async_add_entities(
+            [
+                SamsungTVQuickSettingSelect(
+                    mobilebff, layer.layer_id, key, device_name, device_unique_id
+                )
+            ]
         )
+
+    entry.async_on_unload(mobilebff.add_layer_listener(_quick_setting_seen))
+
+    # Cancelled with the entry on unload, which closes the socket.
+    mobilebff.start(
+        lambda coro: entry.async_create_background_task(
+            hass, coro, f"samsungtv_quick_settings_{entry.entry_id}"
+        )
+    )
 
     if picture_mode_select:
         hass.async_create_background_task(
@@ -2550,3 +2574,142 @@ class SamsungTVPictureModeSelect(SelectEntity):
                 "Picture mode updated: %s -> %s", self._attr_current_option, new_mode
             )
             self._attr_current_option = new_mode
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Quick settings (local mobilebff channel)
+# ══════════════════════════════════════════════════════════════════════════
+
+# The TV's quick settings offered as selects: layer id -> translation key.
+# Left out: picture mode (its own select), audio language (options all read
+# "Undefined (Unknown)" and change per programme), and the one-element entries
+# that only open a menu (all settings, network, Bluetooth, Multi View,
+# subtitles, picture size, sound output, brightness).
+QUICK_SETTING_LAYERS = {
+    "s/setting.layer.soundmode": "qs_sound_mode",
+    "s/setting.layer.aitech": "qs_ai_mode",
+    "s/setting.layer.energysavingsolution": "qs_energy_saving_solution",
+    "s/setting.layer.sleeptimer": "qs_sleep_timer",
+    "s/setting.layer.gamemode": "qs_game_mode",
+    "s/setting.layer.automotion": "qs_picture_clarity",
+    "s/setting.layer.contrastenhancer": "qs_contrast_enhancer",
+    "s/setting.layer.colortone": "qs_color_tone",
+    "s/setting.layer.colorspace": "qs_color_space",
+    "s/setting.layer.audioformat": "qs_digital_audio_format",
+}
+
+
+def quick_setting_options(layer: SettingLayer) -> list[str]:
+    """Option labels, made unique (a select cannot offer one label twice)."""
+    options: list[str] = []
+    for index, element in enumerate(layer.elements):
+        label = element.label or element.element_id.rpartition("@")[2] or str(index)
+        while label in options:
+            label = f"{label} ({index + 1})"
+        options.append(label)
+    return options
+
+
+class SamsungTVQuickSettingSelect(SelectEntity):
+    """One of the TV's quick settings, read and set over the local channel.
+
+    The options and their labels are the TV's own, in its menu language, and
+    change with the input (sound mode offers Standard alone while a receiver
+    has the sound). A change made with the remote is pushed within a second.
+    Selecting an option counts as done only once the TV reports it.
+    Unavailable while the channel is closed (TV off, in Art Mode) or when the
+    TV greys the setting out.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        mobilebff: SamsungMobileBFF,
+        layer_id: str,
+        translation_key: str,
+        device_name: str,
+        device_unique_id: str,
+    ) -> None:
+        self._mobilebff = mobilebff
+        self._layer_id = layer_id
+        self._device_name = device_name
+        self._device_unique_id = device_unique_id
+        self._attr_translation_key = translation_key
+        self._attr_unique_id = f"{device_unique_id}_{translation_key}"
+        self._attr_options: list[str] = []
+        self._attr_current_option: str | None = None
+        self._unsub: Callable[[], None] | None = None
+        self._last_available: bool | None = None
+        self._refresh()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(identifiers={(DOMAIN, self._device_unique_id)})
+
+    @property
+    def _layer(self) -> SettingLayer | None:
+        return self._mobilebff.layers.get(self._layer_id)
+
+    @property
+    def available(self) -> bool:
+        layer = self._layer
+        return (
+            self._mobilebff.connected
+            and layer is not None
+            and not all(element.dim for element in layer.elements)
+        )
+
+    def _refresh(self) -> bool:
+        layer = self._layer
+        if layer is None:
+            return False
+        options = quick_setting_options(layer)
+        current = options[layer.current] if layer.current is not None else None
+        changed = options != self._attr_options or current != self._attr_current_option
+        self._attr_options = options
+        self._attr_current_option = current
+        return changed
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._unsub = self._mobilebff.add_listener(self._changed)
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub is not None:
+            self._unsub()
+            self._unsub = None
+        await super().async_will_remove_from_hass()
+
+    @callback
+    def _changed(self) -> None:
+        # Every push of any setting lands here (ten entities per TV): write only
+        # what this one shows, its options or availability, when it changed.
+        changed = self._refresh()
+        available = self.available
+        if changed or available != self._last_available:
+            self._last_available = available
+            self.async_write_ha_state()
+
+    async def async_select_option(self, option: str) -> None:
+        layer = self._layer
+        if layer is None or not self._mobilebff.connected:
+            raise HomeAssistantError(
+                "The TV's quick settings are not reachable (TV off or in Art Mode)."
+            )
+        options = quick_setting_options(layer)
+        if option not in options:
+            raise HomeAssistantError(
+                f"'{option}' is not offered now; the TV offers {options}."
+            )
+        index = options.index(option)
+        if layer.elements[index].dim:
+            raise HomeAssistantError(f"The TV has '{option}' greyed out right now.")
+        if not await self._mobilebff.async_set_setting(self._layer_id, index):
+            raise HomeAssistantError(
+                f"The TV did not apply '{option}' "
+                f"({layer.elements[index].title or self._layer_id})."
+            )
+        self._refresh()
+        self.async_write_ha_state()
