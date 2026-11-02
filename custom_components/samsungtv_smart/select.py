@@ -40,6 +40,7 @@ from .api.ipcontrol import (
     SamsungIPControlUnsupportedError,
     resolve_speaker_select_option,
 )
+from .api.mobilebff import SamsungMobileBFF, picture_mode_ocf
 from .api.shared_read import shared_json_get
 from .const import (
     AUTH_METHOD_OAUTH,
@@ -223,7 +224,19 @@ async def async_setup_entry(
         if oauth_token and isinstance(oauth_token, dict):
             api_key = oauth_token.get("access_token")
 
+    # The TV's quick-settings channel: the picture modes the current input
+    # offers, and the current one, pushed locally (see api/mobilebff.py).
+    # Opened only while the TV is in normal viewing, where the list matters.
+    mobilebff = SamsungMobileBFF(
+        session,
+        host,
+        f"{WS_PREFIX} {ws_name} Settings",
+        lambda: _tv_normal_viewing(hass, entry.entry_id),
+    )
+    mobilebff_used = False
+
     if api_key and device_id:
+        mobilebff_used = True
         picture_mode_select = SamsungTVPictureModeSelect(
             hass=hass,
             entry=entry,
@@ -232,6 +245,7 @@ async def async_setup_entry(
             api_key=api_key,
             device_id=device_id,
             session=session,
+            mobilebff=mobilebff,
         )
         entities.append(picture_mode_select)
         _LOGGER.debug("Picture Mode select entity created for %s", device_name)
@@ -263,10 +277,16 @@ async def async_setup_entry(
             # unavailable on TVs that lack it, instead of being added only
             # after a successful probe — that would hide it until the TV is
             # on for the first time.
+            mobilebff_used = True
             async_add_entities(
                 [
                     SamsungTVIPControlPictureModeSelect(
-                        hass, entry, host, device_name, device_unique_id
+                        hass,
+                        entry,
+                        host,
+                        device_name,
+                        device_unique_id,
+                        mobilebff=mobilebff,
                     )
                 ],
                 True,
@@ -289,6 +309,14 @@ async def async_setup_entry(
                 hass, entry, art_api, matte_type_select, matte_color_select
             ),
             f"samsungtv_matte_options_{entry.entry_id}",
+        )
+
+    if mobilebff_used:
+        # Cancelled with the entry on unload, which closes the socket.
+        mobilebff.start(
+            lambda coro: entry.async_create_background_task(
+                hass, coro, f"samsungtv_quick_settings_{entry.entry_id}"
+            )
         )
 
     if picture_mode_select:
@@ -1002,9 +1030,12 @@ class SamsungTVIPControlPictureModeSelect(_SharedIPSelect):
         host: str,
         device_name: str,
         device_unique_id: str,
+        mobilebff: SamsungMobileBFF | None = None,
     ) -> None:
         """Initialize the IP Control picture mode select."""
         self.hass = hass
+        self._mobilebff = mobilebff
+        self._unsub_local: Callable[[], None] | None = None
         self._entry_id = entry.entry_id
         self._host = host
         self._device_name = device_name
@@ -1076,8 +1107,55 @@ class SamsungTVIPControlPictureModeSelect(_SharedIPSelect):
             option = picture_mode_slug(ocf)
         if option not in self._ocf_by_option:
             self._attr_options = [*self._attr_options, option]
+        elif option not in self._attr_options:
+            self._attr_options = [*self._attr_options, option]
         self._ocf_by_option[option] = ocf
         self._attr_current_option = option
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if self._mobilebff is not None:
+            self._unsub_local = self._mobilebff.add_listener(self._local_changed)
+            self._apply_local_modes()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub_local is not None:
+            self._unsub_local()
+            self._unsub_local = None
+        await super().async_will_remove_from_hass()
+
+    @callback
+    def _local_changed(self) -> None:
+        """The TV pushed the picture modes its current input offers."""
+        if self._apply_local_modes() and self.platform is not None:
+            self.async_write_ha_state()
+
+    def _apply_local_modes(self) -> bool:
+        """Offer the modes the TV lists for the current input.
+
+        pictureModeControl cannot list modes, so without this the select
+        offers a fixed set and the TV refuses (-32002) a mode the current
+        input lacks — FILMMAKER MODE on HDMI on a Frame 2024. The quick
+        settings list is per input and pushed on an input switch. The current
+        option stays offered even if the list omits it (an AI Mode value).
+        """
+        layer = self._mobilebff.picture_modes if self._mobilebff else None
+        if layer is None:
+            return False
+        options: list[str] = []
+        for mode_id, _label in layer.modes:
+            ocf = picture_mode_ocf(mode_id)
+            option = picture_mode_slug(ocf)
+            self._ocf_by_option.setdefault(option, ocf)
+            if option not in options:
+                options.append(option)
+        current = self._attr_current_option
+        if current is not None and current not in options:
+            options.append(current)
+        if options == self._attr_options:
+            return False
+        self._attr_options = options
+        return True
 
     async def async_select_option(self, option: str) -> None:
         """Set the picture mode through IP Control."""
@@ -2080,9 +2158,12 @@ class SamsungTVPictureModeSelect(SelectEntity):
         api_key: str,
         device_id: str,
         session,
+        mobilebff: SamsungMobileBFF | None = None,
     ) -> None:
         self.hass = hass
         self._entry = entry
+        self._mobilebff = mobilebff
+        self._unsub_local: Callable[[], None] | None = None
         self._device_name = device_name
         self._device_unique_id = device_unique_id
         self._api_key = api_key
@@ -2114,6 +2195,8 @@ class SamsungTVPictureModeSelect(SelectEntity):
     async def async_added_to_hass(self) -> None:
         """Subscribe to media_player source changes for an instant refresh."""
         await super().async_added_to_hass()
+        if self._mobilebff is not None:
+            self._unsub_local = self._mobilebff.add_listener(self._local_changed)
         mp_id = self._get_media_player_entity_id()
         if not mp_id:
             return
@@ -2128,6 +2211,44 @@ class SamsungTVPictureModeSelect(SelectEntity):
         if self._unsub_source_track is not None:
             self._unsub_source_track()
             self._unsub_source_track = None
+        if self._unsub_local is not None:
+            self._unsub_local()
+            self._unsub_local = None
+
+    @callback
+    def _local_changed(self) -> None:
+        """The TV pushed its picture-mode list or current mode."""
+        if self._apply_local() and self.platform is not None:
+            self.async_write_ha_state()
+
+    def _apply_local(self) -> bool:
+        """Take the list and current mode from the TV's quick settings.
+
+        Local and per input, pushed within a second of a change: preferred to
+        the SmartThings list, which lagged an input switch and on a Frame 2024
+        lacked FILMMAKER MODE while the TV offered it. The labels are the TV's
+        own, in its menu language, like the SmartThings names, so the
+        select_picture_mode service maps them the same way. Returns False when
+        the channel has nothing, so the caller falls back to SmartThings.
+        """
+        layer = self._mobilebff.picture_modes if self._mobilebff else None
+        if layer is None:
+            return False
+        options = layer.labels
+        current = layer.current_label
+        if self._pending_mode is not None:
+            if current == self._pending_mode or time.time() >= self._pending_until:
+                self._pending_mode = None
+                self._pending_until = 0
+            else:
+                current = self._pending_mode
+        if current is not None and current not in options:
+            options = [*options, current]
+        changed = options != self._attr_options or current != self._attr_current_option
+        self._attr_options = options
+        if current is not None:
+            self._attr_current_option = current
+        return changed
 
     @callback
     def _async_source_changed(self, event) -> None:
@@ -2253,6 +2374,9 @@ class SamsungTVPictureModeSelect(SelectEntity):
                     self._attr_current_option = reverse.get(raw_mode, raw_mode)
                 else:
                     self._attr_current_option = raw_mode
+                # The TV's local list and mode, if they already arrived, stay
+                # the ones shown.
+                self._apply_local()
 
                 if self.platform is not None:
                     self.async_write_ha_state()
@@ -2339,6 +2463,11 @@ class SamsungTVPictureModeSelect(SelectEntity):
 
     async def async_update(self) -> None:
         """Poll current picture mode from SmartThings."""
+        # The TV's own quick settings, when the local channel is open, make
+        # the cloud read redundant.
+        if self._mobilebff is not None and self._mobilebff.picture_modes:
+            self._apply_local()
+            return
         if not self._capability:
             return
 
