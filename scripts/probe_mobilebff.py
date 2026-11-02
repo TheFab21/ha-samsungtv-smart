@@ -14,6 +14,7 @@ By default it only READS: it sends ``ask.service.status``,
 with an explicit option, and each one is undone by the script:
 
   --toggle-sound-mode      set.settings.data: sound mode to another option, back
+  --toggle-setting LAYER   the same for any quick setting (colortone, ...)
   --switch-source NAME     launch.extsource: to that input, then back
   --vconf KEY / --vconf-defaults
                            request.vconf.info reads (read-only)
@@ -257,16 +258,16 @@ class Probe:
         await self._send(ws, "get.settings.data")
         await self._wait_for("get.settings.data")
 
-    async def toggle_sound_mode(self, ws) -> None:
-        """Switch the sound mode to another option, then back."""
+    async def toggle_setting(self, ws, name: str) -> None:
+        """Switch a quick setting (layer ``s/setting.layer.<name>``) and back."""
         await self._fresh_settings(ws)
-        layer = self._layer("s/setting.layer.soundmode")
+        layer = self._layer(f"s/setting.layer.{name}")
         elements = (layer or {}).get("elements") or []
         if len(elements) < 2:
             print(
-                "! The sound-mode layer offers "
+                f"! The {name} layer offers "
                 f"{[e.get('subTitle') for e in elements]}: nothing to switch to "
-                "(sound on an external receiver?). Use the TV speakers; skipping"
+                "(sound mode with sound on an external receiver?); skipping"
             )
             return
         try:
@@ -276,7 +277,7 @@ class Probe:
         original = elements[current]
         other = elements[(current + 1) % len(elements)]
         print(
-            f"\n== Sound mode: {original.get('subTitle')} -> "
+            f"\n== {name}: {original.get('subTitle')} -> "
             f"{other.get('subTitle')} -> back, 8 s each"
         )
         await self._set_element(ws, other)
@@ -350,7 +351,9 @@ class Probe:
             if actions.vconf:
                 await self.read_vconf(ws, actions.vconf)
             if actions.toggle_sound_mode:
-                await self.toggle_sound_mode(ws)
+                await self.toggle_setting(ws, "soundmode")
+            for name in actions.toggle_setting or ():
+                await self.toggle_setting(ws, name)
             if actions.switch_source:
                 await self.switch_source(ws, actions.switch_source)
             print(
@@ -392,6 +395,14 @@ async def main() -> int:
         "--toggle-sound-mode",
         action="store_true",
         help="set.settings.data: switch the sound mode to another option, then back",
+    )
+    writes.add_argument(
+        "--toggle-setting",
+        metavar="LAYER",
+        action="append",
+        help="set.settings.data: switch the quick setting s/setting.layer.LAYER "
+        "(colortone, automotion, contrastenhancer, ...) to another option, "
+        "then back (repeatable)",
     )
     writes.add_argument(
         "--switch-source",
