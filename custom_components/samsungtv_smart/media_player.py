@@ -8,6 +8,7 @@ from datetime import timedelta
 from enum import Enum
 import logging
 import os
+import re
 from socket import error as socketError
 import time
 from typing import Any
@@ -155,6 +156,7 @@ from .const import (
     DATA_ART_API,
     DATA_CFG,
     DATA_IP_CONTROL_STATE_COORDINATOR,
+    DATA_MOBILEBFF,
     DATA_OPTIONS,
     DEFAULT_APP,
     DEFAULT_IP_CONTROL_POLL_INTERVAL,
@@ -714,6 +716,12 @@ class ArtModeSupport(Enum):
     UNSUPPORTED = 0
     PARTIAL = 1
     FULL = 2
+
+
+# Quick-settings layer of the sound mode (api/mobilebff.py).
+SOUND_MODE_LAYER = "s/setting.layer.soundmode"
+# Input id in a source-list key: ST_HDMI3 / IP_HDMI3 / KEY_HDMI3 -> HDMI3.
+_SOURCE_KEY_ID = re.compile(r"^(?:ST|IP|KEY)_([A-Z]+[0-9]*)$")
 
 
 class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
@@ -3430,7 +3438,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if self.state == MediaPlayerState.ON:
             features |= MediaPlayerEntityFeature.BROWSE_MEDIA
 
-        if self._st:
+        if self._st or self._local_sound_mode_layer() is not None:
             features |= MediaPlayerEntityFeature.SELECT_SOUND_MODE
 
         # Preserve the 8.7.0 protection for external receivers/soundbars unless
@@ -3822,14 +3830,20 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     @property
     def sound_mode(self):
-        """Name of the current sound mode."""
+        """Name of the current sound mode: the TV's quick setting, else SmartThings."""
+        layer = self._local_sound_mode_layer()
+        if layer is not None and layer.current_element is not None:
+            return layer.current_element.label
         if self._st:
             return self._st.sound_mode
         return None
 
     @property
     def sound_mode_list(self):
-        """List of available sound modes."""
+        """Sound modes offered now: the TV's quick setting, else SmartThings."""
+        layer = self._local_sound_mode_layer()
+        if layer is not None:
+            return [element.label for element in layer.elements]
         if self._st:
             return self._st.sound_mode_list or None
         return None
@@ -4832,7 +4846,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if self._source_list and source in self._source_list:
             source_key = self._source_list[source]
             await self._async_wake_for_source_switch(source, source_key)
-            if not await self._async_send_keys(source_key):
+            if not await self._async_local_source(
+                source, source_key
+            ) and not await self._async_send_keys(source_key):
                 return
             self._note_source_switch()
         elif self._source_list and (resolved := self._resolve_source_by_id(source)):
@@ -4840,7 +4856,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             source_key = resolved[1]
             source = resolved[0]  # Use display name for state
             await self._async_wake_for_source_switch(source, source_key)
-            if not await self._async_send_keys(source_key):
+            if not await self._async_local_source(
+                source, source_key
+            ) and not await self._async_send_keys(source_key):
                 return
             self._note_source_switch()
         elif self._app_list and source in self._app_list:
@@ -4901,10 +4919,72 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         await self.async_select_source(source)
 
+    def _quick_settings(self):
+        """The TV's local quick-settings channel, when it is open."""
+        hass = getattr(self, "hass", None)
+        if hass is None:
+            return None
+        data = hass.data.get(DOMAIN, {}).get(getattr(self, "_entry_id", None), {})
+        client = data.get(DATA_MOBILEBFF) if isinstance(data, dict) else None
+        return client if client is not None and client.connected else None
+
+    def _local_sound_mode_layer(self):
+        client = self._quick_settings()
+        return client.layers.get(SOUND_MODE_LAYER) if client else None
+
+    async def _async_local_source(self, source: str, source_key: str) -> bool:
+        """Switch input over the quick-settings channel; False to fall back.
+
+        IP Control has no input switch on a Frame 2024 (inputSourceControl is
+        not implemented), which left SmartThings or blind remote keys.
+        launch.extsource switched TV -> HDMI3 -> TV on that TV, each answered
+        "ok" and shown as the current input. The input is matched by its id
+        (``ST_HDMI3``/``KEY_HDMI3`` -> ``HDMI3``) first, since the TV renames
+        an HDMI input through CEC ("CINEMA 60" became "Périphérique externe
+        avec CINEMA 60" once the receiver was on), then by name.
+        """
+        client = self._quick_settings()
+        if client is None:
+            return False
+        match = _SOURCE_KEY_ID.match(source_key)
+        target = client.find_source(match.group(1) if match else "", source)
+        if target is None:
+            return False
+        if not await client.async_launch_source(target.source_id):
+            return False
+        self._log.debug(
+            "Source '%s' selected locally (%s) over the quick-settings channel",
+            source,
+            target.source_id,
+        )
+        return True
+
+    async def _async_local_sound_mode(self, sound_mode: str) -> bool:
+        """Set the sound mode over the quick-settings channel; False to fall back."""
+        layer = self._local_sound_mode_layer()
+        if layer is None:
+            return False
+        wanted = sound_mode.casefold()
+        for index, element in enumerate(layer.elements):
+            if wanted in (
+                element.label.casefold(),
+                element.element_id.rpartition("@")[2].casefold(),
+            ):
+                return await self._quick_settings().async_set_setting(
+                    SOUND_MODE_LAYER, index
+                )
+        return False
+
     async def async_select_sound_mode(self, sound_mode):
-        """Select sound mode."""
+        """Select sound mode: the TV's own quick setting first, then SmartThings."""
+        if await self._async_local_sound_mode(sound_mode):
+            self.async_write_ha_state()
+            return
         if not self._st:
-            raise NotImplementedError()
+            raise HomeAssistantError(
+                f"Sound mode '{sound_mode}' could not be set: the TV does not "
+                "offer it right now (with a receiver on, only Standard)."
+            )
         await self._st.async_set_sound_mode(sound_mode)
 
     async def async_select_picture_mode(self, picture_mode):

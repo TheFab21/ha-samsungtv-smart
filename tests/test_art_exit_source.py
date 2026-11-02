@@ -93,6 +93,10 @@ class _Device:
     async def _async_wake_for_source_switch(self, source, key):
         self.calls.append(("wake", key))
 
+    async def _async_local_source(self, source, key):
+        # No quick-settings channel: the keys below are the path under test.
+        return False
+
     async def _async_send_keys(self, key):
         self.calls.append(("key", key))
         return True

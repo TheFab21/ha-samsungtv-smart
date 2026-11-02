@@ -349,6 +349,36 @@
           "intelligent": "AI Optimized",
           "ai_customization": "AI Customization"
         }
+      },
+      "qs_sound_mode": {
+        "name": "Sound mode"
+      },
+      "qs_ai_mode": {
+        "name": "AI mode"
+      },
+      "qs_energy_saving_solution": {
+        "name": "Energy saving solution"
+      },
+      "qs_sleep_timer": {
+        "name": "Sleep timer"
+      },
+      "qs_game_mode": {
+        "name": "Game mode"
+      },
+      "qs_picture_clarity": {
+        "name": "Picture clarity"
+      },
+      "qs_contrast_enhancer": {
+        "name": "Contrast enhancer"
+      },
+      "qs_color_tone": {
+        "name": "Color tone"
+      },
+      "qs_color_space": {
+        "name": "Color space"
+      },
+      "qs_digital_audio_format": {
+        "name": "Digital audio output format"
       }
     }
   }

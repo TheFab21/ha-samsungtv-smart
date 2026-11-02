@@ -40,6 +40,7 @@ DATA_CFG_YAML = "cfg_yaml"
 DATA_OPTIONS = "options"
 DATA_ENTRY_DATA = "entry_data"  # Snapshot of entry.data to detect data changes
 DATA_ART_API = "art_api"  # Shared Frame Art API instance
+DATA_MOBILEBFF = "mobilebff"  # Shared quick-settings channel (api/mobilebff.py)
 DATA_ART_CACHE = "art_cache"  # Shared ArtIdentifyCache instance (per entry)
 DATA_IP_CONTROL_STATE_COORDINATOR = "ip_control_state_coordinator"
 CONF_IS_FRAME_TV = "is_frame_tv"  # Persisted flag: TV confirmed as Frame TV
