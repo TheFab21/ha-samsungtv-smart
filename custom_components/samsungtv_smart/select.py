@@ -8,7 +8,7 @@ import json
 import logging
 import time
 
-from homeassistant.components.select import SelectEntity
+from homeassistant.components.select import SCAN_INTERVAL, SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
@@ -24,7 +24,10 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 
 from .api.art import SamsungTVAsyncArt
 from .api.ipcontrol import (
@@ -62,6 +65,7 @@ from .picture_mode_keys import (
     picture_mode_ip_variant,
     picture_mode_slug,
 )
+from .shared_ip import ReadDeadline, shared_field, state_coordinator
 from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_problem
 
 _LOGGER = logging.getLogger(__name__)
@@ -826,7 +830,151 @@ class SamsungTVIPControlColorToneSelect(SelectEntity):
 # ══════════════════════════════════════════════════════════════════════════
 
 
-class SamsungTVIPControlPictureModeSelect(SelectEntity):
+class _SharedIPSelect(SelectEntity):
+    """Use shared status until the selector's normal read deadline."""
+
+    _attr_should_poll = False
+    _shared_field_name: str
+    _shared_read_ready = False
+    _shared_read_window: ReadDeadline | None = None
+    _shared_coordinator = None
+    _shared_unsub: Callable[[], None] | None = None
+    _shared_refresh_task: asyncio.Task | None = None
+    _last_direct_read_at: float | None = None
+    _shared_removed = False
+    _shared_write_revision = 0
+
+    @property
+    def should_poll(self) -> bool:
+        return self.force_update
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._shared_removed = False
+        self._bind_shared_reads()
+        self._shared_snapshot_changed()
+
+    async def async_will_remove_from_hass(self) -> None:
+        self._shared_removed = True
+        if self._shared_unsub is not None:
+            self._shared_unsub()
+            self._shared_unsub = None
+        if self._shared_read_window is not None:
+            self._shared_read_window.close()
+            self._shared_read_window = None
+        if self._shared_refresh_task is not None:
+            self._shared_refresh_task.cancel()
+            self._shared_refresh_task = None
+        await super().async_will_remove_from_hass()
+
+    def _bind_shared_reads(self) -> None:
+        if not self.entity_id or self._shared_removed:
+            return
+        if self.force_update:
+            # force_update needs HA's poller to publish unchanged values.
+            self._attr_should_poll = True
+            if self._shared_unsub is not None:
+                self._shared_unsub()
+                self._shared_unsub = None
+            if self._shared_read_window is not None:
+                self._shared_read_window.close()
+                self._shared_read_window = None
+            self._shared_coordinator = None
+            return
+        if self._shared_read_window is None:
+            self._shared_read_window = ReadDeadline(
+                SCAN_INTERVAL.total_seconds(), self._request_shared_fallback
+            )
+            self._shared_read_window.record(
+                self._last_direct_read_at or time.monotonic()
+            )
+        coordinator = state_coordinator(self.hass, self._entry_id)
+        if coordinator is self._shared_coordinator:
+            return
+        if self._shared_unsub is not None:
+            self._shared_unsub()
+            self._shared_unsub = None
+        self._shared_coordinator = coordinator
+        if coordinator is not None:
+            self._shared_unsub = coordinator.async_add_listener(
+                self._shared_snapshot_changed
+            )
+
+    def _normal_viewing(self) -> bool:
+        return _tv_normal_viewing(self.hass, self._entry_id)
+
+    def _visible_value(self) -> tuple:
+        return (
+            self._attr_current_option,
+            self._attr_available,
+            tuple(self._attr_options),
+            getattr(self, "_tv_value", None),
+        )
+
+    @callback
+    def _shared_snapshot_changed(self) -> None:
+        if self._shared_removed:
+            return
+        self._bind_shared_reads()
+        before = self._visible_value()
+        if not self._normal_viewing():
+            self._mark_unavailable()
+        elif self._shared_read_ready:
+            self._consume_shared_value()
+        if before != self._visible_value():
+            self.async_write_ha_state()
+
+    def _shared_value(self) -> tuple[str, float] | None:
+        if not self._shared_read_ready or self._shared_read_window is None:
+            return None
+        reading = shared_field(self._shared_coordinator, self._shared_field_name)
+        if reading is None:
+            return None
+        value, observed_at = reading
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or value.strip().casefold() in {"unknown", "unavailable", "none", "null"}
+            or not self._shared_read_window.accepts(observed_at)
+        ):
+            return None
+        return value, observed_at
+
+    def _record_direct_result(self, revision: int | None = None) -> bool:
+        window = self._shared_read_window
+        if revision is not None and revision != self._shared_write_revision:
+            return False
+        self._last_direct_read_at = time.monotonic()
+        if window is not None:
+            window.record(self._last_direct_read_at)
+        return True
+
+    def _begin_shared_write(self) -> int:
+        self._shared_write_revision += 1
+        return self._shared_write_revision
+
+    def _read_failed(self, revision: int) -> None:
+        if revision == self._shared_write_revision:
+            self._mark_unavailable()
+
+    def _request_shared_fallback(self) -> None:
+        if self._shared_removed:
+            return
+        if self._shared_refresh_task is None or self._shared_refresh_task.done():
+            self._shared_refresh_task = self.hass.async_create_task(
+                self._async_shared_fallback()
+            )
+
+    async def _async_shared_fallback(self) -> None:
+        window = self._shared_read_window
+        if window is None or window.current():
+            return
+        await self.async_update()
+        if not self._shared_removed:
+            self.async_write_ha_state()
+
+
+class SamsungTVIPControlPictureModeSelect(_SharedIPSelect):
     """Select entity for the picture mode via IP Control ``pictureModeControl``.
 
     Local, cloud-free counterpart of :class:`SamsungTVPictureModeSelect`, for
@@ -844,7 +992,7 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "picture_mode"
     _attr_icon = "mdi:television-ambient-light"
-    _attr_should_poll = True
+    _shared_field_name = "pictureMode"
 
     def __init__(
         self,
@@ -941,6 +1089,7 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
         value = self._ocf_by_option.get(option) or picture_mode_ip_value(option)
         if not value:
             raise HomeAssistantError(f"Unknown picture mode '{option}'.")
+        revision = self._begin_shared_write()
         try:
             applied = await client.async_set_picture_mode(
                 value, picture_mode_ip_variant(value, self._tv_value)
@@ -973,13 +1122,15 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
                 f"The TV refused picture mode '{option}': {ex}"
             ) from ex
 
-        self._apply_tv_value(applied)
-        self._attr_available = True
+        if self._record_direct_result(revision):
+            self._apply_tv_value(applied)
+            self._attr_available = True
         clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
         self.async_write_ha_state()
 
     async def async_update(self) -> None:
         """Read the current picture mode from IP Control."""
+        self._bind_shared_reads()
         # Same gate as the color tone select: no polling of a TV that is off
         # or showing art, where the method answers -32601 or times out (#248).
         if not _tv_normal_viewing(self.hass, self._entry_id):
@@ -991,6 +1142,7 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
             self._mark_unavailable()
             return
 
+        revision = self._shared_write_revision
         try:
             current = await client.async_get_picture_mode()
         except SamsungIPControlAuthError as ex:
@@ -1000,7 +1152,7 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
                 self._host,
                 ex,
             )
-            self._mark_unavailable()
+            self._read_failed(revision)
             notify_token_problem(
                 self.hass, self._entry_id, METHOD_IP_CONTROL, self._device_title()
             )
@@ -1014,7 +1166,7 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
                     ex,
                 )
                 self._unsupported_logged = True
-            self._mark_unavailable()
+            self._read_failed(revision)
             return
         except SamsungIPControlError as ex:
             _LOGGER.debug(
@@ -1022,17 +1174,29 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
                 self._host,
                 ex,
             )
-            self._mark_unavailable()
+            self._read_failed(revision)
             return
 
-        self._apply_tv_value(current)
-        self._attr_available = True
+        self._shared_read_ready = True
+        if self._record_direct_result(revision):
+            self._apply_tv_value(current)
+            self._attr_available = True
         clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
+
+    def _consume_shared_value(self) -> bool:
+        reading = self._shared_value()
+        if reading is None or reading[0] == "Ambient":
+            return False
+        self._apply_tv_value(reading[0])
+        self._attr_available = True
+        self._shared_read_window.record(reading[1])
+        return True
 
     def _mark_unavailable(self) -> None:
         """Expose no selected mode until a live IP Control read succeeds."""
         self._attr_available = False
         self._attr_current_option = None
+        self._record_direct_result()
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1046,7 +1210,7 @@ class SamsungTVIPControlPictureModeSelect(SelectEntity):
 _SPEAKER_BASE_OPTIONS = ("Internal", "AudioOut/Optical")
 
 
-class SamsungTVIPControlSpeakerSelect(SelectEntity):
+class SamsungTVIPControlSpeakerSelect(_SharedIPSelect):
     """Speaker output select via IP Control (local).
 
     Options are the two fixed public targets plus every external audio device
@@ -1057,7 +1221,9 @@ class SamsungTVIPControlSpeakerSelect(SelectEntity):
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:speaker"
-    _attr_should_poll = True
+    _shared_field_name = "speakerSelect"
+    _output_refresh_lock: asyncio.Lock | None = None
+    _speaker_discovery_ready = False
 
     def __init__(
         self,
@@ -1156,10 +1322,12 @@ class SamsungTVIPControlSpeakerSelect(SelectEntity):
 
         try:
             if option in self._external_devices:
+                revision = self._begin_shared_write()
                 await client.async_set_external_speaker(
                     option, self._external_devices[option]
                 )
             elif option in _SPEAKER_BASE_OPTIONS:
+                revision = self._begin_shared_write()
                 await client.async_set_speaker_select(option)
             else:
                 # The bare "External" placeholder (device list empty) — there
@@ -1168,8 +1336,10 @@ class SamsungTVIPControlSpeakerSelect(SelectEntity):
                     "No external audio device is currently available — turn "
                     "the receiver/soundbar on and try again."
                 )
-            self._attr_current_option = option
-            self._attr_available = True
+            if self._record_direct_result(revision):
+                self._attr_current_option = option
+                self._attr_available = True
+                self._last_speaker_raw = option
         except SamsungIPControlAuthError as ex:
             self._mark_unavailable()
             notify_token_problem(
@@ -1193,7 +1363,17 @@ class SamsungTVIPControlSpeakerSelect(SelectEntity):
         self.async_write_ha_state()
 
     async def async_update(self) -> None:
-        """Read the current speaker output and the external device list."""
+        """Fetch fresh status for manual or forced updates."""
+        await self._refresh_output(force_getter=True, discover=True)
+
+    async def _refresh_output(self, *, force_getter: bool, discover: bool) -> None:
+        if self._output_refresh_lock is None:
+            self._output_refresh_lock = asyncio.Lock()
+        async with self._output_refresh_lock:
+            await self._read_output(force_getter=force_getter, discover=discover)
+
+    async def _read_output(self, *, force_getter: bool, discover: bool) -> None:
+        self._bind_shared_reads()
         if not self._tv_normal_viewing():
             self._mark_unavailable()
             return
@@ -1202,13 +1382,36 @@ class SamsungTVIPControlSpeakerSelect(SelectEntity):
             self._mark_unavailable()
             return
 
+        read_at = time.monotonic()
+        revision = self._shared_write_revision
+        direct_read = False
         try:
-            current = await client.async_get_speaker_select()
-            self._external_devices = {
-                dev["deviceName"]: dev["deviceId"]
-                for dev in await client.async_get_external_speakers()
-            }
-            current = resolve_speaker_select_option(current, self._external_devices)
+            reading = self._shared_value() if not force_getter else None
+            if reading is not None and self._shared_output_usable(reading[0]):
+                current, observed_at = reading
+            elif (
+                not force_getter
+                and self._shared_read_window is not None
+                and self._shared_read_window.current()
+                and getattr(self, "_last_speaker_raw", None) is not None
+            ):
+                current = self._last_speaker_raw
+                observed_at = self._shared_read_window.observed_at
+            else:
+                current = await client.async_get_speaker_select()
+                observed_at = read_at
+                direct_read = True
+            if discover:
+                self._external_devices = {
+                    dev["deviceName"]: dev["deviceId"]
+                    for dev in await client.async_get_external_speakers()
+                }
+                self._speaker_discovery_ready = True
+                # Discovery can now resolve device IDs in the latest shared status.
+                updated = self._shared_value() if not force_getter else None
+                if updated is not None and self._shared_output_usable(updated[0]):
+                    current, observed_at = updated
+                    direct_read = False
         except SamsungIPControlAuthError as ex:
             _LOGGER.warning(
                 "IP Control speaker read for %s: token rejected (%s) — "
@@ -1216,7 +1419,7 @@ class SamsungTVIPControlSpeakerSelect(SelectEntity):
                 self._host,
                 ex,
             )
-            self._mark_unavailable()
+            self._read_failed(revision)
             notify_token_problem(
                 self.hass, self._entry_id, METHOD_IP_CONTROL, self._device_title()
             )
@@ -1227,21 +1430,100 @@ class SamsungTVIPControlSpeakerSelect(SelectEntity):
                 self._host,
                 ex,
             )
-            self._mark_unavailable()
+            self._read_failed(revision)
             return
 
-        # "External" -> show the actual device when exactly one is listed.
+        self._shared_read_ready = True
+        window = self._shared_read_window
+        if direct_read:
+            accepted = self._record_direct_result(revision)
+        else:
+            accepted = window is not None and window.accepts(observed_at)
+            if accepted:
+                window.record(observed_at)
+        if accepted:
+            self._apply_speaker_value(current)
+        self._rebuild_options()
+        clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
+
+    _discovery_unsub: Callable[[], None] | None = None
+    _discovery_task: asyncio.Task | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if not self.force_update:
+            self._discovery_unsub = async_track_time_interval(
+                self.hass, self._request_discovery, SCAN_INTERVAL
+            )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._discovery_unsub is not None:
+            self._discovery_unsub()
+            self._discovery_unsub = None
+        if self._discovery_task is not None:
+            self._discovery_task.cancel()
+            self._discovery_task = None
+        await super().async_will_remove_from_hass()
+
+    def _normal_viewing(self) -> bool:
+        return self._tv_normal_viewing()
+
+    @callback
+    def _request_discovery(self, _now=None) -> None:
+        if self._shared_removed:
+            return
+        if self._discovery_task is None or self._discovery_task.done():
+            self._discovery_task = self.hass.async_create_task(self._async_discover())
+
+    async def _async_discover(self) -> None:
+        before = self._visible_value()
+        await self._refresh_output(force_getter=False, discover=True)
+        if not self._shared_removed and before != self._visible_value():
+            self.async_write_ha_state()
+
+    async def _async_shared_fallback(self) -> None:
+        window = self._shared_read_window
+        if window is None or window.current():
+            return
+        await self._refresh_output(force_getter=False, discover=False)
+        if not self._shared_removed:
+            self.async_write_ha_state()
+
+    def _shared_output_usable(self, value: str) -> bool:
+        current = resolve_speaker_select_option(value, self._external_devices)
+        return (
+            current in _SPEAKER_BASE_OPTIONS
+            or current in self._external_devices
+            or (current == "External" and len(self._external_devices) <= 1)
+        )
+
+    def _apply_speaker_value(self, value: str) -> None:
+        self._last_speaker_raw = value
+        current = resolve_speaker_select_option(value, self._external_devices)
+        if current == "External" and not self._speaker_discovery_ready:
+            # Wait for discovery before publishing the generic External option.
+            self._attr_current_option = None
+            self._attr_available = False
+            return
         if current == "External" and len(self._external_devices) == 1:
             current = next(iter(self._external_devices))
         self._attr_current_option = current
-        self._rebuild_options()
         self._attr_available = True
-        clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
+        self._rebuild_options()
+
+    def _consume_shared_value(self) -> bool:
+        reading = self._shared_value()
+        if reading is None or not self._shared_output_usable(reading[0]):
+            return False
+        self._apply_speaker_value(reading[0])
+        self._shared_read_window.record(reading[1])
+        return True
 
     def _mark_unavailable(self) -> None:
         """Expose no speaker output until a live IP Control read succeeds."""
         self._attr_available = False
         self._attr_current_option = None
+        self._record_direct_result()
 
 
 class SamsungTVSTMediaOutputSelect(SelectEntity):
