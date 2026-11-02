@@ -63,6 +63,16 @@ class _Log:
 class _WS:
     installed_app = {}
 
+    def __init__(self):
+        self.scan_list = None
+        self.running = {}
+
+    def update_app_list(self, app_list):
+        self.scan_list = dict(app_list) if app_list else None
+
+    def is_app_running(self, app_id):
+        return self.running.get(app_id)
+
 
 def _device(client, connected=True):
     if connected:
@@ -138,3 +148,54 @@ def test_a_deep_link_keeps_the_remote_channel():
 def test_an_app_without_a_tile_falls_back():
     device = _device(_client())
     assert asyncio.run(device._async_local_app("3201234567890")) is False
+
+
+def test_the_home_screen_apps_are_handed_to_the_running_app_scan():
+    # Swisscom blue TV opened locally, yet the player said TV/HDMI a minute
+    # later: the remote channel's scan had no app list to check.
+    device = _device(_client(), connected=False)
+    device._gen_installed_app_list()
+    assert device._ws.scan_list == device._app_list
+
+
+def _running_device():
+    device = _device(_client())
+    device._app_list = {"Netflix": "3201907018807", "YouTube": "111299001912"}
+    device._app_list_st = {"Netflix": "3201907018807", "YouTube": "111299001912"}
+    device._st = None
+    device._running_app = "Netflix"
+    return device
+
+
+def test_a_locally_opened_app_is_held_until_its_status_catches_up():
+    device = _running_device()
+    device._local_app_hold_until = mp.time.monotonic() + 20
+    device._get_running_app()
+    assert device._running_app == "Netflix"
+
+
+def test_the_hold_ends():
+    device = _running_device()
+    device._local_app_hold_until = mp.time.monotonic() - 1
+    device._get_running_app()
+    assert device._running_app == mp.DEFAULT_APP
+
+
+def test_an_app_reported_running_wins_over_the_hold():
+    device = _running_device()
+    device._local_app_hold_until = mp.time.monotonic() + 20
+    device._ws.running = {"111299001912": True}
+    device._get_running_app()
+    assert device._running_app == "YouTube"
+
+
+def test_a_local_launch_starts_the_hold():
+    client = _client()
+
+    async def launch(tile_id):
+        return True
+
+    client.async_launch_app = launch
+    device = _device(client)
+    assert asyncio.run(device._async_local_app("3201907018807")) is True
+    assert device._local_app_hold_until > mp.time.monotonic() + 10
