@@ -433,6 +433,49 @@ class Probe:
             if answer is not None:
                 self._save_image(f"bff_{label}", answer)
 
+    async def icon_variants(self, ws) -> None:
+        """Try get.icon with several parameter shapes for one app tile.
+
+        The first capture got {"requestId": "", "base64": ""} for a tile id
+        as requestId: the answer has the right shape, but the TV did not
+        recognise the parameter. The decompiled firmware only names
+        "requestId", so try what it could hold, and a few other keys.
+        """
+        tiles = (self.latest.get("get.apptiles") or {}).get("response") or []
+        tile = next((t for t in tiles if "webapp" in str(t.get("appId"))), None)
+        if tile is None:
+            print("! No web app tile to try; skipping --icon-variants")
+            return
+        app_id = tile["appId"]
+        tizen_id = app_id.rpartition("@")[2]
+        icon_path = tile.get("iconPath", "")
+        variants = [
+            {"requestId": icon_path},
+            {"requestId": tizen_id},
+            {"requestId": app_id, "iconPath": icon_path},
+            {"iconPath": icon_path},
+            {"path": icon_path},
+            {"appId": app_id},
+            {"id": app_id},
+            {"requestId": app_id, "type": "icon"},
+        ]
+        print(f"\n== get.icon variants for {tile.get('title')!r}")
+        for params in variants:
+            self.latest.pop("get.icon", None)
+            await self._send(ws, "get.icon", params)
+            answer = await self._wait_for("get.icon", timeout=4)
+            response = (answer or {}).get("response") or {}
+            size = (
+                len(response.get("base64") or "") if isinstance(response, dict) else 0
+            )
+            print(
+                f"   {params} -> base64 {size} chars, echo {response.get('requestId')!r}"
+                if isinstance(response, dict)
+                else f"   {params} -> {answer}"
+            )
+            if size:
+                self._save_image(f"variant_{tile.get('title')}", answer)
+
     async def icons_remote(self, session, name: str, token: str | None) -> None:
         """ed.apps.icon on the remote-control channel (needs the token); read-only.
 
@@ -567,6 +610,10 @@ class Probe:
                 await self.switch_source(ws, actions.switch_source)
             if actions.apps or actions.launch_app or actions.icons:
                 await self.read_apps(ws)
+            if actions.icon_variants:
+                if not actions.icons and not actions.apps:
+                    await self.read_apps(ws)
+                await self.icon_variants(ws)
             if actions.icons:
                 await self.icons_mobilebff(ws)
                 await self.icons_remote(actions.session, actions.name, actions.token)
@@ -630,6 +677,11 @@ async def main() -> int:
         metavar="NAME",
         help="launch.app: open the app tile whose title contains NAME, then go "
         "back to the TV input",
+    )
+    parser.add_argument(
+        "--icon-variants",
+        action="store_true",
+        help="try get.icon with several parameter shapes for one app; read-only",
     )
     parser.add_argument(
         "--icons",
