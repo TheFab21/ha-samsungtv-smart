@@ -4928,10 +4928,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     def _quick_settings_client(self):
         """The TV's local quick-settings channel client, open or not."""
-        hass = getattr(self, "hass", None)
-        if hass is None:
-            return None
-        data = hass.data.get(DOMAIN, {}).get(getattr(self, "_entry_id", None), {})
+        domain_data = getattr(getattr(self, "hass", None), "data", None) or {}
+        data = domain_data.get(DOMAIN, {}).get(getattr(self, "_entry_id", None), {})
         return data.get(DATA_MOBILEBFF) if isinstance(data, dict) else None
 
     def _quick_settings(self):

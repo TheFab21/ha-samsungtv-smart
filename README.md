@@ -1463,6 +1463,8 @@ Picture mode is set locally first when IP Control is paired: `pictureModeControl
 
 Input switching and sound mode go local first too, over the TV's quick-settings channel (no pairing needed, the same channel that lists the picture modes): an input is matched by its id (`ST_HDMI3`, `KEY_HDMI3` → `HDMI3`) or its name, which matters on a Frame 2024 whose IP Control has no input switch. When the channel is closed or the TV does not offer the input or mode, the SmartThings / remote-key path runs as before.
 
+Apps come from the TV's home screen over the same channel when the remote channel lists none (a Frame 2024 never answered its app-list request, which left the source list without apps): each web-app tile carries its Tizen id, so the apps join the source list and a plain launch opens them locally, with the remote-channel launch as the fallback. A deep link or an explicit launch method keeps the remote channel.
+
 ### Frame Art services not working
 
 - These services require a Samsung **Frame** TV with Art Mode capability.
