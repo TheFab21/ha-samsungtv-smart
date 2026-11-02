@@ -35,11 +35,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from . import async_get_samsungtv_api_key
 from .api.art import SamsungTVAsyncArt, _DeviceLoggerAdapter
@@ -79,6 +75,7 @@ from .const import (
     WS_PREFIX,
     ip_control_port,
 )
+from .coordinator_entity import ChangedCoordinatorEntity
 from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_problem
 
 _LOGGER = logging.getLogger(__name__)
@@ -1986,7 +1983,7 @@ class FrameArtFolderSensor(SensorEntity):
         self._files, self._total_bytes = await self.hass.async_add_executor_job(_scan)
 
 
-class FrameArtOrientationSensor(CoordinatorEntity, SensorEntity):
+class FrameArtOrientationSensor(ChangedCoordinatorEntity, SensorEntity):
     """Panel orientation reported by the art-app (landscape / portrait).
 
     Read with get_current_rotation by the Frame Art coordinator; a
@@ -2030,7 +2027,7 @@ class FrameArtOrientationSensor(CoordinatorEntity, SensorEntity):
         return "mdi:phone-rotate-landscape"
 
 
-class FrameArtSensor(CoordinatorEntity, SensorEntity):
+class FrameArtSensor(ChangedCoordinatorEntity, SensorEntity):
     """Sensor entity for Samsung Frame TV Art Mode."""
 
     _attr_icon = "mdi:image-frame"
@@ -2722,7 +2719,7 @@ class SmartThingsPowerCoordinator(DataUpdateCoordinator):
         return self.data or {}
 
 
-class SmartThingsPowerConsumptionSensor(CoordinatorEntity, SensorEntity):
+class SmartThingsPowerConsumptionSensor(ChangedCoordinatorEntity, SensorEntity):
     """TV power/energy consumption via SmartThings ``powerConsumptionReport``.
 
     SmartThings exposes a single ``powerConsumption`` attribute whose value is a
@@ -3029,7 +3026,7 @@ class IPControlStateCoordinator(DataUpdateCoordinator):
         }
 
 
-class IPControlStateSensor(CoordinatorEntity, SensorEntity):
+class IPControlStateSensor(ChangedCoordinatorEntity, SensorEntity):
     """Read-only sensor for one getTVStates / getVideoStates field."""
 
     entity_description: SamsungIPControlSensorDescription
