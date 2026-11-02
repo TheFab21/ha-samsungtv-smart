@@ -243,12 +243,28 @@ class Probe:
         print(f"\n== WRITE set.settings.data {params}")
         await self._send(ws, "set.settings.data", params)
 
+    async def _fresh_settings(self, ws) -> None:
+        """Re-read the quick settings, so a write uses the options offered now.
+
+        The first capture of the write test used a list read 11 s earlier: the
+        receiver had taken the sound meanwhile and the sound-mode layer had
+        dropped to Standard alone.
+        """
+        self.latest.pop("get.settings.data", None)
+        await self._send(ws, "get.settings.data")
+        await self._wait_for("get.settings.data")
+
     async def toggle_sound_mode(self, ws) -> None:
         """Switch the sound mode to another option, then back."""
+        await self._fresh_settings(ws)
         layer = self._layer("s/setting.layer.soundmode")
         elements = (layer or {}).get("elements") or []
         if len(elements) < 2:
-            print("! No sound-mode layer with two options; skipping")
+            print(
+                "! The sound-mode layer offers "
+                f"{[e.get('subTitle') for e in elements]}: nothing to switch to "
+                "(sound on an external receiver?). Use the TV speakers; skipping"
+            )
             return
         try:
             current = int(layer.get("current_element_index"))
@@ -266,7 +282,15 @@ class Probe:
         await asyncio.sleep(8)
 
     async def switch_source(self, ws, target: str) -> None:
-        """Launch another input (matched by title or source id), then back."""
+        """Launch another input, then back.
+
+        ``target`` matches a source id (``HDMI3``, ``TV``) or any part of a
+        title: the TV renamed HDMI3 from "CINEMA 60" to "Périphérique externe
+        avec CINEMA 60" once the receiver was on, so exact titles do not hold.
+        """
+        self.latest.pop("get.extsources", None)
+        await self._send(ws, "get.extsources")
+        await self._wait_for("get.extsources")
         sources = (self.latest.get("get.extsources") or {}).get("response") or []
         current = next(
             (s for s in sources if str(s.get("currentSource")) == "true"), None
@@ -276,11 +300,8 @@ class Probe:
             (
                 s
                 for s in sources
-                if wanted
-                in (
-                    str(s.get("title", "")).casefold(),
-                    str(s.get("sourceId", "")).casefold(),
-                )
+                if str(s.get("sourceId", "")).casefold().endswith(f"@{wanted}")
+                or wanted in str(s.get("title", "")).casefold()
             ),
             None,
         )
@@ -296,8 +317,12 @@ class Probe:
         await asyncio.sleep(12)
         await self._send(ws, "get.extsources")
         await asyncio.sleep(1)
-        if current is not None:
-            await self._send(ws, "launch.extsource", {"requestId": current["sourceId"]})
+        back = current or next(
+            (s for s in sources if str(s.get("sourceId", "")).endswith("@TV")), None
+        )
+        if back is not None and back is not dest:
+            # No source is "current" while an app is on screen; go back to TV.
+            await self._send(ws, "launch.extsource", {"requestId": back["sourceId"]})
             await asyncio.sleep(12)
             await self._send(ws, "get.extsources")
             await asyncio.sleep(1)
