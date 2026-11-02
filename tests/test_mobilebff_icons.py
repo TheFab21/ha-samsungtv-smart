@@ -152,3 +152,35 @@ def test_a_cached_icon_survives_the_channel_closing():
     assert asyncio.run(device._tv_app_icon_url()) == (
         f"{mp.TV_APP_ICON_URL}3201907018807"
     )
+
+
+def test_the_icon_follows_the_title_not_the_lagging_running_app():
+    # Reported: SmartThings -> Swisscom blue TV kept SmartThings' icon, then
+    # YouTube showed Swisscom's: the running-app scan lags a switch by up to
+    # ~9 s, and the icon was taken from it while the title had moved on.
+    client = _client()
+    fetched = []
+
+    async def get_icon(path):
+        fetched.append(path)
+        return PNG
+
+    client.async_get_icon = get_icon
+    device = _device(client)
+    device._running_app = "YouTube"  # stale scan
+    url = asyncio.run(device._tv_app_icon_url("Netflix"))
+    assert url == f"{mp.TV_APP_ICON_URL}3201907018807"
+    assert fetched == [NETFLIX_ICON]
+
+
+def test_a_title_from_smartthings_matches_its_app_whatever_the_case():
+    device = _device(_client())
+    device._running_app = mp.DEFAULT_APP
+    assert device._media_icon_app("NETFLIX") == "Netflix"
+
+
+def test_without_an_app_title_the_running_app_is_used():
+    device = _device(_client())
+    assert device._media_icon_app("TV Plus") == "Netflix"
+    device._running_app = mp.DEFAULT_APP
+    assert device._media_icon_app("TV Plus") is None
