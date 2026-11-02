@@ -25,6 +25,9 @@ Run it on the Home Assistant host, where aiohttp is already installed, e.g.:
 
     docker exec -it homeassistant python3 /config/probe_mobilebff.py 192.168.1.161
 
+The container name depends on the install (`docker ps` lists it): a
+Compose project named homeassistant gives homeassistant-home-assistant.
+
 While it listens (90 s by default), use the remote: change the picture mode,
 switch input (TV -> HDMI -> TV), open the quick settings. Everything received
 is printed and saved to /config/mobilebff_probe_<time>.json (the token is not
