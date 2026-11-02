@@ -606,6 +606,13 @@ In addition to standard media player attributes, the following are available:
   standby. See [Detecting Art Mode vs. watching TV](#detecting-art-mode-vs-watching-tv)
 - `frame_art_last_result` — outcome of the last Frame Art service call
 
+### Reusing local Art Mode status
+
+When a fresh shared IP Control response is available, the media player reuses
+its picture mode instead of requesting power and Art Mode separately. It keeps
+the existing direct reads and timing when that response cannot be used.
+Mode-change events still request an immediate update.
+
 ### Detecting Art Mode vs. watching TV
 
 A Frame is a **tri-state** device — standby, Art Mode, or actually being
