@@ -379,6 +379,9 @@
       },
       "qs_digital_audio_format": {
         "name": "Digital audio output format"
+      },
+      "source": {
+        "name": "Source"
       }
     }
   }
