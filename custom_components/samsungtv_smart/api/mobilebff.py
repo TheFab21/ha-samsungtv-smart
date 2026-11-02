@@ -188,6 +188,35 @@ class ExtSource:
         return self.source_id.rpartition("@")[2]
 
 
+@dataclass(frozen=True)
+class AppTile:
+    """An app on the TV's home screen (get.apptiles)."""
+
+    tile_id: str  # e.g. d/webapp@3201907018807, s/livetv@TVPLUS
+    title: str
+
+    @property
+    def app_id(self) -> str | None:
+        """The Tizen app id of a web app tile (``3201907018807``), else None."""
+        kind, _, app_id = self.tile_id.partition("@")
+        return (app_id or None) if kind == "d/webapp" else None
+
+
+def parse_app_tiles(response: Any) -> tuple[AppTile, ...] | None:
+    """Parse a get.apptiles response."""
+    if not isinstance(response, list):
+        return None
+    tiles = []
+    for item in response:
+        if not isinstance(item, dict) or not isinstance(item.get("appId"), str):
+            continue
+        title = item.get("title")
+        tiles.append(
+            AppTile(item["appId"], title if isinstance(title, str) else item["appId"])
+        )
+    return tuple(tiles)
+
+
 def parse_setting_layer(layer: Any) -> SettingLayer | None:
     """Parse any quick-settings layer; None when it has no usable element."""
     if not isinstance(layer, dict) or not isinstance(layer.get("id"), str):
@@ -291,6 +320,7 @@ class SamsungMobileBFF:
         self.picture_modes: PictureModeLayer | None = None
         self.layers: dict[str, SettingLayer] = {}
         self.sources: tuple[ExtSource, ...] = ()
+        self.apps: tuple[AppTile, ...] = ()
 
     @property
     def connected(self) -> bool:
@@ -355,6 +385,8 @@ class SamsungMobileBFF:
         changed = bool(self.layers or self.sources)
         self.layers = {}
         self.sources = ()
+        # The app list is kept: it describes what is installed, not what is
+        # on screen, and the media player builds its app sources from it once.
         if self.picture_modes is not None:
             self._set_picture_modes(None)
         elif changed:
@@ -406,6 +438,11 @@ class SamsungMobileBFF:
             sources = parse_sources(response)
             if sources is not None and sources != self.sources:
                 self.sources = sources
+                self._notify()
+        elif kind == "get.apptiles":
+            apps = parse_app_tiles(response)
+            if apps and apps != self.apps:
+                self.apps = apps
                 self._notify()
 
     async def _run(self) -> None:
@@ -470,6 +507,7 @@ class SamsungMobileBFF:
             _LOGGER.debug("Quick-settings channel open on %s:%s", self._host, port)
             await self._send("get.settings.data")
             await self._send("get.extsources")
+            await self._send("get.apptiles")
             async for msg in ws:
                 if msg.type != aiohttp.WSMsgType.TEXT:
                     break
@@ -583,6 +621,21 @@ class SamsungMobileBFF:
             3, lambda: asyncio.ensure_future(self._refresh_sources())
         )
         return True
+
+    async def async_launch_app(self, tile_id: str) -> bool:
+        """Open an app tile; True when the TV accepted it."""
+        answer = await self._request("launch.app", {"requestId": tile_id})
+        if not self._ok(answer):
+            _LOGGER.debug("App tile %s refused: %s", tile_id, answer)
+            return False
+        return True
+
+    def find_app(self, app_id: str) -> AppTile | None:
+        """The home-screen tile of a Tizen app id."""
+        for tile in self.apps:
+            if tile.app_id == app_id:
+                return tile
+        return None
 
     async def _refresh_sources(self) -> None:
         try:

@@ -86,7 +86,7 @@ from .api.ipcontrol import (
     SamsungIPControlUnsupportedError,
 )
 from .api.samsungcast import SamsungCastTube
-from .api.samsungws import ArtModeStatus, SamsungTVAsyncRest, SamsungTVWS
+from .api.samsungws import App, ArtModeStatus, SamsungTVAsyncRest, SamsungTVWS
 from .api.smartthings import SmartThingsCapabilityUnsupported, SmartThingsTV, STStatus
 from .api.upnp import SamsungUPnP
 from .art_mode_guard import (
@@ -2400,7 +2400,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if not (self._app_list is None or self._dump_apps):
             return
 
-        app_list = self._ws.installed_app
+        app_list = self._ws.installed_app or self._local_installed_apps()
         if not app_list:
             return
 
@@ -4539,6 +4539,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             else:
                 method = CMD_RUN_APP
 
+        if (
+            not meta_data
+            and len(app_cmd) == 1
+            and await self._async_local_app(bare_app_id)
+        ):
+            return
+
         await self.async_send_command(app_id, method)
 
         if method != CMD_RUN_APP_REST and not self._app_launch_ignored_logged:
@@ -4919,14 +4926,37 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         await self.async_select_source(source)
 
-    def _quick_settings(self):
-        """The TV's local quick-settings channel, when it is open."""
+    def _quick_settings_client(self):
+        """The TV's local quick-settings channel client, open or not."""
         hass = getattr(self, "hass", None)
         if hass is None:
             return None
         data = hass.data.get(DOMAIN, {}).get(getattr(self, "_entry_id", None), {})
-        client = data.get(DATA_MOBILEBFF) if isinstance(data, dict) else None
+        return data.get(DATA_MOBILEBFF) if isinstance(data, dict) else None
+
+    def _quick_settings(self):
+        """The TV's local quick-settings channel, when it is open."""
+        client = self._quick_settings_client()
         return client if client is not None and client.connected else None
+
+    def _local_installed_apps(self) -> dict:
+        """Web apps on the TV's home screen, as the remote channel lists apps.
+
+        A Frame 2024 never answered ed.installedApp.get (no reply in three
+        minutes), which left the source list without a single app. Its
+        quick-settings channel listed the home-screen tiles at once, 15 of
+        them, each web app with its Tizen id (d/webapp@3201907018807 is
+        Netflix), the id the launch and running-app paths already use.
+        Non-web tiles (s/livetv@TVPLUS) have no such id and are left out.
+        """
+        client = self._quick_settings_client()
+        if client is None:
+            return {}
+        return {
+            tile.app_id: App(tile.app_id, tile.title, 2)
+            for tile in client.apps
+            if tile.app_id
+        }
 
     def _local_sound_mode_layer(self):
         client = self._quick_settings()
@@ -4957,6 +4987,22 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             source,
             target.source_id,
         )
+        return True
+
+    async def _async_local_app(self, app_id: str) -> bool:
+        """Open a home-screen app over the quick-settings channel; False to fall back.
+
+        launch.app opened Netflix on a Frame 2024 ("ok" in 0.2 s). Only for a
+        plain launch: a deep link (meta data) or an explicit method keeps the
+        remote-channel path that carries it.
+        """
+        client = self._quick_settings()
+        if client is None:
+            return False
+        tile = client.find_app(app_id)
+        if tile is None or not await client.async_launch_app(tile.tile_id):
+            return False
+        self._log.debug("App %s opened locally (%s)", app_id, tile.tile_id)
         return True
 
     async def _async_local_sound_mode(self, sound_mode: str) -> bool:
