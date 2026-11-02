@@ -84,6 +84,7 @@ def _device(client, connected=True):
     device._ws = _WS()
     device._app_list = None
     device._app_list_st = None
+    device._running_app = None
     device._dump_apps = False
     device._options = {}
     device._get_option = lambda key, default=None: default
@@ -199,3 +200,49 @@ def test_a_local_launch_starts_the_hold():
     device = _device(client)
     assert asyncio.run(device._async_local_app("3201907018807")) is True
     assert device._local_app_hold_until > mp.time.monotonic() + 10
+
+
+def test_a_stale_reading_of_the_replaced_app_does_not_undo_the_launch():
+    # CANAL+ opened at 13:01:33.750; 75 ms later the last scan still said
+    # YouTube was running, and the card showed YouTube for 14 s.
+    device = _running_device()
+    device._running_app = "Netflix"  # just opened
+    device._local_app_replaced = "YouTube"
+    device._local_app_hold_until = mp.time.monotonic() + 20
+    device._ws.running = {"111299001912": True}  # YouTube, stale
+    device._get_running_app()
+    assert device._running_app == "Netflix"
+
+
+def test_another_app_reported_running_still_wins_during_the_hold():
+    device = _running_device()
+    device._app_list["Disney+"] = "3201901017640"
+    device._running_app = "Netflix"
+    device._local_app_replaced = "YouTube"
+    device._local_app_hold_until = mp.time.monotonic() + 20
+    device._ws.running = {"3201901017640": True}
+    device._get_running_app()
+    assert device._running_app == "Disney+"
+
+
+def test_after_the_hold_the_replaced_app_counts_again():
+    device = _running_device()
+    device._running_app = "Netflix"
+    device._local_app_replaced = "YouTube"
+    device._local_app_hold_until = mp.time.monotonic() - 1
+    device._ws.running = {"111299001912": True}
+    device._get_running_app()
+    assert device._running_app == "YouTube"
+
+
+def test_a_local_launch_remembers_the_app_it_replaces():
+    client = _client()
+
+    async def launch(tile_id):
+        return True
+
+    client.async_launch_app = launch
+    device = _device(client)
+    device._running_app = "YouTube"
+    asyncio.run(device._async_local_app("3201907018807"))
+    assert device._local_app_replaced == "YouTube"
