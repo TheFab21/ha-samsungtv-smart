@@ -34,7 +34,9 @@ Run it on the Home Assistant host, where aiohttp is already installed, e.g.:
 The container name depends on the install (`docker ps` lists it): a
 Compose project named homeassistant gives homeassistant-home-assistant.
 
-While it listens (90 s by default), use the remote: change the picture mode,
+The channel exists in normal viewing only: with the TV off or in Art Mode
+the TV closes it within seconds, and the probe says so. While it listens
+(90 s by default), use the remote: change the picture mode,
 switch input (TV -> HDMI -> TV), open the quick settings. Everything received
 is printed and saved to /config/mobilebff_probe_<time>.json (the token is not
 written to it).
@@ -690,7 +692,18 @@ class Probe:
                 f"\n== Listening {self.listen:.0f} s: change the picture mode, "
                 "switch input, open the quick settings now.\n"
             )
+            started = time.monotonic()
             await asyncio.wait({reader}, timeout=self.listen)
+            if reader.done():
+                # The TV closed the channel (aiohttp ends the read loop quietly
+                # on a close frame). It does when the TV goes to standby or Art
+                # Mode: the channel exists in normal viewing only.
+                print(
+                    f"\n! The TV closed the channel after "
+                    f"{time.monotonic() - started:.1f} s of listening "
+                    f"(close code {ws.close_code}, error {ws.exception()!r}). "
+                    "Is the TV still on, in normal viewing (not off, not Art Mode)?"
+                )
         finally:
             reader.cancel()
             await ws.close()
