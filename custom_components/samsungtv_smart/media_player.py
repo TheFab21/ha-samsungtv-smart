@@ -751,6 +751,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     _ip_art_getter_supported: bool | None = None
     # Until when an app opened locally stays the running app (monotonic).
     _local_app_hold_until: float = 0.0
+    # The app whose icon the media image shows (see _media_icon_app).
+    _last_icon_app: str | None = None
     _ip_art_power_off_at: float | None = None
 
     def __init__(
@@ -3304,6 +3306,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 new_media_title != ART_MODE_MEDIA_TITLE
                 and self._attr_media_title
                 and new_media_title == self._attr_media_title
+                and self._media_icon_app(new_media_title) == self._last_icon_app
             ):
                 return
 
@@ -3321,13 +3324,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             media_image_url = self._art_mode_media_image()
         elif (
             media_image_url := await self._local_media_image(new_media_title)
-        ) is None and (media_image_url := await self._tv_app_icon_url()) is None:
+        ) is None and (
+            media_image_url := await self._tv_app_icon_url(new_media_title)
+        ) is None:
             media_image_url = await self._logo.async_find_match(new_media_title)
             remote_access = media_image_url is not None
 
         self._attr_media_title = new_media_title
         self._attr_media_image_url = media_image_url
         self._attr_media_image_remotely_accessible = remote_access
+        self._last_icon_app = self._media_icon_app(new_media_title)
 
     def _art_mode_media_image(self) -> str | None:
         """Return the local URL of the current artwork, if available.
@@ -3410,7 +3416,25 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return media_title
         return None
 
-    async def _tv_app_icon_url(self) -> str | None:
+    def _media_icon_app(self, media_title: str | None) -> str | None:
+        """The app whose icon goes with ``media_title``.
+
+        The app named by the title first: the running-app scan lags a
+        switch by up to ~9 s, and taking its app gave each app the previous
+        one's icon (Swisscom blue TV showed SmartThings', then YouTube
+        showed Swisscom's). The running app only when no app has that name.
+        """
+        apps = self._app_list or {}
+        if media_title:
+            wanted = media_title.casefold()
+            for name in apps:
+                if name.casefold() == wanted:
+                    return name
+        if self._running_app in (None, DEFAULT_APP):
+            return None
+        return self._running_app
+
+    async def _tv_app_icon_url(self, media_title: str | None = None) -> str | None:
         """A media image URL for the running app's own icon, fetched from the TV.
 
         The home-screen tiles name each app's icon file and get.icon returns
@@ -3419,9 +3443,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         Each icon is fetched once and kept in memory; the URL is a marker
         served by async_get_media_image, so nothing is written to disk.
         """
-        if self._running_app in (None, DEFAULT_APP) or not self._app_list:
+        app_name = self._media_icon_app(media_title)
+        if app_name is None or not self._app_list:
             return None
-        app_id = self._app_list.get(self._running_app)
+        app_id = self._app_list.get(app_name)
         client = self._quick_settings_client()
         tile = client.find_app(app_id) if client and app_id else None
         if tile is None or not tile.icon_path:
