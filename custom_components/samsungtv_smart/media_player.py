@@ -720,6 +720,9 @@ class ArtModeSupport(Enum):
 
 # Quick-settings layer of the sound mode (api/mobilebff.py).
 SOUND_MODE_LAYER = "s/setting.layer.soundmode"
+# Seconds the running app opened over the quick-settings channel is kept
+# while nothing confirms or contradicts it.
+LOCAL_APP_LAUNCH_HOLD = 20.0
 # Input id in a source-list key: ST_HDMI3 / IP_HDMI3 / KEY_HDMI3 -> HDMI3.
 _SOURCE_KEY_ID = re.compile(r"^(?:ST|IP|KEY)_([A-Z]+[0-9]*)$")
 
@@ -743,6 +746,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     # without ever having answered, while nothing suggested art. Reset with the
     # client, like _ip_absolute_volume_supported.
     _ip_art_getter_supported: bool | None = None
+    # Until when an app opened locally stays the running app (monotonic).
+    _local_app_hold_until: float = 0.0
     _ip_art_power_off_at: float | None = None
 
     def __init__(
@@ -2303,6 +2308,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Retrieve name of running apps."""
 
         st_running_app = None
+        running_before = self._running_app
         if self._app_list is not None:
             for app, app_id in self._app_list.items():
                 if app_running := self._ws.is_app_running(app_id):
@@ -2314,6 +2320,18 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     st_app_id = self._app_list_st.get(app, "")
                     if st_app_id == self._st.channel_name:
                         st_running_app = app
+
+        if (
+            st_running_app is None
+            and running_before not in (None, DEFAULT_APP)
+            and time.monotonic() < self._local_app_hold_until
+        ):
+            # Just opened over the quick-settings channel: the app's own status
+            # takes a scan or two to say it is running, and SmartThings lags
+            # further (it still named TV Plus 30 s later). Without this hold the
+            # card fell back to TV/HDMI 2 s after the launch.
+            self._running_app = running_before
+            return
 
         self._running_app = st_running_app or DEFAULT_APP
 
@@ -2436,6 +2454,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if self._app_list is None:
             self._app_list = filtered_app_list
             self._app_list_st = filtered_app_list_st
+            if not self._ws.installed_app:
+                # Built from the home-screen tiles: hand it to the remote
+                # channel too, whose running-app scan reads the status of the
+                # listed apps. Without it nothing was scanned, and a minute
+                # after opening Swisscom blue TV the player still said TV/HDMI.
+                self._ws.update_app_list(self._app_list)
 
         if self._dump_apps:
             self._log.info(
@@ -5001,6 +5025,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if tile is None or not await client.async_launch_app(tile.tile_id):
             return False
         self._log.debug("App %s opened locally (%s)", app_id, tile.tile_id)
+        self._local_app_hold_until = time.monotonic() + LOCAL_APP_LAUNCH_HOLD
         return True
 
     async def _async_local_sound_mode(self, sound_mode: str) -> bool:
