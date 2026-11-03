@@ -74,6 +74,7 @@ from .const import (
     TUNER_INPUT_SOURCES,
     WS_PREFIX,
     ip_control_port,
+    DATA_ST_POWER,
 )
 from .coordinator_entity import ChangedCoordinatorEntity
 from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_problem
@@ -485,6 +486,10 @@ async def async_setup_entry(  # noqa: C901
                         power_coordinator.async_request_refresh(),
                         f"st_power_initial_refresh_{entry.entry_id}",
                     )
+                    # Diagnostics publish the raw report this coordinator holds.
+                    hass.data[DOMAIN].setdefault(entry.entry_id, {})[
+                        DATA_ST_POWER
+                    ] = power_coordinator
             except Exception as ex:
                 _LOGGER.debug("Could not check power consumption capability: %s", ex)
 
