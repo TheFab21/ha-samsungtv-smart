@@ -43,6 +43,7 @@ from .api.ipcontrol import (
     SamsungIPControlTransportError,
     SamsungIPControlUnsupportedError,
 )
+from .ip_settings import IP_NUMBERS, IPSettingEntity
 from .const import (
     CONF_ENABLE_IP_CONTROL,
     CONF_IP_CONTROL_TOKEN,
@@ -123,6 +124,16 @@ async def async_setup_entry(
                 )
             ],
             True,
+        )
+        # Expert picture numbers (disabled by default; see ip_settings.py).
+        async_add_entities(
+            [
+                SamsungTVIPSettingNumber(
+                    hass, entry, host, device_name, device_unique_id, setting
+                )
+                for setting in IP_NUMBERS
+            ],
+            False,
         )
         # The five expert picture sliders share one getVideoStates coordinator
         # so they never open concurrent connections to port 1516.
@@ -940,3 +951,32 @@ class SamsungTVArtColorTemperatureNumber(SamsungTVArtNumberBase):
                     self._attr_native_value = int(tv_value)
         except Exception as ex:
             _LOGGER.debug("Could not refresh art mode color temperature: %s", ex)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# IP Control expert picture numbers (ip_settings.py)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class SamsungTVIPSettingNumber(IPSettingEntity, NumberEntity):
+    """An IP Control integer setting (gamma BT.1886 offset)."""
+
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_step = 1
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Initialize the number."""
+        super().__init__(*args, **kwargs)
+        self._attr_native_min_value = self._setting.min_value
+        self._attr_native_max_value = self._setting.max_value
+        self._attr_native_value = None
+
+    def _apply(self, value) -> None:
+        try:
+            self._attr_native_value = int(value) if value is not None else None
+        except (TypeError, ValueError):
+            self._attr_native_value = None
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Send the value to the TV."""
+        await self._async_write(int(round(value)))
