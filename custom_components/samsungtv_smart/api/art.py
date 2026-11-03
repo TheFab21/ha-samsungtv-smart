@@ -70,7 +70,6 @@ def _detect_wire_type(data: bytes, hint: str | None = None) -> str:
     return "jpg" if normalized in ("jpg", "jpeg", "mpo") else normalized
 
 
-
 def slideshow_category_id(category: int | str) -> str:
     """Return the Art-app category_id string for a slideshow source.
 
