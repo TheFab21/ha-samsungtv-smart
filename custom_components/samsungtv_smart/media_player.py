@@ -3727,13 +3727,6 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             ):
                 return
 
-        self._log.debug(
-            "New media title is: %s, old media title is: %s, running app is: %s",
-            new_media_title,
-            self._attr_media_title or "<none>",
-            self._running_app,
-        )
-
         remote_access = False
         if new_media_title == ART_MODE_MEDIA_TITLE:
             # Use the currently displayed artwork as the media image, maintained
@@ -3746,6 +3739,19 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         ) is None:
             media_image_url = await self._logo.async_find_match(new_media_title)
             remote_access = media_image_url is not None
+
+        # In Art Mode this runs every update to catch a new artwork; log only
+        # what changed, not one identical line every few seconds.
+        if (
+            new_media_title != self._attr_media_title
+            or media_image_url != self._attr_media_image_url
+        ):
+            self._log.debug(
+                "New media title is: %s, old media title is: %s, running app is: %s",
+                new_media_title,
+                self._attr_media_title or "<none>",
+                self._running_app,
+            )
 
         self._attr_media_title = new_media_title
         self._attr_media_image_url = media_image_url
