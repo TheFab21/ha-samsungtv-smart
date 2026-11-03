@@ -2754,11 +2754,13 @@ class SamsungTVAsyncArt:
         timeout: int = 30,
         hass=None,
         panel: tuple[int, int] | None = None,
+        rotation: str | None = None,
     ) -> str | None:
         """Upload a new image to the TV.
 
         The image is normalised (baseline JPEG, EXIF stripped, fitted to
-        ``panel``) before it is sent — see ``_image_prep``. Every upload path
+        ``panel`` as it hangs - ``rotation`` "landscape" / "portrait") before
+        it is sent — see ``_image_prep``. Every upload path
         funnels through here, so the card, ``art_upload`` and
         ``art_upload_batch`` all get the same treatment.
         """
@@ -2797,10 +2799,11 @@ class SamsungTVAsyncArt:
                     _image_prep.normalise_for_frame,
                     file,
                     panel or _image_prep.DEFAULT_PANEL,
+                    rotation,
                 )
             else:
                 file, _suffix = _image_prep.normalise_for_frame(
-                    file, panel or _image_prep.DEFAULT_PANEL
+                    file, panel or _image_prep.DEFAULT_PANEL, rotation
                 )
             file_type = "jpg"
         except Exception as ex:  # noqa: BLE001 - unsupported/corrupt image
@@ -3078,6 +3081,7 @@ class SamsungTVAsyncArt:
         sidecar_path: str | None = None,
         dedup_dir: str | None = None,
         panel: tuple[int, int] | None = None,
+        rotation: str | None = None,
     ) -> dict:
         """Upload a list of image files, cheaply and idempotently.
 
@@ -3145,7 +3149,9 @@ class SamsungTVAsyncArt:
                 await asyncio.sleep(throttle)
             did_upload = True
 
-            content_id = await self.upload(path, matte=matte, hass=hass, panel=panel)
+            content_id = await self.upload(
+                path, matte=matte, hass=hass, panel=panel, rotation=rotation
+            )
             if content_id:
                 uploaded.append(content_id)
                 sidecar[name] = {"content_id": content_id, "modified": mtime}

@@ -5994,6 +5994,21 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             resolution = device.get("resolution")
         return panel_size(resolution)
 
+    async def _async_art_rotation(self) -> str | None:
+        """How the panel hangs ("landscape" / "portrait"), or None if unread.
+
+        Uploads are fitted to it: a landscape-hung Frame never displays a
+        photo taller than its 2160 px panel (see _image_prep.fit_box). A short
+        timeout: an unanswered read must not hold an upload, and None falls
+        back to the landscape box, which every Frame displays.
+        """
+        try:
+            async with asyncio.timeout(5):
+                return await self._art_api.get_current_rotation()
+        except Exception as ex:  # noqa: BLE001 - never block an upload on this
+            self._log.debug("Frame Art: could not read the panel rotation: %s", ex)
+            return None
+
     async def _panel_shows_art(self) -> bool | None:
         """getTVStates.pictureMode == "Ambient", or None when it cannot be read.
 
@@ -6559,6 +6574,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 file_type=file_type,
                 hass=self.hass,
                 panel=self._art_panel_size(),
+                rotation=await self._async_art_rotation(),
             )
             if content_id:
                 self._log.info(
@@ -6642,6 +6658,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             sidecar_path=sidecar_path,
             dedup_dir=dedup_dir,
             panel=self._art_panel_size(),
+            rotation=await self._async_art_rotation(),
         )
 
         # Reflect the new art and fetch the (delayed) TV-side thumbnails.
