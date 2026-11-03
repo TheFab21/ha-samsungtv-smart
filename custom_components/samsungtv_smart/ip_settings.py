@@ -230,7 +230,9 @@ class IPSettingEntity:
                 ex,
             )
             self._clear()
-            notify_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL, self._title())
+            notify_token_problem(
+                self.hass, self._entry_id, METHOD_IP_CONTROL, self._title()
+            )
         except SamsungIPControlError as ex:
             _LOGGER.debug(
                 "Could not read IP Control %s for %s: %s",
@@ -248,14 +250,18 @@ class IPSettingEntity:
         """Write the setting and keep what the TV echoes."""
         client = self._client()
         if client is None:
-            raise HomeAssistantError("IP Control is not paired or is disabled for this TV.")
+            raise HomeAssistantError(
+                "IP Control is not paired or is disabled for this TV."
+            )
         try:
             echoed = await client.async_set_setting(
                 self._setting.method, self._setting.param, value
             )
         except SamsungIPControlAuthError as ex:
             self._clear()
-            notify_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL, self._title())
+            notify_token_problem(
+                self.hass, self._entry_id, METHOD_IP_CONTROL, self._title()
+            )
             raise HomeAssistantError(f"IP Control token rejected: {ex}") from ex
         except SamsungIPControlModeLockedError as ex:
             # TV-side state (picture mode, input, content) - not a pairing

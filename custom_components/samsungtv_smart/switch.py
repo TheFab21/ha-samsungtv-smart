@@ -41,7 +41,6 @@ from .art_mode_guard import (
     guard_for,
     settle_after_source_switch,
 )
-from .ip_settings import IP_SWITCHES, IPSettingEntity, ip_control_active
 from .const import (
     AUTH_METHOD_OAUTH,
     CONF_ART_PORT,
@@ -59,6 +58,7 @@ from .const import (
     WS_PREFIX,
     ip_control_port,
 )
+from .ip_settings import IP_SWITCHES, IPSettingEntity, ip_control_active
 
 _LOGGER = logging.getLogger(__name__)
 

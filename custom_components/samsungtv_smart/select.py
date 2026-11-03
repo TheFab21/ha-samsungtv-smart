@@ -60,6 +60,7 @@ from .const import (
     WS_PREFIX,
     ip_control_port,
 )
+from .ip_settings import IP_SELECTS, IPSetting, IPSettingEntity
 from .picture_mode_keys import (
     PICTURE_MODE_GENERATED_OPTION,
     picture_mode_ip_base,
@@ -69,7 +70,6 @@ from .picture_mode_keys import (
     picture_mode_slug,
 )
 from .shared_ip import ReadDeadline, shared_field, state_coordinator
-from .ip_settings import IP_SELECTS, IPSetting, IPSettingEntity
 from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_problem
 
 _LOGGER = logging.getLogger(__name__)
