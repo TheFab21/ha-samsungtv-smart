@@ -15,7 +15,8 @@ from homeassistant.const import (
     CONF_NAME,
 )
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
-from homeassistant.helpers.entity import DeviceInfo, Entity
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
 
 from .const import CONF_DEVICE_MODEL, CONF_DEVICE_NAME, CONF_DEVICE_OS, DOMAIN
 
