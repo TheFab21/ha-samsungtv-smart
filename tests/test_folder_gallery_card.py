@@ -14,6 +14,7 @@ import pytest
 ROOT = Path(__file__).parents[1]
 CARD = ROOT / "custom_components" / "samsungtv_smart" / "www" / "folder-gallery-card.js"
 JS_TEST = ROOT / "tests" / "js" / "folder_gallery_helpers.test.mjs"
+JS_OVERLAY_TEST = ROOT / "tests" / "js" / "folder_gallery_overlay.test.mjs"
 
 
 def test_the_card_is_bundled_with_the_integration():
@@ -50,6 +51,20 @@ def test_the_editor_exposes_group_by_subfolder():
 def test_pure_helpers_behaviour():
     result = subprocess.run(
         ["node", str(JS_TEST)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+def test_open_overlays_lift_the_card_above_its_siblings():
+    # In a Bubble Card pop-up the upload card after the gallery was painted on
+    # top of the open lightbox: the card now raises itself while an overlay is
+    # open (tests/js/folder_gallery_overlay.test.mjs).
+    result = subprocess.run(
+        ["node", str(JS_OVERLAY_TEST)],
         capture_output=True,
         text=True,
         timeout=60,

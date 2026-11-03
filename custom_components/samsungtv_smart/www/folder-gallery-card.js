@@ -1308,6 +1308,7 @@ class FolderGalleryCard extends HTMLElement {
     this._selectedImage = imageData;
     img.src = imageData.path;
     lightbox.classList.add('open');
+    this._liftOverlay();
 
     // Which action buttons to show. When `gallery_type` is set, it forces the
     // button set for the whole gallery, so e.g. an upload folder always offers
@@ -1384,6 +1385,34 @@ class FolderGalleryCard extends HTMLElement {
     if (lightbox) {
       lightbox.classList.remove('open');
       this._selectedImage = null;
+    }
+    this._liftOverlay();
+  }
+
+  // The lightbox and the Frame chooser are position:fixed with a high
+  // z-index, but that z-index only ranks them inside this card. In a stack
+  // (vertical-stack, a Bubble Card pop-up) a card placed after this one is
+  // painted on top of them, so e.g. the upload card's form showed through the
+  // lightbox. While either overlay is open, raise the card itself above its
+  // siblings; put it back when both are closed.
+  _liftOverlay() {
+    const root = this.shadowRoot;
+    const open = ['lightbox', 'frame-chooser'].some((id) =>
+      root.getElementById(id)?.classList.contains('open')
+    );
+    if (open) {
+      if (this._liftedStyle === undefined) {
+        this._liftedStyle = {
+          position: this.style.position,
+          zIndex: this.style.zIndex,
+        };
+      }
+      if (!this.style.position) this.style.position = 'relative';
+      this.style.zIndex = '1000';
+    } else if (this._liftedStyle !== undefined) {
+      this.style.position = this._liftedStyle.position;
+      this.style.zIndex = this._liftedStyle.zIndex;
+      this._liftedStyle = undefined;
     }
   }
 
@@ -1623,11 +1652,13 @@ class FolderGalleryCard extends HTMLElement {
     };
 
     chooser.classList.add('open');
+    this._liftOverlay();
   }
 
   _closeFrameChooser() {
     const chooser = this.shadowRoot.getElementById('frame-chooser');
     if (chooser) chooser.classList.remove('open');
+    this._liftOverlay();
   }
 
   showToast(message, isError = false) {
