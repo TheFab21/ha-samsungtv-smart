@@ -58,6 +58,7 @@ from .const import (
     WS_PREFIX,
     ip_control_port,
 )
+from .ip_settings import IP_SWITCHES, IPSettingEntity, ip_control_active
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -163,6 +164,15 @@ async def async_setup_entry(
         device_name,
         "yes" if (api_key and device_id) else "no — WebSocket fallback",
     )
+
+    # IP Control expert Off/On settings (disabled by default; see ip_settings.py).
+    if ip_control_active(entry):
+        entities.extend(
+            SamsungTVIPSettingSwitch(
+                hass, entry, host, device_name, device_unique_id, setting
+            )
+            for setting in IP_SWITCHES
+        )
 
     # Reuse the shared Art API instance if present (created in __init__.py),
     # otherwise create a fallback one. Either way, decide whether to create the
@@ -1666,3 +1676,28 @@ class SamsungTVPowerSwitch(SwitchEntity):
             )
         # Publish the real state now instead of waiting for the first change.
         self.async_write_ha_state()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# IP Control expert Off/On settings (ip_settings.py)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class SamsungTVIPSettingSwitch(IPSettingEntity, SwitchEntity):
+    """An IP Control Off/On setting (HDR remastering, eco, motion lighting...)."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Initialize the switch."""
+        super().__init__(*args, **kwargs)
+        self._attr_is_on = None
+
+    def _apply(self, value) -> None:
+        self._attr_is_on = None if value is None else str(value).lower() == "on"
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn the setting on."""
+        await self._async_write("On")
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn the setting off."""
+        await self._async_write("Off")

@@ -272,6 +272,12 @@ ERROR_SERVER = -32002
 # reasons, so the picture-mode advice must not be attached to them.
 PICTURE_WRITE_METHODS = frozenset(
     {
+        "applyPictureSettingsControl",
+        "autoHDRRemasteringControl",
+        "autoMotionPlusControl",
+        "brightnessOptimizationControl",
+        "gamma.BT1886Control",
+        "motionLightingControl",
         "backlightControl",
         "brightnessControl",
         "colorControl",
@@ -525,6 +531,18 @@ class SamsungIPControl:
             raise SamsungIPControlError(
                 f"invalid backlight response: {result!r}"
             ) from ex
+
+    async def async_get_setting(self, method: str, param: str) -> Any:
+        """Read one ``<x>Control`` value (getter: the method with no params)."""
+        result = await self._async_request(method)
+        if param not in result:
+            raise SamsungIPControlError(f"no {param} in {method} response: {result!r}")
+        return result[param]
+
+    async def async_set_setting(self, method: str, param: str, value: Any) -> Any:
+        """Write one ``<x>Control`` value and return what the TV echoes."""
+        result = await self._async_request(method, {param: value})
+        return result.get(param, value)
 
     async def async_get_color_tone(self) -> str:
         """Return the current picture color tone."""

@@ -284,6 +284,18 @@
       },
       "art_mode": {
         "name": "Режим „Изкуство“"
+      },
+      "ip_auto_hdr_remastering": {
+        "name": "Auto HDR Remastering"
+      },
+      "ip_brightness_optimization": {
+        "name": "Оптимизация на яркостта"
+      },
+      "ip_motion_lighting": {
+        "name": "Осветление според движението"
+      },
+      "ip_auto_power_saving": {
+        "name": "Автоматично енергоспестяване"
       }
     },
     "select": {
@@ -382,6 +394,26 @@
       },
       "source": {
         "name": "Източник"
+      },
+      "ip_auto_motion_plus": {
+        "name": "Auto Motion Plus",
+        "state": {
+          "off": "Изкл.",
+          "auto": "Авто",
+          "custom": "Потребителски"
+        }
+      },
+      "ip_apply_picture_settings": {
+        "name": "Прилагане на настройките на картината",
+        "state": {
+          "current_source": "Текущ източник",
+          "all_sources": "Всички източници"
+        }
+      }
+    },
+    "number": {
+      "ip_gamma_bt1886": {
+        "name": "Гама (BT.1886)"
       }
     }
   }

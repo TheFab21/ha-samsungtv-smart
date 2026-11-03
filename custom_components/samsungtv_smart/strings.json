@@ -293,6 +293,18 @@
       },
       "art_mode": {
         "name": "Art Mode"
+      },
+      "ip_auto_hdr_remastering": {
+        "name": "Auto HDR Remastering"
+      },
+      "ip_brightness_optimization": {
+        "name": "Brightness optimization"
+      },
+      "ip_motion_lighting": {
+        "name": "Motion lighting"
+      },
+      "ip_auto_power_saving": {
+        "name": "Auto power saving"
       }
     },
     "select": {
@@ -391,6 +403,26 @@
       },
       "source": {
         "name": "Source"
+      },
+      "ip_auto_motion_plus": {
+        "name": "Auto Motion Plus",
+        "state": {
+          "off": "Off",
+          "auto": "Auto",
+          "custom": "Custom"
+        }
+      },
+      "ip_apply_picture_settings": {
+        "name": "Apply picture settings",
+        "state": {
+          "current_source": "Current source",
+          "all_sources": "All sources"
+        }
+      }
+    },
+    "number": {
+      "ip_gamma_bt1886": {
+        "name": "Gamma (BT.1886)"
       }
     }
   }
