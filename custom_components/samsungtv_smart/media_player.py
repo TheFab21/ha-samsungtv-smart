@@ -90,7 +90,14 @@ from .api.ipcontrol import (
     SamsungIPControlUnsupportedError,
 )
 from .api.samsungcast import SamsungCastTube
-from .api.samsungws import App, ArtModeStatus, SamsungTVAsyncRest, SamsungTVWS
+from .api.samsungws import (
+    App,
+    ArtModeStatus,
+    HttpApiError,
+    ResponseError,
+    SamsungTVAsyncRest,
+    SamsungTVWS,
+)
 from .api.smartthings import SmartThingsCapabilityUnsupported, SmartThingsTV, STStatus
 from .api.upnp import SamsungUPnP
 from .art_mode_guard import (
@@ -140,6 +147,8 @@ from .const import (
     CONF_OAUTH_TOKEN,
     CONF_PING_PORT,
     CONF_POWER_ON_METHOD,
+    CONF_REST_APP_LIST,
+    CONF_REST_APP_POLL_INTERVAL,
     CONF_REST_PORT,
     CONF_SHOW_CHANNEL_NR,
     CONF_SLIDESHOW_API,
@@ -166,6 +175,8 @@ from .const import (
     DEFAULT_APP,
     DEFAULT_IP_CONTROL_POLL_INTERVAL,
     DEFAULT_PORT,
+    DEFAULT_REST_APP_LIST,
+    DEFAULT_REST_APP_POLL_INTERVAL,
     DEFAULT_SOURCE_LIST,
     DEFAULT_ST_POLL_ON_INTERVAL,
     DEFAULT_TIMEOUT,
@@ -239,6 +250,8 @@ ATTR_IP_ADDRESS = "ip_address"
 ATTR_PICTURE_MODE = "picture_mode"
 ATTR_PICTURE_MODE_LIST = "picture_mode_list"
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
+
+REST_APP_STATUS_TIMEOUT = 2.0
 
 
 class _SkipPowerOn(Exception):
@@ -770,6 +783,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     _external_audio_feedback_cache: tuple[float | None, bool | None] | None = None
     _external_audio_ip_coordinator: Any | None = None
     _external_audio_ip_unsub: Callable[[], None] | None = None
+    _rest_app_list: dict[str, str] | None = None
+    _rest_app_name: str | None = None
+    _rest_app_id: str | None = None
+    _rest_app_observed_at: float | None = None
+    _rest_app_next_index = 0
+    _rest_app_poll_interval = DEFAULT_REST_APP_POLL_INTERVAL
+    _rest_app_last_poll: float | None = None
 
     def __init__(
         self,
@@ -1530,6 +1550,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         ``art_mode_status`` is visible right away.
         """
         self._apply_external_audio_feedback()
+        self._rest_app_last_poll = None
         self.async_write_ha_state()
         self.hass.async_create_task(self._refresh_ip_art_mode(force=True))
         # Some models (e.g. 2024 Frames where IP Control cannot report the art
@@ -2021,6 +2042,19 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     def _update_config_options(self, first_load=False):
         """Update config options."""
         self._load_tv_lists(first_load)
+        rest_apps = self._get_option(CONF_REST_APP_LIST, DEFAULT_REST_APP_LIST)
+        if rest_apps != self._rest_app_list:
+            self._rest_app_list = dict(rest_apps) if isinstance(rest_apps, dict) else {}
+            self._rest_app_name = self._rest_app_id = None
+            self._rest_app_observed_at = None
+            self._rest_app_next_index = 0
+            self._rest_app_last_poll = None
+        interval = self._get_option(
+            CONF_REST_APP_POLL_INTERVAL, DEFAULT_REST_APP_POLL_INTERVAL
+        )
+        if interval != self._rest_app_poll_interval:
+            self._rest_app_poll_interval = interval
+            self._rest_app_last_poll = None
         self._use_st_status = self._get_option(CONF_USE_ST_STATUS_INFO, True)
         self._use_channel_info = self._get_option(CONF_USE_ST_CHANNEL_INFO, True)
         self._st_poll_on_interval = self._get_option(
@@ -2528,6 +2562,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 if app_running := self._ws.is_app_running(app_id):
                     if app == replaced and app != running_before:
                         continue
+                    if self._rest_app_id not in (None, app_id):
+                        # Only a newer native reading can displace a REST result.
+                        max_age = (
+                            time.monotonic() - self._rest_app_observed_at
+                            if self._rest_app_observed_at is not None
+                            else self._rest_app_poll_interval
+                        )
+                        if self._ws.is_app_running(app_id, max_age=max_age) is True:
+                            self._rest_app_name = self._rest_app_id = None
+                            self._rest_app_observed_at = None
                     self._running_app = app
                     return
                 if app_running is False:
@@ -2546,6 +2590,92 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return
 
         self._running_app = st_running_app or DEFAULT_APP
+
+    async def _async_update_rest_app_status(self) -> None:
+        apps = (
+            self._rest_app_list
+            if self._rest_app_list is not None
+            else DEFAULT_REST_APP_LIST
+        )
+        if (
+            not apps
+            or self._state != MediaPlayerState.ON
+            or self._power_off_in_progress()
+        ):
+            self._rest_app_name = self._rest_app_id = None
+            self._rest_app_observed_at = None
+            self._rest_app_last_poll = None
+            return
+
+        native_apps = self._app_list or {}
+        native_ids = set(native_apps.values())
+        replaced_id = (
+            native_apps.get(self._local_app_replaced)
+            if self._running_app not in (None, DEFAULT_APP)
+            and time.monotonic() < self._local_app_hold_until
+            else None
+        )
+        # Leave known apps to the existing tracker, including its launch hold.
+        entries = [
+            (name, app_id)
+            for name, app_id in apps.items()
+            if app_id != replaced_id
+            and not (
+                app_id in native_ids
+                and self._ws.is_app_running(
+                    app_id, max_age=self._rest_app_poll_interval
+                )
+                is not None
+            )
+        ]
+        if self._rest_app_id not in {app_id for _, app_id in entries}:
+            self._rest_app_name = self._rest_app_id = None
+            self._rest_app_observed_at = None
+        if not entries:
+            self._rest_app_last_poll = None
+            return
+
+        now = time.monotonic()
+        if (
+            self._rest_app_last_poll is not None
+            and 0 <= now - self._rest_app_last_poll < self._rest_app_poll_interval
+        ):
+            return
+        self._rest_app_last_poll = now
+        start = self._rest_app_next_index % len(entries)
+        found_name = found_id = None
+        try:
+            async with asyncio.timeout(REST_APP_STATUS_TIMEOUT):
+                for offset in range(len(entries)):
+                    index = (start + offset) % len(entries)
+                    name, app_id = entries[index]
+                    # Advance before awaiting so one timeout doesn't starve the other apps.
+                    self._rest_app_next_index = (index + 1) % len(entries)
+                    try:
+                        status = await self._rest_api.async_rest_app_status(app_id)
+                    except (
+                        ClientConnectionError,
+                        ClientResponseError,
+                        HttpApiError,
+                        ResponseError,
+                        ValueError,
+                    ) as ex:
+                        self._log.debug("REST app status unavailable: %r", ex)
+                        continue
+                    if (
+                        isinstance(status, dict)
+                        and status.get("id") == app_id
+                        and status.get("visible") is True
+                    ):
+                        found_name, found_id = name, app_id
+                        return
+        except asyncio.TimeoutError:
+            self._log.debug("REST app status polling budget expired")
+        finally:
+            self._rest_app_name, self._rest_app_id = found_name, found_id
+            self._rest_app_observed_at = (
+                time.monotonic() if found_id is not None else None
+            )
 
     def _resolve_source_by_id(self, source_id: str) -> tuple[str, str] | None:
         """Resolve a technical source ID to (display_name, source_key).
@@ -3405,11 +3535,15 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 else:
                     await self._async_select_source_delayed(self._delayed_set_source)
             await self._async_load_device_info()
+            await self._async_update_rest_app_status()
             await self._update_volume_info()
             self._get_running_app()
             await self._update_media()
 
         if self._state == MediaPlayerState.OFF:
+            self._rest_app_name = self._rest_app_id = None
+            self._rest_app_observed_at = None
+            self._rest_app_last_poll = None
             self._end_of_power_off = None
 
     def send_command(
@@ -3611,6 +3745,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if art_on:
             return ART_MODE_MEDIA_TITLE
 
+        if self._rest_app_id is not None:
+            return self._rest_app_name
+
         if self._running_app == DEFAULT_APP:
             if self._st and self._st.state != STStatus.STATE_OFF:
                 if self._st.source in ["digitalTv", "TV"]:
@@ -3665,6 +3802,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         one's icon (Swisscom blue TV showed SmartThings', then YouTube
         showed Swisscom's). The running app only when no app has that name.
         """
+        if self._rest_app_id is not None:
+            return None
         apps = self._app_list or {}
         if media_title:
             wanted = media_title.casefold()
@@ -3676,7 +3815,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         return self._running_app
 
     async def _tv_app_icon_url(self, media_title: str | None = None) -> str | None:
-        """A media image URL for the running app's own icon, fetched from the TV.
+        """A media image URL for the current app's own icon, fetched from the TV.
 
         The home-screen tiles name each app's icon file and get.icon returns
         it (a 152x152 PNG) over the quick-settings channel. It replaces the
@@ -3684,10 +3823,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         Each icon is fetched once and kept in memory; the URL is a marker
         served by async_get_media_image, so nothing is written to disk.
         """
-        app_name = self._media_icon_app(media_title)
-        if app_name is None or not self._app_list:
-            return None
-        app_id = self._app_list.get(app_name)
+        app_id = self._rest_app_id
+        if app_id is None:
+            app_name = self._media_icon_app(media_title)
+            if app_name is None or not self._app_list:
+                return None
+            app_id = self._app_list.get(app_name)
         client = self._quick_settings_client()
         tile = client.find_app(app_id) if client and app_id else None
         if tile is None or not tile.icon_path:
@@ -3713,8 +3854,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Get local media image if available."""
         if not self._get_option(CONF_USE_LOCAL_LOGO, True):
             return None
-        app_id = media_title
-        if self._running_app != DEFAULT_APP:
+        app_id = self._rest_app_id or media_title
+        if self._rest_app_id is None and self._running_app != DEFAULT_APP:
             if run_app_id := self._app_list.get(self._running_app):
                 app_id = run_app_id
 
@@ -3922,9 +4063,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # whole time — the veto fires before the panel truth below can be
         # consulted). Gating on ON keeps the 2024-Frame fix intact, since a
         # genuinely visible foreground app only happens while the TV is on.
-        if self._state == MediaPlayerState.ON and self._running_app not in (
-            None,
-            DEFAULT_APP,
+        if self._state == MediaPlayerState.ON and (
+            self._rest_app_id is not None
+            or self._running_app not in (None, DEFAULT_APP)
         ):
             return False
         if self._ip_art_mode is not None:
@@ -4036,6 +4177,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # silently break after a re-pairing changes the entry_id, with no
         # obvious link back to this entity from the error alone.
         data = {ATTR_IP_ADDRESS: self._host, ATTR_CONFIG_ENTRY_ID: self._entry_id}
+        if physical_input := self._get_ip_control_input_source():
+            data["input_source"] = physical_input
 
         # Panel resolution as the TV reports it ("3840x2160"). Consumers that
         # send images to the TV (the upload card) use it to avoid pushing more
@@ -4102,6 +4245,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     def media_content_type(self):
         """Return the content type of current playing media."""
         if self._state == MediaPlayerState.ON:
+            if self._rest_app_id is not None:
+                return MediaType.APP
             if self._running_app == DEFAULT_APP:
                 if self.media_channel:
                     return MediaType.CHANNEL
@@ -4110,10 +4255,23 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         return None
 
     @property
+    def app_name(self) -> str | None:
+        if self._state != MediaPlayerState.ON:
+            return None
+        if self._rest_app_id is not None:
+            return self._rest_app_name
+        if self._running_app not in (None, DEFAULT_APP):
+            return self._running_app
+        return None
+
+    @property
     def app_id(self):
         """ID of the current running app."""
         if self._state != MediaPlayerState.ON:
             return None
+
+        if self._rest_app_id is not None:
+            return self._rest_app_id
 
         if self._app_list_st and self._running_app != DEFAULT_APP:
             if app := self._app_list_st.get(self._running_app):
@@ -5213,6 +5371,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     async def _async_select_source(self, source, *, assume_on: bool = False):
         """Select input source; ``assume_on`` skips the power-on handling."""
+        self._rest_app_last_poll = None
         running_app = DEFAULT_APP
         self._delayed_set_source = None
 
@@ -5254,6 +5413,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._log_unsupported_source(source)
             return
 
+        # A completed source switch invalidates the previous app reading.
+        self._rest_app_name = self._rest_app_id = None
+        self._rest_app_observed_at = None
         self._running_app = running_app
         self._source = source
 

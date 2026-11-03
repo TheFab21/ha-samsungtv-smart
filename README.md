@@ -600,7 +600,7 @@ In addition to standard media player attributes, the following are available:
 - `picture_mode`, `picture_mode_list`
 - `sound_mode`, `sound_mode_list`
 - `channel`, `channel_name`, `channel_number`
-- `app_id`, `source`, `source_list`
+- `app_name`, `app_id`, `source`, `source_list`
 - `ip_address`, `config_entry_id`
 - `screen_resolution` — the panel's native resolution (e.g. `3840x2160`), used
   to fit uploaded images to the screen
@@ -614,6 +614,32 @@ When a fresh shared IP Control response is available, the media player reuses
 its picture mode instead of requesting power and Art Mode separately. It keeps
 the existing direct reads and timing when that response cannot be used.
 Mode-change events still request an immediate update.
+
+### Additional app detection
+
+Use **Additional apps to detect** in Advanced Options for apps missing from the
+TV's app list. Enter each app's name and native Tizen app ID, for example:
+
+```yaml
+Video player: com.example.player
+Browser: com.example.browser
+```
+
+An empty list adds no extra requests. Configured apps count as current only when
+the TV reports them as visible. A recent reading from the normal tracker avoids
+an extra REST check; missing or stale readings keep the fallback. Checks share
+a two-second limit, move past apps that do not answer, and clear the old app name
+when no visible app is found.
+
+Additional app checks have their own **Additional app refresh interval**,
+defaulting to 30 seconds. Each app still needing REST status has at most 120
+scheduled requests per hour at that interval (720 per hour at five seconds),
+and the result is cached between refreshes. A source command or Art Mode
+transition allows an earlier refresh.
+
+The existing `source` behaviour is unchanged. `input_source` separately reports
+the physical input ID, such as `HDMI1` or `TV`, when local status is available;
+`app_name` and `app_id` identify the visible native app.
 
 ### Detecting Art Mode vs. watching TV
 
