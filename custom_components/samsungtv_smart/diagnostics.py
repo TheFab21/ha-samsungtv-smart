@@ -131,8 +131,11 @@ def _async_power_report(hass: HomeAssistant, entry: ConfigEntry) -> dict | None:
     return {
         "last_update_success": coordinator.last_update_success,
         "report": {
-            key: value if isinstance(value, (str, int, float, bool, type(None)))
-            else str(value)
+            key: (
+                value
+                if isinstance(value, (str, int, float, bool, type(None)))
+                else str(value)
+            )
             for key, value in (coordinator.data or {}).items()
         },
     }

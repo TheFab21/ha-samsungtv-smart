@@ -65,6 +65,7 @@ from .const import (
     DATA_ART_API,
     DATA_CFG,
     DATA_IP_CONTROL_STATE_COORDINATOR,
+    DATA_ST_POWER,
     DEFAULT_CONTENT_LIST_INTERVAL,
     DEFAULT_IP_CONTROL_POLL_INTERVAL,
     DEFAULT_PORT,
@@ -74,7 +75,6 @@ from .const import (
     TUNER_INPUT_SOURCES,
     WS_PREFIX,
     ip_control_port,
-    DATA_ST_POWER,
 )
 from .coordinator_entity import ChangedCoordinatorEntity
 from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_problem
