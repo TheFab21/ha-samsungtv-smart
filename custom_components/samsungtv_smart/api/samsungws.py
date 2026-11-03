@@ -1166,8 +1166,16 @@ class SamsungTVWS:
         """Return current running app."""
         return self._running_app
 
-    def is_app_running(self, app_id: str) -> bool | None:
-        """Return if app_id is running app."""
+    def is_app_running(
+        self, app_id: str, *, max_age: float | None = None
+    ) -> bool | None:
+        """Return whether app_id is running, or None without a usable reading."""
+        if max_age is not None:
+            seen = self._running_apps.get(app_id)
+            if seen is None or not (
+                0 <= (datetime.now(timezone.utc) - seen).total_seconds() <= max_age
+            ):
+                return None
         if app_id == self._running_app:
             return True
         if (last_seen := self._running_apps.get(app_id)) is None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from numbers import Number
+import re
 import socket
 from typing import Any, Dict
 import uuid
@@ -85,6 +86,7 @@ from .const import (
     CONF_DUMP_APPS,
     CONF_ENABLE_IP_CONTROL,
     CONF_EXT_POWER_ENTITY,
+    CONF_EXTERNAL_AUDIO_ENTITY,
     CONF_IP_CONTROL_ART_MODE,
     CONF_IP_CONTROL_FW_VERSION,
     CONF_IP_CONTROL_MODEL_ID,
@@ -96,6 +98,9 @@ from .const import (
     CONF_PING_PORT,
     CONF_POWER_ON_METHOD,
     CONF_RECONFIGURE_GENERATION,
+    CONF_REPORT_ART_MODE_AS_OFF,
+    CONF_REST_APP_LIST,
+    CONF_REST_APP_POLL_INTERVAL,
     CONF_REST_PORT,
     CONF_SHOW_CHANNEL_NR,
     CONF_SOURCE_LIST,
@@ -116,6 +121,9 @@ from .const import (
     DEFAULT_CONTENT_LIST_INTERVAL,
     DEFAULT_IP_CONTROL_POLL_INTERVAL,
     DEFAULT_PORT,
+    DEFAULT_REPORT_ART_MODE_AS_OFF,
+    DEFAULT_REST_APP_LIST,
+    DEFAULT_REST_APP_POLL_INTERVAL,
     DEFAULT_ST_POLL_ON_INTERVAL,
     DOMAIN,
     IP_CONTROL_PORTS,
@@ -171,16 +179,20 @@ CONF_AUTH_METHOD_SELECT = "auth_method"
 
 ADVANCED_OPTIONS = [
     CONF_APP_LAUNCH_METHOD,
+    CONF_REST_APP_LIST,
+    CONF_REST_APP_POLL_INTERVAL,
     CONF_ART_EXIT_SOURCE,
     CONF_CONTENT_LIST_INTERVAL,
     CONF_DUMP_APPS,
     CONF_EXT_POWER_ENTITY,
+    CONF_EXTERNAL_AUDIO_ENTITY,
     CONF_PING_PORT,
     CONF_IP_CONTROL_POLL_INTERVAL,
     CONF_ST_POLL_ON_INTERVAL,
     CONF_WOL_REPEAT,
     CONF_TOGGLE_ART_MODE,
     CONF_USE_MUTE_CHECK,
+    CONF_REPORT_ART_MODE_AS_OFF,
 ]
 
 ENUM_OPTIONS = [
@@ -1771,7 +1783,13 @@ class OptionsFlowHandler(OptionsFlow):
     async def async_step_adv_opt(self, user_input=None) -> ConfigFlowResult:
         """Handle advanced options flow."""
         if user_input is not None:
-            self._adv_options = user_input
+            apps = _validate_rest_app_list(user_input.get(CONF_REST_APP_LIST, {}))
+            if apps is None:
+                return self._async_adv_opt_form(
+                    errors={CONF_REST_APP_LIST: "invalid_rest_app_list"},
+                    user_input=user_input,
+                )
+            self._adv_options = {**user_input, CONF_REST_APP_LIST: apps}
             return await self.async_step_menu()
         return self._async_adv_opt_form()
 
@@ -1815,10 +1833,12 @@ class OptionsFlowHandler(OptionsFlow):
         )
 
     @callback
-    def _async_adv_opt_form(self) -> ConfigFlowResult:
+    def _async_adv_opt_form(self, errors=None, user_input=None) -> ConfigFlowResult:
         """Return configuration form for advanced options."""
         select_entities = EntitySelectorConfig(domain=BS_DOMAIN)
-        options = _validate_options(self._adv_options)
+        options = _validate_options(
+            user_input if user_input is not None else self._adv_options
+        )
 
         data_schema = vol.Schema(
             {
@@ -1828,6 +1848,20 @@ class OptionsFlowHandler(OptionsFlow):
                         CONF_APP_LAUNCH_METHOD, str(AppLaunchMethod.Standard.value)
                     ),
                 ): SelectSelector(_dict_to_select(APP_LAUNCH_METHODS)),
+                vol.Optional(
+                    CONF_REST_APP_LIST,
+                    description={
+                        "suggested_value": options.get(
+                            CONF_REST_APP_LIST, DEFAULT_REST_APP_LIST
+                        )
+                    },
+                ): ObjectSelector(),
+                vol.Required(
+                    CONF_REST_APP_POLL_INTERVAL,
+                    default=options.get(
+                        CONF_REST_APP_POLL_INTERVAL, DEFAULT_REST_APP_POLL_INTERVAL
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600)),
                 vol.Required(
                     CONF_WOL_REPEAT,
                     default=min(options.get(CONF_WOL_REPEAT, 1), MAX_WOL_REPEAT),
@@ -1841,6 +1875,19 @@ class OptionsFlowHandler(OptionsFlow):
                         "suggested_value": options.get(CONF_EXT_POWER_ENTITY, "")
                     },
                 ): EntitySelector(select_entities),
+                vol.Optional(
+                    CONF_EXTERNAL_AUDIO_ENTITY,
+                    description={
+                        "suggested_value": options.get(CONF_EXTERNAL_AUDIO_ENTITY, "")
+                    },
+                ): EntitySelector(
+                    EntitySelectorConfig(
+                        domain=MP_DOMAIN,
+                        exclude_entities=_async_get_entry_entities(
+                            self.hass, self._entry_id
+                        ),
+                    )
+                ),
                 vol.Required(
                     CONF_USE_MUTE_CHECK,
                     default=options.get(CONF_USE_MUTE_CHECK, False),
@@ -1852,6 +1899,12 @@ class OptionsFlowHandler(OptionsFlow):
                 vol.Required(
                     CONF_TOGGLE_ART_MODE,
                     default=options.get(CONF_TOGGLE_ART_MODE, False),
+                ): bool,
+                vol.Required(
+                    CONF_REPORT_ART_MODE_AS_OFF,
+                    default=options.get(
+                        CONF_REPORT_ART_MODE_AS_OFF, DEFAULT_REPORT_ART_MODE_AS_OFF
+                    ),
                 ): bool,
                 vol.Optional(
                     CONF_ART_EXIT_SOURCE,
@@ -1898,7 +1951,9 @@ class OptionsFlowHandler(OptionsFlow):
                 ),
             }
         )
-        return self.async_show_form(step_id="adv_opt", data_schema=data_schema)
+        return self.async_show_form(
+            step_id="adv_opt", data_schema=data_schema, errors=errors
+        )
 
 
 # =========================================================================
@@ -1918,6 +1973,28 @@ def _validate_options(options: dict) -> dict:
         else:
             valid_options[opt_key] = opt_val
     return valid_options
+
+
+def _validate_rest_app_list(value: Any) -> dict[str, str] | None:
+    """Reject app IDs that cannot be used as REST path components."""
+    if not isinstance(value, dict):
+        return None
+    apps = {}
+    seen_ids = set()
+    for name, app_id in value.items():
+        if not isinstance(name, str) or not isinstance(app_id, str):
+            return None
+        name, app_id = name.strip(), app_id.strip()
+        if (
+            not name
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", app_id)
+            or name in apps
+            or app_id in seen_ids
+        ):
+            return None
+        apps[name] = app_id
+        seen_ids.add(app_id)
+    return apps
 
 
 def _validate_tv_list(input_list: dict[str, Any]) -> dict[str, str] | None:

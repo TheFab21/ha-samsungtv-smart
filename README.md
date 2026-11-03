@@ -600,7 +600,7 @@ In addition to standard media player attributes, the following are available:
 - `picture_mode`, `picture_mode_list`
 - `sound_mode`, `sound_mode_list`
 - `channel`, `channel_name`, `channel_number`
-- `app_id`, `source`, `source_list`
+- `app_name`, `app_id`, `source`, `source_list`
 - `ip_address`, `config_entry_id`
 - `screen_resolution` — the panel's native resolution (e.g. `3840x2160`), used
   to fit uploaded images to the screen
@@ -615,10 +615,36 @@ its picture mode instead of requesting power and Art Mode separately. It keeps
 the existing direct reads and timing when that response cannot be used.
 Mode-change events still request an immediate update.
 
+### Additional app detection
+
+Use **Additional apps to detect** in Advanced Options for apps missing from the
+TV's app list. Enter each app's name and native Tizen app ID, for example:
+
+```yaml
+Video player: com.example.player
+Browser: com.example.browser
+```
+
+An empty list adds no extra requests. Configured apps count as current only when
+the TV reports them as visible. A recent reading from the normal tracker avoids
+an extra REST check; missing or stale readings keep the fallback. Checks share
+a two-second limit, move past apps that do not answer, and clear the old app name
+when no visible app is found.
+
+Additional app checks have their own **Additional app refresh interval**,
+defaulting to 30 seconds. Each app still needing REST status has at most 120
+scheduled requests per hour at that interval (720 per hour at five seconds),
+and the result is cached between refreshes. A source command or Art Mode
+transition allows an earlier refresh.
+
+The existing `source` behaviour is unchanged. `input_source` separately reports
+the physical input ID, such as `HDMI1` or `TV`, when local status is available;
+`app_name` and `app_id` identify the visible native app.
+
 ### Detecting Art Mode vs. watching TV
 
-A Frame is a **tri-state** device — standby, Art Mode, or actually being
-watched — while a `media_player` only has `on` and `off`:
+A Frame has three modes — standby, Art Mode, and normal viewing. By default,
+the media player reports them as follows:
 
 | the panel is | `media_player` state | `art_mode_status` |
 |---|---|---|
@@ -626,9 +652,11 @@ watched — while a `media_player` only has `on` and `off`:
 | showing artwork | `on` | `on` |
 | being watched | `on` | `off` |
 
-Art Mode reports `on` because the panel *is* powered: it answers commands,
-accepts uploads, and `turn_on` would do nothing. The third state lives in the
-attribute. To automate on "someone is actually watching":
+By default, Art Mode reports `on` because the panel *is* powered: it answers commands,
+accepts uploads, and `turn_on` would do nothing. The distinction lives in the
+attribute. The optional **Report media player off in Art Mode** setting below
+can instead report artwork as `off`. Without that option, automate on
+"someone is actually watching" as follows:
 
 ```yaml
 template:
@@ -645,6 +673,16 @@ The `delay_on` matters: waking from standby powers the panel *before*
 SmartThings cloud rather than local IP Control), so without it a TV waking
 straight into Art Mode briefly looks like someone switched it on. Debouncing
 the rise only keeps "turned off" instantaneous.
+
+### Optional off state during Art Mode
+
+Enable **Report media player off in Art Mode** to show the media player as `off`
+while artwork is displayed. `art_mode_status` remains `on`, and the Power switch
+still shows that the TV is physically on. Turning the media player on returns
+to normal viewing.
+
+The option is disabled by default. Status updates and controls continue while
+artwork is showing.
 
 ### Frame Art Sensor Attributes
 
@@ -1630,3 +1668,11 @@ Special thanks to [@PrestonMcAfee](https://github.com/PrestonMcAfee) and [@potat
 ---
 
 *Licensed under the GNU Lesser General Public License v2.1.*
+
+### External receiver feedback
+
+**External soundbar or receiver status entity** can supply volume and mute from
+an existing media player while the TV uses external speakers. No additional
+polling is added. Select the actual soundbar or receiver, not a group or an
+entity that mirrors this TV; a mirror would create a circular dependency.
+Leave the option empty to keep the TV's own readings.

@@ -13,6 +13,7 @@ import asyncio
 import base64
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from custom_components.samsungtv_smart import media_player as mp
 from custom_components.samsungtv_smart.api import mobilebff as bff
@@ -184,3 +185,45 @@ def test_without_an_app_title_the_running_app_is_used():
     assert device._media_icon_app("TV Plus") == "Netflix"
     device._running_app = mp.DEFAULT_APP
     assert device._media_icon_app("TV Plus") is None
+
+
+def test_a_rest_app_does_not_use_the_background_apps_icon():
+    client = _client()
+    client.async_get_icon = AsyncMock(return_value=PNG)
+    device = _device(client)
+    device._rest_app_id = "com.example.hidden"
+
+    assert device._media_icon_app("Hidden app") is None
+    assert asyncio.run(device._tv_app_icon_url("Hidden app")) is None
+    client.async_get_icon.assert_not_awaited()
+
+
+def test_a_rest_app_can_use_its_own_tile_without_a_discovered_app_entry():
+    client = _client()
+    client.async_get_icon = AsyncMock(return_value=PNG)
+    device = _device(client)
+    device._rest_app_id = "3201907018807"
+    device._app_list = {"YouTube": "111299001912"}
+    device._running_app = "YouTube"
+
+    assert asyncio.run(device._tv_app_icon_url("Streaming app")) == (
+        f"{mp.TV_APP_ICON_URL}3201907018807"
+    )
+    client.async_get_icon.assert_awaited_once_with(NETFLIX_ICON)
+
+
+def test_a_rest_app_uses_its_own_bundled_logo():
+    device = _device(_client())
+    device._rest_app_id = "3201907018807"
+    device._running_app = "YouTube"
+    device._get_option = lambda _key, default=None: default
+    device._local_image_url = SimpleNamespace(
+        get_image_url=lambda _title, logo: f"/local/{logo}"
+    )
+    device.hass.async_add_executor_job = AsyncMock(
+        side_effect=lambda func, *args: func(*args)
+    )
+
+    image = asyncio.run(device._local_media_image("Streaming app"))
+
+    assert image == f"/local/{mp._get_default_app_info('3201907018807')[2]}"
