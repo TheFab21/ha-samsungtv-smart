@@ -1630,3 +1630,11 @@ Special thanks to [@PrestonMcAfee](https://github.com/PrestonMcAfee) and [@potat
 ---
 
 *Licensed under the GNU Lesser General Public License v2.1.*
+
+### External receiver feedback
+
+**External soundbar or receiver status entity** can supply volume and mute from
+an existing media player while the TV uses external speakers. No additional
+polling is added. Select the actual soundbar or receiver, not a group or an
+entity that mirrors this TV; a mirror would create a circular dependency.
+Leave the option empty to keep the TV's own readings.

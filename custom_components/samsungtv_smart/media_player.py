@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from enum import Enum
 import logging
+import math
 import os
 import re
 from socket import error as socketError
@@ -59,7 +60,10 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.service import CONF_SERVICE_ENTITY_ID, async_call_from_config
 from homeassistant.helpers.storage import STORAGE_DIR
 from homeassistant.util import Throttle
@@ -126,6 +130,7 @@ from .const import (
     CONF_DUMP_APPS,
     CONF_ENABLE_IP_CONTROL,
     CONF_EXT_POWER_ENTITY,
+    CONF_EXTERNAL_AUDIO_ENTITY,
     CONF_IP_CONTROL_ART_MODE,
     CONF_IP_CONTROL_FW_VERSION,
     CONF_IP_CONTROL_MODEL_ID,
@@ -759,6 +764,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     _ip_art_power_off_at: float | None = None
     _ip_input_source_supported: bool | None = None
     _ip_input_source_context: tuple | None = None
+    _external_audio_entity: str | None = None
+    _external_audio_unsub: Callable[[], None] | None = None
+    _external_audio_entities: tuple[str, ...] = ()
+    _external_audio_feedback_cache: tuple[float | None, bool | None] | None = None
+    _external_audio_ip_coordinator: Any | None = None
+    _external_audio_ip_unsub: Callable[[], None] | None = None
 
     def __init__(
         self,
@@ -1518,6 +1529,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         between and read the stale value. Write state immediately so the new
         ``art_mode_status`` is visible right away.
         """
+        self._apply_external_audio_feedback()
         self.async_write_ha_state()
         self.hass.async_create_task(self._refresh_ip_art_mode(force=True))
         # Some models (e.g. 2024 Frames where IP Control cannot report the art
@@ -1849,6 +1861,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     async def async_added_to_hass(self):
         """Set config parameter when add to hass."""
         await super().async_added_to_hass()
+        self._attach_external_audio_listener()
 
         # this will update config options when changed
         self.async_on_remove(
@@ -1928,6 +1941,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     async def async_will_remove_from_hass(self):
         """Run when entity will be removed from hass."""
+        if self._external_audio_unsub is not None:
+            self._external_audio_unsub()
+            self._external_audio_unsub = None
+        if self._external_audio_ip_unsub is not None:
+            self._external_audio_ip_unsub()
+            self._external_audio_ip_unsub = None
+        self._external_audio_ip_coordinator = None
         if self._ip_art_mode_initial_task is not None:
             self._ip_art_mode_initial_task.cancel()
             self._ip_art_mode_initial_task = None
@@ -2007,6 +2027,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             CONF_ST_POLL_ON_INTERVAL, DEFAULT_ST_POLL_ON_INTERVAL
         )
         self._use_mute_check = self._get_option(CONF_USE_MUTE_CHECK, False)
+        audio_entity = self._get_option(CONF_EXTERNAL_AUDIO_ENTITY)
+        if audio_entity != self._external_audio_entity:
+            self._external_audio_entity = audio_entity
+            self._external_audio_feedback_cache = None
+            self._attr_volume_level = self._attr_is_volume_muted = None
+            if not first_load:
+                self._attach_external_audio_listener()
         self._show_channel_number = self._get_option(CONF_SHOW_CHANNEL_NR, False)
         self._ws.update_app_list(self._app_list)
         self._ws.set_ping_port(self._get_option(CONF_PING_PORT, 0))
@@ -2085,9 +2112,173 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             ex,
         )
 
+    def _attach_external_audio_listener(self) -> None:
+        self._attach_external_audio_ip_listener()
+        target = self._external_audio_entity
+        entities = (
+            (target, *self._speaker_output_entity_ids())
+            if target
+            and target.startswith("media_player.")
+            and target != self.entity_id
+            else ()
+        )
+        if (
+            entities != self._external_audio_entities
+            or self._external_audio_unsub is None
+        ):
+            if self._external_audio_unsub is not None:
+                self._external_audio_unsub()
+                self._external_audio_unsub = None
+            self._external_audio_entities = entities
+            if entities:
+                self._external_audio_unsub = async_track_state_change_event(
+                    self.hass, entities, self._external_audio_state_changed
+                )
+        self._apply_external_audio_feedback()
+
+    @callback
+    def _external_audio_state_changed(self, _event) -> None:
+        before = (self.volume_level, self.is_volume_muted)
+        self._apply_external_audio_feedback()
+        if self._state == MediaPlayerState.ON and before != (
+            self.volume_level,
+            self.is_volume_muted,
+        ):
+            self.async_write_ha_state()
+
+    def _external_audio_feedback(self) -> tuple[float | None, bool | None] | None:
+        """None selects TV feedback; (None, None) means receiver feedback is unknown."""
+        target = self._external_audio_entity
+        if not target or target == self.entity_id:
+            return None
+        internal = self._speaker_output_is_internal()
+        if internal is True:
+            return None
+        if internal is None:
+            return None, None
+        state = self.hass.states.get(target)
+        attrs = (
+            state.attributes
+            if state and state.state not in ("unavailable", "unknown", STATE_OFF)
+            else {}
+        )
+        volume = attrs.get("volume_level")
+        volume = (
+            float(volume)
+            if type(volume) in (int, float)
+            and math.isfinite(volume)
+            and 0 <= volume <= 1
+            else None
+        )
+        mute = attrs.get("is_volume_muted")
+        return volume, mute if isinstance(mute, bool) else None
+
+    @property
+    def volume_level(self) -> float | None:
+        feedback = self._external_audio_feedback_cache
+        return feedback[0] if feedback is not None else self._attr_volume_level
+
+    @property
+    def is_volume_muted(self) -> bool | None:
+        feedback = self._external_audio_feedback_cache
+        return feedback[1] if feedback is not None else self._attr_is_volume_muted
+
+    def _apply_external_audio_feedback(self) -> bool:
+        feedback = self._external_audio_feedback()
+        previous = self._external_audio_feedback_cache
+        self._external_audio_feedback_cache = feedback
+        if feedback != previous:
+            if feedback is None:
+                self._attr_volume_level = self._attr_is_volume_muted = None
+            else:
+                self._attr_volume_level, self._attr_is_volume_muted = feedback
+        return feedback is not None
+
+    def _external_audio_ip_entry(self) -> ConfigEntry | None:
+        entries = getattr(self.hass, "config_entries", None)
+        entry_id = getattr(self, "_entry_id", None)
+        entry = entries.async_get_entry(entry_id) if entries and entry_id else None
+        if (
+            entry is None
+            or not entry.data.get(CONF_IP_CONTROL_TOKEN)
+            or not entry.options.get(CONF_ENABLE_IP_CONTROL, True)
+        ):
+            return None
+        return entry
+
+    def _attach_external_audio_ip_listener(self) -> None:
+        target = self._external_audio_entity
+        coordinator = (
+            self._get_ip_control_state_coordinator()
+            if target
+            and target.startswith("media_player.")
+            and target != self.entity_id
+            and self._external_audio_ip_entry() is not None
+            else None
+        )
+        if coordinator is self._external_audio_ip_coordinator:
+            return
+        if self._external_audio_ip_unsub is not None:
+            self._external_audio_ip_unsub()
+            self._external_audio_ip_unsub = None
+        self._external_audio_ip_coordinator = coordinator
+        if coordinator is not None:
+            self._external_audio_ip_unsub = coordinator.async_add_listener(
+                self._external_audio_ip_updated
+            )
+            self._external_audio_ip_updated()
+
+    @callback
+    def _external_audio_ip_updated(self) -> None:
+        before = (self.volume_level, self.is_volume_muted)
+        self._apply_external_audio_feedback()
+        if self._state == MediaPlayerState.ON and before != (
+            self.volume_level,
+            self.is_volume_muted,
+        ):
+            self.async_write_ha_state()
+
+    def _shared_speaker_is_internal(self) -> bool | None:
+        entry = self._external_audio_ip_entry()
+        if entry is None:
+            return None
+        coordinator = self._get_ip_control_state_coordinator()
+        if not getattr(coordinator, "last_update_success", False):
+            return None
+        data = getattr(coordinator, "data", None)
+        if not isinstance(data, dict) or data.get("powered_off"):
+            return None
+        tv = data.get("tv")
+        observed_at = data.get("polled_at")
+        interval = entry.options.get(
+            CONF_IP_CONTROL_POLL_INTERVAL, DEFAULT_IP_CONTROL_POLL_INTERVAL
+        )
+        if (
+            not isinstance(tv, dict)
+            or type(observed_at) not in (int, float)
+            or not math.isfinite(observed_at)
+            or not 0 <= time.monotonic() - observed_at <= max(30.0, 2 * interval)
+        ):
+            return None
+        # Ambient can report internal volume zero while a receiver handles sound.
+        if str(tv.get("pictureMode", "")).casefold() == "ambient":
+            return None
+        value = tv.get("speakerSelect")
+        if not isinstance(value, str):
+            return None
+        value = value.strip().casefold()
+        if value == "internal":
+            return True
+        if value in ("external", "audioout/optical"):
+            return False
+        return None
+
     async def _update_volume_info(self):
         """Update the volume info."""
         if self._state != MediaPlayerState.ON:
+            return
+
+        if self._apply_external_audio_feedback():
             return
 
         # Prefer local IP Control when this TV implements directVolumeControl.
@@ -3142,6 +3333,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     async def _async_update(self):
         """Perform the actual state update."""
+        self._attach_external_audio_listener()
 
         # Refresh OAuth token if needed (before any SmartThings API call)
         if self._auth_method == AUTH_METHOD_OAUTH:
@@ -3534,26 +3726,36 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     def _speaker_output_is_internal(self) -> bool | None:
         """Return whether the TV's speaker output is its internal speakers.
 
-        Read from the Speaker Select entity's published state (IP Control or
-        SmartThings variant — whichever this entry created). Returns None when
-        unknown (no such entity, or it is unavailable), so callers keep the
-        default behaviour instead of guessing.
+        Prefer fresh shared IP status, then the Speaker Select entity published
+        by this entry (IP Control or SmartThings). None means the output is
+        unknown; callers must not treat that as evidence of external speakers.
         """
+        if (shared := self._shared_speaker_is_internal()) is not None:
+            return shared
         output = self._speaker_output_state()
         if output is None:
             return None
         return "internal" in output.lower()
 
-    def _speaker_output_state(self) -> str | None:
-        """The Speaker Select entity's published state, or None when unknown."""
+    def _speaker_output_entity_ids(self) -> tuple[str, ...]:
+        entry_id = getattr(self, "_entry_id", None)
+        if entry_id is None:
+            return ()
         registry = er.async_get(self.hass)
-        for entity in registry.entities.get_entries_for_config_entry_id(self._entry_id):
-            if entity.domain != "select" or not (
+        return tuple(
+            entity.entity_id
+            for entity in registry.entities.get_entries_for_config_entry_id(entry_id)
+            if entity.domain == "select"
+            and (
                 entity.unique_id.endswith("_ip_control_speaker_select")
                 or entity.unique_id.endswith("_st_media_output")
-            ):
-                continue
-            state = self.hass.states.get(entity.entity_id)
+            )
+        )
+
+    def _speaker_output_state(self) -> str | None:
+        """The Speaker Select entity's published state, or None when unknown."""
+        for entity_id in self._speaker_output_entity_ids():
+            state = self.hass.states.get(entity_id)
             if state is None or state.state in ("unavailable", "unknown"):
                 return None
             return state.state
@@ -4261,6 +4463,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return
         if not await self._async_ip_control_volume_step(up=True):
             await self.async_send_command("KEY_VOLUP")
+        if self._apply_external_audio_feedback():
+            return
         if self.volume_level is not None:
             self._attr_volume_level = min(1.0, self.volume_level + 0.01)
 
@@ -4270,6 +4474,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return
         if not await self._async_ip_control_volume_step(up=False):
             await self.async_send_command("KEY_VOLDOWN")
+        if self._apply_external_audio_feedback():
+            return
         if self.volume_level is not None:
             self._attr_volume_level = max(0.0, self.volume_level - 0.01)
 
@@ -4302,7 +4508,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if self._state != MediaPlayerState.ON:
             return
 
-        if self.is_volume_muted is not None and mute == self.is_volume_muted:
+        # Use the optimistic value to avoid sending the same mute toggle twice.
+        if (
+            self._attr_is_volume_muted is not None
+            and mute == self._attr_is_volume_muted
+        ):
             return
 
         # With an external receiver/soundbar, the TV remote's KEY_MUTE is
