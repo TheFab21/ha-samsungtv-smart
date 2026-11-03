@@ -211,10 +211,12 @@
           "st_poll_on_interval": "SmartThings interval when on (s)",
           "ip_control_poll_interval": "IP Control interval (s)",
           "content_list_interval": "Art content list refresh interval (s)",
-          "art_exit_source": "Source after leaving Art Mode"
+          "art_exit_source": "Source after leaving Art Mode",
+          "external_audio_entity": "External soundbar or receiver status entity"
         },
         "data_description": {
-          "art_exit_source": "Input or app to switch to when Art Mode is turned off from Home Assistant (Art Mode switch or art_set_artmode). Leave empty to keep the TV's own behaviour: it goes back to its last source, often TV (Samsung TV Plus) on a Frame. Not applied when Art Mode is left with the remote. Needs a source the TV can reach: a list auto-discovered from SmartThings holds ST_ keys, which fall back to the equivalent WebSocket key (ST_HDMI3 -> KEY_HDMI3) when SmartThings is unavailable. Some models ignore the numbered HDMI keys; the log says so when the TV did not move."
+          "art_exit_source": "Input or app to switch to when Art Mode is turned off from Home Assistant (Art Mode switch or art_set_artmode). Leave empty to keep the TV's own behaviour: it goes back to its last source, often TV (Samsung TV Plus) on a Frame. Not applied when Art Mode is left with the remote. Needs a source the TV can reach: a list auto-discovered from SmartThings holds ST_ keys, which fall back to the equivalent WebSocket key (ST_HDMI3 -> KEY_HDMI3) when SmartThings is unavailable. Some models ignore the numbered HDMI keys; the log says so when the TV did not move.",
+          "external_audio_entity": "Optional: use an existing media player for actual volume and mute feedback while the TV uses external speakers. TV controls stay unchanged. Leave empty to use the TV readings. No additional polling is added. Select the actual soundbar or receiver, not a group or another entity that mirrors this TV."
         }
       },
       "save_exit": {

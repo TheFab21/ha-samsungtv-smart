@@ -85,6 +85,7 @@ from .const import (
     CONF_DUMP_APPS,
     CONF_ENABLE_IP_CONTROL,
     CONF_EXT_POWER_ENTITY,
+    CONF_EXTERNAL_AUDIO_ENTITY,
     CONF_IP_CONTROL_ART_MODE,
     CONF_IP_CONTROL_FW_VERSION,
     CONF_IP_CONTROL_MODEL_ID,
@@ -175,6 +176,7 @@ ADVANCED_OPTIONS = [
     CONF_CONTENT_LIST_INTERVAL,
     CONF_DUMP_APPS,
     CONF_EXT_POWER_ENTITY,
+    CONF_EXTERNAL_AUDIO_ENTITY,
     CONF_PING_PORT,
     CONF_IP_CONTROL_POLL_INTERVAL,
     CONF_ST_POLL_ON_INTERVAL,
@@ -1841,6 +1843,19 @@ class OptionsFlowHandler(OptionsFlow):
                         "suggested_value": options.get(CONF_EXT_POWER_ENTITY, "")
                     },
                 ): EntitySelector(select_entities),
+                vol.Optional(
+                    CONF_EXTERNAL_AUDIO_ENTITY,
+                    description={
+                        "suggested_value": options.get(CONF_EXTERNAL_AUDIO_ENTITY, "")
+                    },
+                ): EntitySelector(
+                    EntitySelectorConfig(
+                        domain=MP_DOMAIN,
+                        exclude_entities=_async_get_entry_entities(
+                            self.hass, self._entry_id
+                        ),
+                    )
+                ),
                 vol.Required(
                     CONF_USE_MUTE_CHECK,
                     default=options.get(CONF_USE_MUTE_CHECK, False),
