@@ -202,13 +202,25 @@ async def test_media_player_passes_panel_verdict_to_smartthings(allow_refresh):
     device._use_channel_info = True
     device._st_last_exc = None
     device._st_auth_error_count = 0
+    device.hass = None
+    device._entry_id = "entry"
+    device._name = "TV"
 
-    with patch.object(
-        SamsungTVDevice,
-        "_allow_st_refresh",
-        return_value=allow_refresh,
+    with (
+        patch.object(
+            SamsungTVDevice,
+            "_allow_st_refresh",
+            return_value=allow_refresh,
+        ),
+        # A successful poll tells the account-wide refusal check this TV is
+        # accepted; that bookkeeping is covered by test_smartthings_plan_notice.
+        patch(
+            "custom_components.samsungtv_smart.media_player."
+            "report_smartthings_access"
+        ) as report,
     ):
         assert await device._async_st_update() is True
+    report.assert_called_once_with(None, "entry", "TV", False)
 
     st.async_device_update.assert_awaited_once_with(
         True,

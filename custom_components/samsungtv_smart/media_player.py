@@ -238,9 +238,10 @@ from .picture_mode_keys import (
 from .token_notify import (
     METHOD_IP_CONTROL,
     METHOD_LOCAL,
-    METHOD_SMARTTHINGS,
     clear_token_problem,
+    forget_smartthings_access,
     notify_token_problem,
+    report_smartthings_access,
 )
 
 ATTR_ART_MODE_STATUS = "art_mode_status"
@@ -2020,6 +2021,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if self._ip_device_info_refresh_unsub is not None:
             self._ip_device_info_refresh_unsub()
             self._ip_device_info_refresh_unsub = None
+        forget_smartthings_access(self.hass, self._entry_id)
         self._ws.unregister_status_callback()
         await self.hass.async_add_executor_job(self._ws.stop_poll)
 
@@ -3423,7 +3425,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 self.entity_id or self._name,
             )
             self._st_auth_error_count = 0
-            clear_token_problem(self.hass, self._entry_id, METHOD_SMARTTHINGS)
+        # Also tells the account-wide check this TV is accepted (no-op when it
+        # already was), so one refused TV among working ones is not taken for
+        # a missing API plan.
+        report_smartthings_access(self.hass, self._entry_id, self._name, False)
         return True
 
     def _note_st_auth_error(self, exc: Exception) -> None:
@@ -3437,17 +3442,19 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if self._st_auth_error_count < MAX_ST_AUTH_ERROR_COUNT:
             return
         self._log.error(
-            "%s - SmartThings refused this device %d times in a row (%s). The "
-            "stored device id is probably no longer valid -- this happens "
-            "after a mainboard repair, or when the TV is re-added in the "
-            "SmartThings app. Slowing polling to %ds; fix it under "
-            "Reconfigure > SmartThings device.",
+            "%s - SmartThings refused this device %d times in a row (%s). "
+            "Either the account has no SmartThings API plan (from 15 December "
+            "2026 Samsung deactivates the keys of owners without one; every TV "
+            "on the account is then refused), or the stored device id is no "
+            "longer valid (after a mainboard repair, or when the TV is re-added "
+            "in the SmartThings app). Slowing polling to %ds; see the "
+            "notification.",
             self.entity_id or self._name,
             self._st_auth_error_count,
             exc,
             ST_POLL_AUTH_ERROR_INTERVAL,
         )
-        notify_token_problem(self.hass, self._entry_id, METHOD_SMARTTHINGS, self._name)
+        report_smartthings_access(self.hass, self._entry_id, self._name, True)
 
     async def async_update(self):
         """Update state of device."""

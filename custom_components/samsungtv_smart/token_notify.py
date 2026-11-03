@@ -37,17 +37,22 @@ from .const import DOMAIN
 METHOD_LOCAL = "local"
 METHOD_IP_CONTROL = "ip_control"
 METHOD_SMARTTHINGS = "smartthings"
+# Same notification as METHOD_SMARTTHINGS, worded for every SmartThings TV of
+# the install being refused at once - the account, not one device.
+METHOD_SMARTTHINGS_PLAN = "smartthings_plan"
 
 _TITLES: dict[str, dict[str, str]] = {
     "en": {
         METHOD_LOCAL: "Samsung TV — local connection not authorized",
         METHOD_IP_CONTROL: "Samsung TV — IP Control token rejected",
-        METHOD_SMARTTHINGS: "Samsung TV — SmartThings device no longer accessible",
+        METHOD_SMARTTHINGS: "Samsung TV — SmartThings refuses this TV",
+        METHOD_SMARTTHINGS_PLAN: "Samsung TV — SmartThings API access refused",
     },
     "fr": {
         METHOD_LOCAL: "Téléviseur Samsung — connexion locale non autorisée",
         METHOD_IP_CONTROL: "Téléviseur Samsung — token IP Control rejeté",
-        METHOD_SMARTTHINGS: "Téléviseur Samsung — appareil SmartThings inaccessible",
+        METHOD_SMARTTHINGS: "Téléviseur Samsung — SmartThings refuse ce téléviseur",
+        METHOD_SMARTTHINGS_PLAN: "Téléviseur Samsung — accès à l'API SmartThings refusé",
     },
 }
 
@@ -75,20 +80,43 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         METHOD_SMARTTHINGS: (
             "SmartThings refuses access to **{device_name}** (*Forbidden*). "
-            "The cloud features — channel name, picture mode, sound mode, "
-            "power metering — are paused; local control keeps working.\n\n"
-            "This usually means the TV is no longer the device Home Assistant "
-            "was configured with. It happens after a **mainboard repair or "
-            "replacement** (the TV re-registers under a new id), while a "
-            "repaired or reset TV has **not been signed in to your Samsung "
-            "account again yet**, after the TV is removed and re-added in the "
-            "SmartThings app, or when the account that owns it changes.\n\n"
-            "If the TV has just been repaired or reset, link it in the "
-            "SmartThings app **first** — there is nothing for Home Assistant "
-            "to select until it appears there.\n\n"
-            "To fix it: open **Settings → Devices & services → Samsung TV "
-            "Smart → Reconfigure → SmartThings device**, and pick the TV again "
-            "so the new id is stored. Your entities and history are kept.\n\n"
+            "The cloud features — channel name, power metering, the ambient "
+            "light sensor, Hue Sync — are paused; local control keeps "
+            "working.\n\n"
+            "Two causes are likely:\n\n"
+            "- **No SmartThings API plan.** From **15 December 2026** Samsung "
+            "deactivates the API keys of owners who have not chosen a paid "
+            "plan (plans launched on 4 November 2026). Every TV on the same "
+            "Samsung account is then refused. Choose a plan in the SmartThings "
+            "Developer Center, or stop using SmartThings: **Reconfigure → "
+            "Authentication → No SmartThings (local only)**. Local control, "
+            "Art Mode included, keeps working; set *Power On Method* to "
+            "Wake-on-LAN or IP Control.\n"
+            "- **The TV is no longer the configured device.** It "
+            "re-registers under a new id after a **mainboard repair or "
+            "replacement**, a factory reset not yet signed in to your Samsung "
+            "account again, being removed and re-added in the SmartThings "
+            "app, or a change of owning account. Link it in the SmartThings "
+            "app first, then **Reconfigure → SmartThings device** and pick it "
+            "again. Your entities and history are kept.\n\n"
+            "Polling has been slowed down until it works again, and this "
+            "notice clears itself automatically."
+        ),
+        METHOD_SMARTTHINGS_PLAN: (
+            "SmartThings refuses **every TV on this Samsung account**, "
+            "**{device_name}** included. That points to the account rather "
+            "than to one TV: from **15 December 2026** Samsung deactivates "
+            "the API keys of owners who have not chosen a paid SmartThings "
+            "API plan (plans launched on 4 November 2026). The cloud "
+            "features — channel name, power metering, the ambient light "
+            "sensor, Hue Sync — are paused; local control keeps working.\n\n"
+            "Either choose a plan in the SmartThings Developer Center, or "
+            "stop using SmartThings for each TV: **Reconfigure → "
+            "Authentication → No SmartThings (local only)**, and set *Power "
+            "On Method* to Wake-on-LAN or IP Control. A Personal Access Token "
+            "is no way around it either: it expires after 24 hours.\n\n"
+            "If you do have a plan, sign in again under **Reconfigure → "
+            "Authentication**.\n\n"
             "Polling has been slowed down until it works again, and this "
             "notice clears itself automatically."
         ),
@@ -118,24 +146,49 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         METHOD_SMARTTHINGS: (
             "SmartThings refuse l'accès à **{device_name}** (*Forbidden*). "
-            "Les fonctions cloud — nom de chaîne, mode image, mode son, "
-            "mesure de consommation — sont suspendues ; le contrôle local "
-            "continue de fonctionner.\n\n"
-            "Cela signifie généralement que le téléviseur n'est plus "
-            "l'appareil avec lequel Home Assistant a été configuré. Cela "
-            "arrive après un **remplacement de carte mère** (le téléviseur se "
-            "réenregistre sous un nouvel identifiant), tant qu'un téléviseur "
-            "réparé ou réinitialisé n'a **pas encore été reconnecté à votre "
-            "compte Samsung**, après une suppression puis un rajout dans "
-            "l'application SmartThings, ou lors d'un changement de compte "
-            "propriétaire.\n\n"
-            "Si le téléviseur vient d'être réparé ou réinitialisé, "
-            "associez-le **d'abord** dans l'application SmartThings : Home "
-            "Assistant n'a rien à sélectionner tant qu'il n'y apparaît pas.\n\n"
-            "Pour corriger : ouvrez **Paramètres → Appareils et services → "
-            "Samsung TV Smart → Reconfigurer → Appareil SmartThings**, et "
-            "sélectionnez à nouveau le téléviseur pour enregistrer le nouvel "
-            "identifiant. Vos entités et votre historique sont conservés.\n\n"
+            "Les fonctions cloud — nom de chaîne, mesure de consommation, "
+            "capteur de luminosité ambiante, Hue Sync — sont suspendues ; le "
+            "contrôle local continue de fonctionner.\n\n"
+            "Deux causes sont probables :\n\n"
+            "- **Pas d'abonnement à l'API SmartThings.** À partir du **15 "
+            "décembre 2026**, Samsung désactive les clés d'API des comptes "
+            "qui n'ont pas choisi d'offre payante (offres lancées le 4 "
+            "novembre 2026). Tous les téléviseurs du même compte Samsung sont "
+            "alors refusés. Choisissez une offre dans le SmartThings "
+            "Developer Center, ou cessez d'utiliser SmartThings : "
+            "**Reconfigurer → Authentification → No SmartThings (local "
+            "only)**. Le contrôle local, Art Mode compris, continue de "
+            "fonctionner ; réglez la *méthode d'allumage* sur Wake-on-LAN ou "
+            "IP Control.\n"
+            "- **Le téléviseur n'est plus l'appareil configuré.** Il se "
+            "réenregistre sous un nouvel identifiant après un **remplacement "
+            "de carte mère**, une réinitialisation pas encore reconnectée à "
+            "votre compte Samsung, une suppression puis un rajout dans "
+            "l'application SmartThings, ou un changement de compte "
+            "propriétaire. Associez-le d'abord dans l'application "
+            "SmartThings, puis **Reconfigurer → Appareil SmartThings** et "
+            "sélectionnez-le à nouveau. Vos entités et votre historique sont "
+            "conservés.\n\n"
+            "Les interrogations ont été espacées en attendant, et cette "
+            "notification disparaît automatiquement."
+        ),
+        METHOD_SMARTTHINGS_PLAN: (
+            "SmartThings refuse **tous les téléviseurs de ce compte "
+            "Samsung**, dont **{device_name}**. Cela désigne le compte plutôt "
+            "qu'un téléviseur : à partir du **15 décembre 2026**, Samsung "
+            "désactive les clés d'API des comptes qui n'ont pas choisi d'offre "
+            "payante de l'API SmartThings (offres lancées le 4 novembre "
+            "2026). Les fonctions cloud — nom de chaîne, mesure de "
+            "consommation, capteur de luminosité ambiante, Hue Sync — sont "
+            "suspendues ; le contrôle local continue de fonctionner.\n\n"
+            "Choisissez une offre dans le SmartThings Developer Center, ou "
+            "cessez d'utiliser SmartThings pour chaque téléviseur : "
+            "**Reconfigurer → Authentification → No SmartThings (local "
+            "only)**, et réglez la *méthode d'allumage* sur Wake-on-LAN ou IP "
+            "Control. Un Personal Access Token ne contourne rien non plus : il "
+            "expire au bout de 24 heures.\n\n"
+            "Si vous avez une offre, reconnectez-vous sous **Reconfigurer → "
+            "Authentification**.\n\n"
             "Les interrogations ont été espacées en attendant, et cette "
             "notification disparaît automatiquement."
         ),
@@ -177,3 +230,75 @@ def notify_token_problem(
 def clear_token_problem(hass: HomeAssistant, entry_id: str, method: str) -> None:
     """Dismiss the persistent notification once the token works again."""
     persistent_notification.async_dismiss(hass, _notification_id(entry_id, method))
+
+
+# entry_id -> (refused, device_name) for every TV whose SmartThings access has
+# been checked since startup. Kept outside hass.data[DOMAIN], whose values are
+# per-entry dicts.
+_ST_ACCESS = f"{DOMAIN}_smartthings_access"
+
+
+def _st_access(hass: HomeAssistant) -> dict[str, tuple[bool, str]]:
+    return hass.data.setdefault(_ST_ACCESS, {})
+
+
+def _whole_account_refused(access: dict[str, tuple[bool, str]]) -> bool:
+    """Two or more SmartThings TVs, and all of them refused.
+
+    One refused TV among working ones is that TV (a new device id after a
+    repair); every one refused at once is the account - from 15 December 2026,
+    a key deactivated for want of a paid API plan. A single TV cannot tell the
+    two apart, so it gets the notice naming both.
+    """
+    return len(access) >= 2 and all(refused for refused, _ in access.values())
+
+
+@callback
+def _notify_smartthings(
+    hass: HomeAssistant, entry_id: str, device_name: str, whole_account: bool
+) -> None:
+    lang = _lang(hass)
+    key = METHOD_SMARTTHINGS_PLAN if whole_account else METHOD_SMARTTHINGS
+    persistent_notification.async_create(
+        hass,
+        _MESSAGES[lang][key].format(device_name=device_name),
+        title=_TITLES[lang][key],
+        notification_id=_notification_id(entry_id, METHOD_SMARTTHINGS),
+    )
+
+
+@callback
+def report_smartthings_access(
+    hass: HomeAssistant, entry_id: str, device_name: str, refused: bool
+) -> None:
+    """Record whether SmartThings accepts this TV and update its notice.
+
+    Called with ``refused=True`` once the refusals pass the threshold, and with
+    ``refused=False`` after a successful poll (a no-op when nothing changed).
+    """
+    access = _st_access(hass)
+    previous = access.get(entry_id)
+    if previous is not None and previous[0] == refused and not refused:
+        return
+    before = _whole_account_refused(access)
+    access[entry_id] = (refused, device_name)
+    after = _whole_account_refused(access)
+    if not refused:
+        clear_token_problem(hass, entry_id, METHOD_SMARTTHINGS)
+    if after:
+        for other_id, (_refused, name) in access.items():
+            _notify_smartthings(hass, other_id, name, whole_account=True)
+        return
+    if refused:
+        _notify_smartthings(hass, entry_id, device_name, whole_account=False)
+    if before:
+        # No longer the whole account: the others get the per-TV wording back.
+        for other_id, (other_refused, name) in access.items():
+            if other_refused and other_id != entry_id:
+                _notify_smartthings(hass, other_id, name, whole_account=False)
+
+
+@callback
+def forget_smartthings_access(hass: HomeAssistant, entry_id: str) -> None:
+    """Drop a TV that is being unloaded from the account-wide check."""
+    _st_access(hass).pop(entry_id, None)

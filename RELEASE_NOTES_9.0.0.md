@@ -14,8 +14,9 @@ If this project is useful to you, you can support its development:
 ## Why 9.0
 
 8.0.0 brought OAuth2 for SmartThings and a second local channel, IP Control.
-Since then, SmartThings API access has become a **paid plan** (October 2026),
-and the integration has moved the other way: **local first**.
+Since then, SmartThings API access has become a **paid plan** (plans from
+4 November 2026, keys deactivated on 15 December 2026 without one), and the
+integration has moved the other way: **local first**.
 
 The last step was the TV's own **quick-settings channel**, the one Samsung's
 SmartThings app uses on the local network. It needs no pairing and no cloud
@@ -259,9 +260,10 @@ no longer breaks it, and famous works are recognised (8.6 → 8.11.7).
   space; it is rebuilt on demand.
 - **Folder Gallery card from before 8.3**: open it in the visual editor and save
   once, so the fullscreen-preview buttons know which Frame to use.
-- **SmartThings is optional.** Everything local works without it. Since October
-  2026 SmartThings third-party API access needs a paid Personal plan — see the
-  README.
+- **SmartThings is optional.** Everything local works without it. SmartThings
+  API access needs a paid plan from 4 November 2026, and keys without one are
+  deactivated on 15 December 2026. To go without it, use **Reconfigure →
+  Authentication → No SmartThings (local only)** — see the README.
 
 ## What may look different
 

@@ -114,7 +114,7 @@ you can tune.
 - For Artwork Identification (optional): a Google Cloud Vision API key and an LLM API key (Anthropic, OpenAI or Gemini)
 - A Samsung Smart TV running **Tizen OS** (2016+), reachable on the local network
 - **Home Assistant and the TV on the same subnet / VLAN.** Samsung's local WebSocket pairing (ports **8001/8002**) generally does **not** work across subnets or VLANs, *even when the ports are reachable and routed*. If HA and the TV must stay on separate networks, you need SNAT / IP masquerading so the TV sees the traffic as coming from a local address — see [Troubleshooting](#setup-wizard-loops-forever--mschanneltimeout-on-8002--mschannelunauthorized-on-8001).
-- For SmartThings features (optional): a Samsung account, a SmartThings-registered TV, and — since October 2026 — a paid SmartThings **Personal plan** for third-party API access. Everything local works without it; see [SmartThings Authentication](#smartthings-authentication)
+- For SmartThings features (optional): a Samsung account, a SmartThings-registered TV, and — from 4 November 2026, with keys deactivated on 15 December 2026 without one — a paid SmartThings **API plan**. Everything local works without it; see [SmartThings Authentication](#smartthings-authentication)
 
 ---
 
@@ -193,17 +193,35 @@ This integration is a **custom repository** — it is not in the HACS default st
 
 ### SmartThings Authentication
 
-> ⚠️ **SmartThings API access is now paid.** Samsung's phase-out of free
-> SmartThings **API** access started in **October 2026**: individual,
-> non-commercial use through a third-party tool now requires a **Personal plan
-> (announced at $4.99/month)**, with separate commercial tiers. This applies to
-> **any** third-party client, Home Assistant included — the core SmartThings
-> integration shipped with Home Assistant documents the same change. Samsung's
-> own SmartThings app stays free, and so does building integrations in the
-> Developer Center; it is third-party API access that moved behind the plan.
-> Call quotas had not been published at the time of writing, so check
+> ⚠️ **SmartThings API access becomes paid.** Samsung's paid SmartThings
+> **API** plans launch on **4 November 2026**: a **Developer Plan** for
+> individuals — available in **some countries only** at launch, the list not yet
+> published — and a **Business Plan** for partners. It applies to **any**
+> third-party client, Home Assistant included — the core SmartThings integration
+> shipped with Home Assistant documents the same change. Samsung's own
+> SmartThings app stays free.
+>
+> The timeline Samsung sent to developers:
+>
+> | from | without a plan |
+> |---|---|
+> | **4 November 2026** | You can no longer **create or edit** an API Access App — so no new OAuth2 setup (Step 1 below). Integrations already installed keep working. |
+> | **15 December 2026** | Access "may be limited, paused, or discontinued": **active API keys are deactivated** and calls are paused at Samsung's gateway, for the app owner and for anyone the app is shared with. |
+>
+> These dates apply in every country, including where the Developer Plan is not
+> offered yet. A **Personal Access Token is no way around it**: it expires after
+> 24 hours (see [Option 2](#option-2--personal-access-token-pat)). Prices,
+> quotas and availability are Samsung's to change, so check
 > [Samsung's announcement](https://blog.smartthings.com/smartthings-updates/a-new-enhanced-smartthings-api-experience/)
-> for the current terms rather than trusting this paragraph on price.
+> and the SmartThings Developer Center rather than trusting this paragraph.
+>
+> **If you do not take a plan**, switch each TV to local only before or after
+> 15 December: **Reconfigure → Authentication → No SmartThings (local only)**,
+> and set *Power On Method* to Wake-on-LAN or IP Control. Entities, history and
+> automations are kept. If you leave SmartThings configured, the integration
+> notices the refusals, slows its polling and raises a notification — worded for
+> the whole account when every TV is refused at once (see
+> [SmartThings stops working](#smartthings-stops-working-forbidden-in-the-log)).
 >
 > **What this means for this integration.** All of its SmartThings features
 > (picture mode, channel and app info, sound mode, power metering, Hue Sync)
@@ -1406,9 +1424,21 @@ default; SmartThings or IP Control also available).
 media_player.your_tv - SmartThings refused this device 3 times in a row (Forbidden).
 ```
 
-This means the stored **SmartThings device id no longer belongs to your account**
-— not that your API key or token is wrong. The tell: any *other* TV on the same
-credentials keeps working.
+It has two causes, and which TVs are refused tells them apart.
+
+**Every TV on the account is refused → the account has no SmartThings API
+plan.** From **15 December 2026** Samsung deactivates the API keys of owners
+who have not chosen a paid plan (see
+[SmartThings Authentication](#smartthings-authentication)). With two or more
+SmartThings TVs, the integration recognises it and says so in the
+notification. Choose a plan in the SmartThings Developer Center, or stop using
+SmartThings: **Reconfigure → Authentication → No SmartThings (local only)**,
+then set *Power On Method* to Wake-on-LAN or IP Control. With a single TV the
+notification names both causes.
+
+**Only this TV is refused, others on the same credentials work → the stored
+SmartThings device id no longer belongs to your account**, not a wrong key or
+token.
 
 It happens when the TV re-registers under a new id: a **mainboard repair or
 replacement**, a **factory reset**, being **removed and re-added** in the
