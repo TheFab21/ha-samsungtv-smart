@@ -53,6 +53,12 @@ RETRY_MIN = 5
 RETRY_MAX = 120
 # How often to re-check whether the TV is on while it is not.
 IDLE_CHECK = 15
+# get.apptiles is sent once per connection. A Frame reached while it is still
+# switching out of Art Mode can answer it with no tiles (or not at all), and the
+# app list then stayed empty until the channel reconnected: every app source
+# was "Unsupported" and app launches did nothing. Ask again after these delays
+# (seconds) until tiles arrive or the connection closes.
+APP_TILES_RETRY_DELAYS = (5, 15, 30, 60)
 # Handshakes the TV answered without accepting (unauthorized, timeOut, no
 # connect) before giving up until the entry is reloaded. Measured TVs accept
 # at once; one that refuses may be showing an authorization prompt for each
@@ -508,6 +514,7 @@ class SamsungMobileBFF:
             timeout=CONNECT_TIMEOUT,
         )
         self._ws = ws
+        tiles_retry: asyncio.Task | None = None
         try:
             if not await self._wait_connected(ws):
                 return False
@@ -515,6 +522,11 @@ class SamsungMobileBFF:
             await self._send("get.settings.data")
             await self._send("get.extsources")
             await self._send("get.apptiles")
+            tiles_retry = asyncio.get_running_loop().create_task(
+                self._ensure_app_tiles()
+            )
+            self._background_tasks.add(tiles_retry)
+            tiles_retry.add_done_callback(self._background_tasks.discard)
             async for msg in ws:
                 if msg.type != aiohttp.WSMsgType.TEXT:
                     break
@@ -525,8 +537,24 @@ class SamsungMobileBFF:
                 self._handle(message)
             return True
         finally:
+            if tiles_retry is not None:
+                tiles_retry.cancel()
             if not ws.closed:
                 await ws.close()
+
+    async def _ensure_app_tiles(self) -> None:
+        """Ask for the home-screen apps again while the list is still empty."""
+        for delay in APP_TILES_RETRY_DELAYS:
+            await asyncio.sleep(delay)
+            if self.apps or not self.connected:
+                return
+            _LOGGER.debug(
+                "No app tiles from %s yet, asking again after %ss", self._host, delay
+            )
+            try:
+                await self._send("get.apptiles")
+            except (ConnectionError, aiohttp.ClientError, RuntimeError):
+                return
 
     async def _wait_connected(self, ws: aiohttp.ClientWebSocketResponse) -> bool:
         loop = asyncio.get_running_loop()
