@@ -210,10 +210,12 @@
           "st_poll_on_interval": "Intervalle SmartThings, TV allumée (s)",
           "ip_control_poll_interval": "Intervalle IP Control (s)",
           "content_list_interval": "Intervalle de rafraîchissement de la liste d'œuvres (s)",
-          "art_exit_source": "Source en sortant de l'Art Mode"
+          "art_exit_source": "Source en sortant de l'Art Mode",
+          "report_art_mode_as_off": "Afficher le lecteur multimédia éteint en Art Mode"
         },
         "data_description": {
-          "art_exit_source": "Entrée ou application à afficher quand l'Art Mode est désactivé depuis Home Assistant (switch Art Mode ou art_set_artmode). Laisser vide pour garder le comportement du TV : il revient à la dernière source, souvent TV (Samsung TV Plus) sur une Frame. Non appliqué quand on quitte l'Art Mode avec la télécommande. Nécessite une source que le TV peut atteindre : une liste auto-découverte depuis SmartThings ne contient que des clés ST_, qui basculent sur la touche WebSocket équivalente (ST_HDMI3 → KEY_HDMI3) quand SmartThings est indisponible. Certains modèles ignorent les touches HDMI numérotées ; le journal le signale si le TV n'a pas changé d'entrée."
+          "art_exit_source": "Entrée ou application à afficher quand l'Art Mode est désactivé depuis Home Assistant (switch Art Mode ou art_set_artmode). Laisser vide pour garder le comportement du TV : il revient à la dernière source, souvent TV (Samsung TV Plus) sur une Frame. Non appliqué quand on quitte l'Art Mode avec la télécommande. Nécessite une source que le TV peut atteindre : une liste auto-découverte depuis SmartThings ne contient que des clés ST_, qui basculent sur la touche WebSocket équivalente (ST_HDMI3 → KEY_HDMI3) quand SmartThings est indisponible. Certains modèles ignorent les touches HDMI numérotées ; le journal le signale si le TV n'a pas changé d'entrée.",
+          "report_art_mode_as_off": "Facultatif : affiche le lecteur multimédia comme éteint pendant l’Art Mode, tout en conservant art_mode_status à « on ». Le visionnage normal reste signalé comme allumé. Le suivi de l’alimentation et les commandes d’Art Mode restent actifs. Désactivé par défaut."
         }
       },
       "save_exit": {
