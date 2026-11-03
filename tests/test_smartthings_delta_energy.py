@@ -75,6 +75,12 @@ class DerivedPowerTest(unittest.TestCase):
         self.assertIsNone(derive({**REPORT, "deltaEnergy": 0}, NOW))
         self.assertIsNone(derive({**REPORT, "deltaEnergy": None}, NOW))
 
+    def test_epoch_start_is_not_a_window(self):
+        # Seen right after a restart: start = 1970-01-01, deltaEnergy 0.
+        bogus = {**REPORT, "start": "1970-01-01T00:00:00Z"}
+        self.assertIsNone(window(bogus))
+        self.assertIsNone(derive({**bogus, "deltaEnergy": 13.4}, NOW))
+
     def test_backwards_window_is_rejected(self):
         self.assertIsNone(window({"start": REPORT["end"], "end": REPORT["start"]}))
 

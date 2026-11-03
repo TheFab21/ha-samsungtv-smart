@@ -2624,6 +2624,10 @@ POWER_DATA_TV_OFF = "_tv_off"
 # current draw. Samsung TVs report every ~15 min (measured: 15 min 11 s on a
 # 2025 Frame), so this allows for one missed report.
 POWER_REPORT_MAX_AGE = timedelta(minutes=35)
+# Longest window accepted as a real report. Right after a restart or a power
+# change SmartThings sent start = 1970-01-01T00:00:00Z (an empty field), which
+# read as a 56-year window; reports are ~15 min, so anything this long is not one.
+POWER_REPORT_MAX_WINDOW = timedelta(hours=2)
 
 
 def power_report_window(data: dict) -> tuple | None:
@@ -2631,6 +2635,8 @@ def power_report_window(data: dict) -> tuple | None:
     start = dt_util.parse_datetime(str(data.get("start") or ""))
     end = dt_util.parse_datetime(str(data.get("end") or ""))
     if start is None or end is None or end <= start:
+        return None
+    if end - start > POWER_REPORT_MAX_WINDOW:
         return None
     return start, end
 
