@@ -10,6 +10,11 @@ support for **The Frame**. A maintained fork of
   input, volume, picture calibration, speaker output and a reboot button work
   without the cloud, on 2020+ sets and on older ones (a different port is tried
   automatically).
+- **Local quick settings** over the TV's own quick-settings channel (no
+  pairing, no cloud): the picture modes of the current input, sound mode and
+  ten quick settings, inputs and home-screen apps opened locally, and the app's
+  icon as the media image. With IP Control, a Frame works day to day without
+  SmartThings.
 - **Art Mode** on a Frame: browse and upload artwork, mattes, slideshow,
   brightness and colour temperature, a gallery card and an upload card, uploads
   re-encoded to suit the panel.
