@@ -66,6 +66,7 @@ from .const import (
     DATA_ART_API,
     DATA_CFG,
     DATA_IP_CONTROL_STATE_COORDINATOR,
+    DATA_ST_POWER,
     DEFAULT_CONTENT_LIST_INTERVAL,
     DEFAULT_IP_CONTROL_POLL_INTERVAL,
     DEFAULT_PORT,
@@ -486,6 +487,10 @@ async def async_setup_entry(  # noqa: C901
                         power_coordinator.async_request_refresh(),
                         f"st_power_initial_refresh_{entry.entry_id}",
                     )
+                    # Diagnostics publish the raw report this coordinator holds.
+                    hass.data[DOMAIN].setdefault(entry.entry_id, {})[
+                        DATA_ST_POWER
+                    ] = power_coordinator
             except Exception as ex:
                 _LOGGER.debug("Could not check power consumption capability: %s", ex)
 
@@ -813,6 +818,7 @@ class FrameArtCoordinator(DataUpdateCoordinator):
             "current_artwork": None,
             "artwork_count": None,
             "slideshow_status": None,
+            "slideshow_source": None,
             "api_version": None,
             "current_thumbnail_url": None,
             "tv_powered_off": False,
@@ -880,7 +886,12 @@ class FrameArtCoordinator(DataUpdateCoordinator):
                     "Frame Art: art mode is off — skipping the art-only reads "
                     "(current artwork, slideshow) this cycle"
                 )
-                for carried in ("current_artwork", "artwork_count", "slideshow_status"):
+                for carried in (
+                    "current_artwork",
+                    "artwork_count",
+                    "slideshow_status",
+                    "slideshow_source",
+                ):
                     if data[carried] is None and self.data.get(carried) is not None:
                         data[carried] = self.data[carried]
 
@@ -1075,6 +1086,15 @@ class FrameArtCoordinator(DataUpdateCoordinator):
                         slideshow = await self._art_api.get_slideshow_status()
                     if slideshow:
                         data["slideshow_status"] = slideshow.get("value", "off")
+                        # get_slideshow_status also reports WHAT is rotating
+                        # (category, sub-category, type) — publish it so an
+                        # Art Store collection started with "Display All" is
+                        # visible, not just the interval.
+                        data["slideshow_source"] = {
+                            key: slideshow[key]
+                            for key in ("category_id", "sub_category_id", "type")
+                            if slideshow.get(key) not in (None, "")
+                        } or None
             except asyncio.TimeoutError:
                 self._log.debug("Timeout getting slideshow status")
             except Exception as ex:
@@ -2138,6 +2158,13 @@ class FrameArtSensor(ChangedCoordinatorEntity, SensorEntity):
             # Slideshow status
             if data.get("slideshow_status") is not None:
                 attrs["slideshow_status"] = data["slideshow_status"]
+            source = data.get("slideshow_source") or {}
+            if source.get("category_id"):
+                attrs["slideshow_category_id"] = source["category_id"]
+            if source.get("sub_category_id"):
+                attrs["slideshow_sub_category_id"] = source["sub_category_id"]
+            if source.get("type"):
+                attrs["slideshow_type"] = source["type"]
 
             # API version
             if data.get("api_version") is not None:

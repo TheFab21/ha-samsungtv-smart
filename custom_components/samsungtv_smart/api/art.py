@@ -70,6 +70,43 @@ def _detect_wire_type(data: bytes, hint: str | None = None) -> str:
     return "jpg" if normalized in ("jpg", "jpeg", "mpo") else normalized
 
 
+def slideshow_category_id(category: int | str) -> str:
+    """Return the Art-app category_id string for a slideshow source.
+
+    ``category`` is either the short My Collection number the services have
+    always taken (2 = My Photos, 4 = Favourites, 8 = purchased/Store) or a
+    full Art-app category id passed through untouched — e.g. an Art Store
+    collection such as ``STORE22_C0013`` (the TV's ``set_slideshow_status``
+    takes ``category_id`` + ``sub_category_id`` for those; see
+    notes/QN55LS03FAFXZA/ART_MODE_DECOMPILED.md, "Slideshow Commands").
+
+    Numbers are zero-padded to four digits, so 10+ no longer becomes
+    ``MY-C00010``.
+    """
+    if isinstance(category, int) or str(category).strip().isdigit():
+        return f"MY-C{int(category):04d}"
+    return str(category).strip()
+
+
+def build_slideshow_request(
+    request: str,
+    duration: int,
+    shuffle: bool,
+    category: int | str,
+    sub_category: str | None = None,
+) -> dict:
+    """Build a set_slideshow_status / set_auto_rotation_status payload."""
+    payload = {
+        "request": request,
+        "value": str(duration) if duration > 0 else "off",
+        "category_id": slideshow_category_id(category),
+        "type": "shuffleslideshow" if shuffle else "slideshow",
+    }
+    if sub_category:
+        payload["sub_category_id"] = str(sub_category).strip()
+    return payload
+
+
 class _DeviceLoggerAdapter(logging.LoggerAdapter):
     """Prefix every log line with the TV's host so multi-TV logs can be told apart."""
 
@@ -2628,16 +2665,14 @@ class SamsungTVAsyncArt:
         self,
         duration: int = 0,
         shuffle: bool = True,
-        category: int = 2,
+        category: int | str = 2,
+        sub_category: str | None = None,
     ) -> bool:
         """Configure auto rotation."""
         data = await self._send_art_request(
-            {
-                "request": "set_auto_rotation_status",
-                "value": str(duration) if duration > 0 else "off",
-                "category_id": f"MY-C000{category}",
-                "type": "shuffleslideshow" if shuffle else "slideshow",
-            }
+            build_slideshow_request(
+                "set_auto_rotation_status", duration, shuffle, category, sub_category
+            )
         )
         return data is not None
 
@@ -2649,16 +2684,14 @@ class SamsungTVAsyncArt:
         self,
         duration: int = 0,
         shuffle: bool = True,
-        category: int = 2,
+        category: int | str = 2,
+        sub_category: str | None = None,
     ) -> bool:
         """Configure slideshow settings."""
         data = await self._send_art_request(
-            {
-                "request": "set_slideshow_status",
-                "value": str(duration) if duration > 0 else "off",
-                "category_id": f"MY-C000{category}",
-                "type": "shuffleslideshow" if shuffle else "slideshow",
-            }
+            build_slideshow_request(
+                "set_slideshow_status", duration, shuffle, category, sub_category
+            )
         )
         return data is not None
 
