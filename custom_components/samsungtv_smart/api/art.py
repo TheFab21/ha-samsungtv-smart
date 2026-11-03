@@ -1297,7 +1297,7 @@ class SamsungTVAsyncArt:
         """Wait for a response matching the request key."""
         if request_key not in self._pending_requests:
             self._pending_requests[request_key] = (
-                asyncio.get_event_loop().create_future()
+                asyncio.get_running_loop().create_future()
             )
 
         try:
@@ -1630,7 +1630,7 @@ class SamsungTVAsyncArt:
         request_key = wait_for_event or request_data["id"]
 
         # Create future before sending
-        future = asyncio.get_event_loop().create_future()
+        future = asyncio.get_running_loop().create_future()
         self._pending_requests[request_key] = future
         # Point each alias at the SAME future so an answer that arrives under a
         # different identifier (e.g. a 0.97 thumbnail binary frame keyed by
@@ -2273,7 +2273,7 @@ class SamsungTVAsyncArt:
         # _send_art_request's normal matching. Race both: whichever confirms
         # first (the direct response, or the broadcast updating self.art_mode)
         # wins, instead of always paying the full request timeout.
-        broadcast_future = asyncio.get_event_loop().create_future()
+        broadcast_future = asyncio.get_running_loop().create_future()
         self._art_mode_broadcast_waiters.append(broadcast_future)
         request = {"request": "set_artmode_status", "value": mode}
         self.last_set_artmode_sent = False
@@ -2778,7 +2778,7 @@ class SamsungTVAsyncArt:
                     file = await hass.async_add_executor_job(read_file, file)
                 else:
                     # Fallback for non-HA usage
-                    file = await asyncio.get_event_loop().run_in_executor(
+                    file = await asyncio.get_running_loop().run_in_executor(
                         None, read_file, file
                     )
 
@@ -3036,7 +3036,7 @@ class SamsungTVAsyncArt:
                     return None
             # Register before sending so a fast reply isn't missed.
             self._pending_requests[request_id] = (
-                asyncio.get_event_loop().create_future()
+                asyncio.get_running_loop().create_future()
             )
             try:
                 await self._ws.send_bytes(frame)

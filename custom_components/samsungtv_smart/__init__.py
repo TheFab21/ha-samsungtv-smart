@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 import hashlib
 import json
 import logging
@@ -794,14 +795,16 @@ async def _register_logo_paths(hass: HomeAssistant) -> str | None:
 
     local_logo_path = Path(hass.config.path("www", f"{DOMAIN}_logos"))
     url_logo_path = str(local_logo_path)
-    if not local_logo_path.exists():
-        try:
-            local_logo_path.mkdir(parents=True)
-        except Exception as exc:  # pylint: disable=broad-except
-            _LOGGER.warning(
-                "Error registering custom logo folder %s: %s", str(local_logo_path), exc
-            )
-            url_logo_path = None
+    try:
+        # Disk access: off the event loop.
+        await hass.async_add_executor_job(
+            partial(local_logo_path.mkdir, parents=True, exist_ok=True)
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        _LOGGER.warning(
+            "Error registering custom logo folder %s: %s", str(local_logo_path), exc
+        )
+        url_logo_path = None
 
     if url_logo_path is not None:
         static_paths.append(
@@ -1132,18 +1135,24 @@ class SamsungTVInfo:
         return result
 
 
+def _remove_legacy_translation(path: str) -> None:
+    """Delete the obsolete translations_en.json (runs in the executor)."""
+    if not os.path.isfile(path):
+        return
+    try:
+        os.remove(path)
+        _LOGGER.info("Removed obsolete translations_en.json")
+    except OSError as ex:
+        _LOGGER.debug("Could not remove translations_en.json: %s", ex)
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Samsung TV integration."""
     # Clean up legacy translations_en.json (removed in b7, not deleted by HACS)
     _legacy = hass.config.path(
         "custom_components", "samsungtv_smart", "translations_en.json"
     )
-    if os.path.isfile(_legacy):
-        try:
-            os.remove(_legacy)
-            _LOGGER.info("Removed obsolete translations_en.json")
-        except OSError as ex:
-            _LOGGER.debug("Could not remove translations_en.json: %s", ex)
+    await hass.async_add_executor_job(_remove_legacy_translation, _legacy)
 
     if not is_valid_ha_version():
         msg = (

@@ -148,6 +148,7 @@ from .const import (
     CONF_OAUTH_TOKEN,
     CONF_PING_PORT,
     CONF_POWER_ON_METHOD,
+    CONF_REPORT_ART_MODE_AS_OFF,
     CONF_REST_APP_LIST,
     CONF_REST_APP_POLL_INTERVAL,
     CONF_REST_PORT,
@@ -176,6 +177,7 @@ from .const import (
     DEFAULT_APP,
     DEFAULT_IP_CONTROL_POLL_INTERVAL,
     DEFAULT_PORT,
+    DEFAULT_REPORT_ART_MODE_AS_OFF,
     DEFAULT_REST_APP_LIST,
     DEFAULT_REST_APP_POLL_INTERVAL,
     DEFAULT_SOURCE_LIST,
@@ -826,6 +828,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     _rest_app_next_index = 0
     _rest_app_poll_interval = DEFAULT_REST_APP_POLL_INTERVAL
     _rest_app_last_poll: float | None = None
+    _report_art_mode_as_off = False
 
     def __init__(
         self,
@@ -2091,6 +2094,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if interval != self._rest_app_poll_interval:
             self._rest_app_poll_interval = interval
             self._rest_app_last_poll = None
+        self._report_art_mode_as_off = self._get_option(
+            CONF_REPORT_ART_MODE_AS_OFF, DEFAULT_REPORT_ART_MODE_AS_OFF
+        )
         self._use_st_status = self._get_option(CONF_USE_ST_STATUS_INFO, True)
         self._use_channel_info = self._get_option(CONF_USE_ST_CHANNEL_INFO, True)
         self._st_poll_on_interval = self._get_option(
@@ -3560,8 +3566,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             if not self._default_source_used:
                 self._st_sources_loaded = True
 
-        # NB: We are checking properties, not attribute!
-        if self.state == MediaPlayerState.ON:
+        # Use physical state so artwork still gets app and volume updates.
+        if self._state == MediaPlayerState.ON and not self._power_off_in_progress():
             if self._delayed_set_source:
                 difference = (
                     dt_util.utcnow() - self._delayed_set_source_time
@@ -4329,6 +4335,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if self._power_off_in_progress():
             return MediaPlayerState.OFF
 
+        if (
+            self._report_art_mode_as_off
+            and self._state == MediaPlayerState.ON
+            and self._art_mode_is_on() is True
+        ):
+            return MediaPlayerState.OFF
+
         return self._state
 
     @property
@@ -4433,6 +4446,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Turn the media player on."""
         cmd_power_on = "KEY_POWER"
         cmd_power_art = "KEY_POWER"
+        if self._report_art_mode_as_off and self._art_mode_is_on() is True:
+            if set_art_mode:
+                return False
+            await self.async_send_command(cmd_power_art)
+            return True
+
         if set_art_mode:
             if self._ws.artmode_status == ArtModeStatus.Off:
                 # art mode from on
@@ -4585,6 +4604,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     async def async_set_art_mode(self):
         """Turn the media player on setting in art mode."""
+        if self._report_art_mode_as_off and self._art_mode_is_on() is True:
+            return
         if (
             self._state == MediaPlayerState.ON
             and self.support_art_mode == ArtModeSupport.PARTIAL
@@ -5411,7 +5432,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         running_app = DEFAULT_APP
         self._delayed_set_source = None
 
-        if not assume_on and self.state != MediaPlayerState.ON:
+        if (
+            not assume_on
+            and self.state != MediaPlayerState.ON
+            and not (self._report_art_mode_as_off and self._art_mode_is_on() is True)
+        ):
             if await self._async_turn_on():
                 self._delayed_set_source = source
                 self._delayed_set_source_time = dt_util.utcnow()
