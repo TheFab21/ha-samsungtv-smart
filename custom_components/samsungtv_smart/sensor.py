@@ -36,6 +36,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from . import async_get_samsungtv_api_key
 from .api.art import SamsungTVAsyncArt, _DeviceLoggerAdapter
@@ -2615,6 +2616,53 @@ class SmartThingsBrightnessIntensitySensor(SensorEntity):
             _LOGGER.warning("Error updating brightness intensity sensor: %s", ex)
 
 
+# Key the power coordinator adds to the SmartThings powerConsumption dict: True
+# while the TV is off and the last report is only being held.
+POWER_DATA_TV_OFF = "_tv_off"
+
+# A report whose window ended longer ago than this is too old to stand for the
+# current draw. Samsung TVs report every ~15 min (measured: 15 min 11 s on a
+# 2025 Frame), so this allows for one missed report.
+POWER_REPORT_MAX_AGE = timedelta(minutes=35)
+# Longest window accepted as a real report. Right after a restart or a power
+# change SmartThings sent start = 1970-01-01T00:00:00Z (an empty field), which
+# read as a 56-year window; reports are ~15 min, so anything this long is not one.
+POWER_REPORT_MAX_WINDOW = timedelta(hours=2)
+
+
+def power_report_window(data: dict) -> tuple | None:
+    """Return (start, end) of a powerConsumption report, as aware datetimes."""
+    start = dt_util.parse_datetime(str(data.get("start") or ""))
+    end = dt_util.parse_datetime(str(data.get("end") or ""))
+    if start is None or end is None or end <= start:
+        return None
+    if end - start > POWER_REPORT_MAX_WINDOW:
+        return None
+    return start, end
+
+
+def derive_average_power(data: dict, now=None) -> float | None:
+    """Average draw in W over the last report window, from deltaEnergy.
+
+    Samsung TVs fill ``deltaEnergy`` (Wh over the report window) but leave the
+    instantaneous ``power`` at 0 — measured on a QE43LS03FAUXXH in Art Mode:
+    power 0 W for hours while every 15-minute report carried ~13.4 Wh (≈53 W).
+    Returns None when there is nothing trustworthy to derive from: TV off, no
+    window, no energy, or a report too old to describe the present.
+    """
+    if data.get(POWER_DATA_TV_OFF):
+        return None
+    window = power_report_window(data)
+    delta = data.get("deltaEnergy")
+    if window is None or not isinstance(delta, (int, float)) or delta <= 0:
+        return None
+    start, end = window
+    if (now or dt_util.utcnow()) - end > POWER_REPORT_MAX_AGE:
+        return None
+    hours = (end - start).total_seconds() / 3600
+    return round(delta / hours, 1)
+
+
 class SmartThingsPowerCoordinator(DataUpdateCoordinator):
     """One SmartThings ``get_device_status`` per cycle for all power sensors.
 
@@ -2685,6 +2733,9 @@ class SmartThingsPowerCoordinator(DataUpdateCoordinator):
             for field in self._INSTANTANEOUS_FIELDS:
                 if field in data:
                     data[field] = 0
+            # The last deltaEnergy report is kept, but must not be turned into
+            # a power draw while the TV is off.
+            data[POWER_DATA_TV_OFF] = True
             return data
         # In Art Mode the Frame draws power but the draw barely changes, so poll
         # at a fixed slow keepalive (ST_POLL_OFF_INTERVAL) rather than the — often
@@ -2715,7 +2766,7 @@ class SmartThingsPowerCoordinator(DataUpdateCoordinator):
         report = main.get("powerConsumptionReport", {}).get("powerConsumption")
         value = getattr(report, "value", None)
         if isinstance(value, dict):
-            return value
+            return {**value, POWER_DATA_TV_OFF: False}
         return self.data or {}
 
 
@@ -2747,11 +2798,15 @@ class SmartThingsPowerConsumptionSensor(ChangedCoordinatorEntity, SensorEntity):
             UnitOfEnergy.KILO_WATT_HOUR,
             1000,  # SmartThings reports Wh; HA wants kWh
         ),
+        # Energy used during the last report window, NOT a running meter: a
+        # TOTAL with last_reset = the window start is what lets the recorder
+        # add each report (TOTAL_INCREASING read a steady ~13 Wh per report as
+        # "no change" and the Energy dashboard stayed near zero).
         "deltaEnergy": (
             "energy_difference",
             "Energy difference",
             SensorDeviceClass.ENERGY,
-            SensorStateClass.TOTAL_INCREASING,
+            SensorStateClass.TOTAL,
             UnitOfEnergy.KILO_WATT_HOUR,
             1000,
         ),
@@ -2809,13 +2864,44 @@ class SmartThingsPowerConsumptionSensor(ChangedCoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Return this field's value from the shared coordinator data."""
-        raw = (self.coordinator.data or {}).get(self._field)
+        data = self.coordinator.data or {}
+        raw = data.get(self._field)
+        if self._field == "power" and not raw:
+            derived = derive_average_power(data)
+            if derived is not None:
+                return derived
         if raw is None:
             return None
         try:
             return round(raw / self._divisor, 3)
         except (TypeError, ValueError):
             return None
+
+    @property
+    def last_reset(self):
+        """Start of the report window, for the per-window deltaEnergy."""
+        if self._field != "deltaEnergy":
+            return None
+        window = power_report_window(self.coordinator.data or {})
+        return window[0] if window else None
+
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        """Report window for deltaEnergy; say when power is derived."""
+        data = self.coordinator.data or {}
+        if self._field == "deltaEnergy":
+            window = power_report_window(data)
+            if window is None:
+                return None
+            return {
+                "report_start": window[0].isoformat(),
+                "report_end": window[1].isoformat(),
+            }
+        if self._field != "power":
+            return None
+        if data.get("power") or derive_average_power(data) is None:
+            return None
+        return {"source": "average over the last report (deltaEnergy)"}
 
 
 # Consecutive -32002 answers on a state READ before it is escalated to a
