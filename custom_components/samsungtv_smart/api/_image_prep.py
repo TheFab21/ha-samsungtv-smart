@@ -37,23 +37,40 @@ def panel_size(resolution: str | None) -> tuple[int, int]:
     return (width, height) if width > 0 and height > 0 else DEFAULT_PANEL
 
 
-def fit_box(image_size: tuple[int, int], panel: tuple[int, int]) -> tuple[int, int]:
-    """Bounding box for an image, matched to the panel's orientation.
+def fit_box(
+    image_size: tuple[int, int],
+    panel: tuple[int, int],
+    rotation: str | None = None,
+) -> tuple[int, int]:
+    """Bounding box for an image on a panel hung as ``rotation``.
 
-    The panel's long and short edges are mapped onto the image's own long and
-    short edges. A landscape photo on a 3840x2160 Frame is capped at 3840x2160;
-    a portrait one at 2160x3840 — which is what a portrait-mounted Frame (the
-    art app has portrait mattes, and IP Control a display rotator) displays.
-    Capping a portrait image at 2160 tall instead would throw away half its
-    detail.
+    The box follows how the Frame is mounted, not the image. A landscape-hung
+    3840x2160 Frame stores a portrait photo taller than 2160 without an error
+    but never displays it: select_image, and a slideshow of its category, get
+    no answer at all. Measured on a 2025 Frame (QE43LS03FAUXXH, landscape):
+    1952x2164 and 2160x3837 uploads stayed off screen, 3837x2160 and the same
+    photo as SmartThings sent it (1623x1800) showed at once. So:
+
+    - ``"portrait"`` (the art app's get_current_rotation): the panel's short
+      edge across, long edge down - 2160x3840 - so a portrait-mounted Frame
+      keeps a portrait photo's full detail;
+    - ``"landscape"``, or unknown: 3840x2160. A portrait photo is shrunk to
+      2160 tall, which every Frame displays; unknown errs on the side that
+      shows the image rather than the one that can lose it.
+
+    ``image_size`` is kept for callers; the box no longer depends on it.
     """
+    del image_size  # the panel's mounting decides the box, not the image
     long_edge, short_edge = max(panel), min(panel)
-    width, height = image_size
-    return (short_edge, long_edge) if height > width else (long_edge, short_edge)
+    if rotation == "portrait":
+        return (short_edge, long_edge)
+    return (long_edge, short_edge)
 
 
 def normalise_for_frame(
-    data: bytes, panel: tuple[int, int] = DEFAULT_PANEL
+    data: bytes,
+    panel: tuple[int, int] = DEFAULT_PANEL,
+    rotation: str | None = None,
 ) -> tuple[bytes, str]:
     """Return (jpeg_bytes, ".jpg") the TV can decode. Blocking — use executor.
 
@@ -75,7 +92,7 @@ def normalise_for_frame(
     with Image.open(io.BytesIO(data)) as img:
         img = ImageOps.exif_transpose(img)  # honour rotation, then drop EXIF
         rgb = img.convert("RGB")
-        box = fit_box(rgb.size, panel)
+        box = fit_box(rgb.size, panel, rotation)
         if rgb.width > box[0] or rgb.height > box[1]:
             rgb.thumbnail(box, Image.LANCZOS)
         out = io.BytesIO()
