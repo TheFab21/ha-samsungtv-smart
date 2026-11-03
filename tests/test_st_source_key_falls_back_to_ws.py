@@ -43,6 +43,7 @@ if "pysmartthings" not in sys.modules:
 from custom_components.samsungtv_smart import media_player as mp  # noqa: E402
 from custom_components.samsungtv_smart.api.ipcontrol import (  # noqa: E402
     SamsungIPControlError,
+    SamsungIPControlUnsupportedError,
 )
 
 Device = mp.SamsungTVDevice
@@ -90,6 +91,7 @@ def test_only_input_keys_claim_a_readback_value():
 def _device(*, st=None, input_source="TV", ip_control=True, send_ok=True, raises=False):
     device = object.__new__(Device)
     device._log = MagicMock()
+    device._panel_may_be_ambient = MagicMock(return_value=False)
     device._st = st
     device.sent = []
 
@@ -104,7 +106,12 @@ def _device(*, st=None, input_source="TV", ip_control=True, send_ok=True, raises
             raise SamsungIPControlError("transport failure")
         return {"inputSource": input_source}
 
-    client = SimpleNamespace(async_get_tv_states=_states)
+    async def _unsupported(_value):
+        raise SamsungIPControlUnsupportedError("not implemented")
+
+    client = SimpleNamespace(
+        async_get_tv_states=_states, async_set_input_source=_unsupported
+    )
     device._get_ip_control_client = lambda: client if ip_control else None
     return device
 
