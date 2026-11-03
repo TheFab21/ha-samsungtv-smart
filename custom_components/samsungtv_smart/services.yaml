@@ -564,6 +564,8 @@ art_set_slideshow:
               value: "1d"
             - label: "7 days"
               value: "7d"
+            - label: "Off (stop the slideshow)"
+              value: "off"
     shuffle:
       name: Shuffle
       description: Enable shuffle mode
@@ -573,14 +575,34 @@ art_set_slideshow:
         boolean:
     category_id:
       name: Category
-      description: Category number (2=My Photos, 4=Favorites, 8=Store)
+      description: >-
+        What to rotate. Pick a My Collection category, or type a full
+        Art-app category id to play an Art Store collection (the same thing
+        the TV's own "Display All" does) — e.g. the slideshow_category_id or
+        current_category_id attribute of the Frame Art sensor.
       required: false
-      default: 2
+      default: "2"
+      example: "4"
       selector:
-        number:
-          min: 2
-          max: 8
-          step: 2
+        select:
+          custom_value: true
+          options:
+            - label: "My Photos"
+              value: "2"
+            - label: "Favourites"
+              value: "4"
+            - label: "Purchased / Store artworks"
+              value: "8"
+    sub_category_id:
+      name: Sub-category
+      description: >-
+        Art Store collection sub-category (e.g. "STORE22_C0013_SC_001"). Only
+        used together with a full Art Store category id; leave empty for
+        My Collection categories.
+      required: false
+      example: "STORE22_C0013_SC_001"
+      selector:
+        text:
 
 art_set_auto_rotation:
   name: Set Auto Rotation
@@ -617,6 +639,8 @@ art_set_auto_rotation:
               value: "1d"
             - label: "7 days"
               value: "7d"
+            - label: "Off (stop the slideshow)"
+              value: "off"
     shuffle:
       name: Shuffle
       description: Enable shuffle mode
@@ -626,12 +650,32 @@ art_set_auto_rotation:
         boolean:
     category_id:
       name: Category
-      description: Category number (2=My Photos, 4=Favorites, 8=Store)
+      description: >-
+        What to rotate. Pick a My Collection category, or type a full
+        Art-app category id to play an Art Store collection (the same thing
+        the TV's own "Display All" does) — e.g. the slideshow_category_id or
+        current_category_id attribute of the Frame Art sensor.
       required: false
-      default: 2
+      default: "2"
+      example: "4"
       selector:
-        number:
-          min: 2
-          max: 8
-          step: 2
+        select:
+          custom_value: true
+          options:
+            - label: "My Photos"
+              value: "2"
+            - label: "Favourites"
+              value: "4"
+            - label: "Purchased / Store artworks"
+              value: "8"
+    sub_category_id:
+      name: Sub-category
+      description: >-
+        Art Store collection sub-category (e.g. "STORE22_C0013_SC_001"). Only
+        used together with a full Art Store category id; leave empty for
+        My Collection categories.
+      required: false
+      example: "STORE22_C0013_SC_001"
+      selector:
+        text:
 

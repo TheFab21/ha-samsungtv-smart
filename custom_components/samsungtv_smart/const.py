@@ -332,6 +332,7 @@ SERVICE_SEND_TEXT = "send_text"
 # Frame Art Service Attributes
 ATTR_CONTENT_ID = "content_id"
 ATTR_CATEGORY_ID = "category_id"
+ATTR_SUB_CATEGORY_ID = "sub_category_id"
 ATTR_FILE_PATH = "file_path"
 ATTR_FILE_TYPE = "file_type"
 ATTR_TEXT = "text"
