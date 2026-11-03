@@ -18,6 +18,8 @@ with an explicit option, and each one is undone by the script:
   --switch-source NAME     launch.extsource: to that input, then back
   --apps                   get.apptiles / recent / recommended (read-only)
   --icons                  fetch a few app/input icons, two ways (read-only)
+  --extras                 tile functions/previews, Multi View, rotator (read-only)
+  --vconf-list             try to list vconf keys by prefix (read-only)
   --launch-app NAME        launch.app: open that app tile, then back to TV
   --vconf KEY / --vconf-defaults
                            request.vconf.info reads (read-only)
@@ -32,7 +34,9 @@ Run it on the Home Assistant host, where aiohttp is already installed, e.g.:
 The container name depends on the install (`docker ps` lists it): a
 Compose project named homeassistant gives homeassistant-home-assistant.
 
-While it listens (90 s by default), use the remote: change the picture mode,
+The channel exists in normal viewing only: with the TV off or in Art Mode
+the TV closes it within seconds, and the probe says so. While it listens
+(90 s by default), use the remote: change the picture mode,
 switch input (TV -> HDMI -> TV), open the quick settings. Everything received
 is printed and saved to /config/mobilebff_probe_<time>.json (the token is not
 written to it).
@@ -433,6 +437,65 @@ class Probe:
             if answer is not None:
                 self._save_image(f"bff_{label}", answer)
 
+    async def vconf_list(self, ws) -> None:
+        """Ask for key prefixes, untyped and typed, hoping for a key list.
+
+        The decompiled firmware names request.vconf.info.int/.string/.bool
+        only; an unknown key answers "0" / "" / "False" like a real one, so
+        keys cannot be guessed. If the bare request, or a prefix as the key,
+        returns a list of sub-keys, the light-sensor key could be found.
+        Read-only; any answer is recorded as is.
+        """
+        prefixes = ["", "memory", "memory/", "db", "db/", "memory/sensor", "db/menu"]
+        print("\n== vconf key listing attempts")
+        for request in (
+            "request.vconf.info",
+            "request.vconf.info.string",
+            "request.vconf.list",
+            "get.vconf.list",
+        ):
+            for prefix in prefixes:
+                self.latest.pop(request, None)
+                await self._send(ws, request, {"key": prefix})
+                answer = await self._wait_for(request, timeout=3)
+                text = json.dumps((answer or {}).get("response"), ensure_ascii=False)
+                print(f"   {request} key={prefix!r}: {text[:200]}")
+                if answer is None and prefix == "":
+                    # No answer at all for this request name: skip its prefixes.
+                    break
+
+    async def read_extras(self, ws) -> None:
+        """The remaining read requests of the decompiled list; read-only.
+
+        get.apptile.functions / get.apptile.previews per app tile (with the
+        tile id as requestId, the shape launch.app accepted), the saved
+        Multi View layouts, the rotating-accessory probe and the AI Mode
+        flags. Nothing here changes the TV.
+        """
+        tiles = (self.latest.get("get.apptiles") or {}).get("response") or []
+        wanted = [t for t in tiles if t.get("title") in ("Netflix", "YouTube")]
+        wanted = wanted or tiles[:2]
+        print("\n== Extras: tile functions/previews, Multi View, rotator, AI")
+        for tile in wanted:
+            for request in ("get.apptile.functions", "get.apptile.previews"):
+                self.latest.pop(request, None)
+                await self._send(ws, request, {"requestId": tile.get("appId")})
+                answer = await self._wait_for(request, timeout=6)
+                text = json.dumps((answer or {}).get("response"), ensure_ascii=False)
+                print(f"   {request} {tile.get('title')}: {text[:300]}")
+        for request in (
+            "get.multiview.saved.tiles",
+            "get.RotatorSupport",
+            "get.aitech.support",
+            "get.aitech.enable",
+            "get.gamepad.support",
+        ):
+            self.latest.pop(request, None)
+            await self._send(ws, request)
+            answer = await self._wait_for(request, timeout=6)
+            text = json.dumps((answer or {}).get("response"), ensure_ascii=False)
+            print(f"   {request}: {text[:300]}")
+
     async def icon_variants(self, ws) -> None:
         """Try get.icon with several parameter shapes for one app tile.
 
@@ -610,6 +673,12 @@ class Probe:
                 await self.switch_source(ws, actions.switch_source)
             if actions.apps or actions.launch_app or actions.icons:
                 await self.read_apps(ws)
+            if actions.vconf_list:
+                await self.vconf_list(ws)
+            if actions.extras:
+                if not (actions.icons or actions.apps or actions.launch_app):
+                    await self.read_apps(ws)
+                await self.read_extras(ws)
             if actions.icon_variants:
                 if not actions.icons and not actions.apps:
                     await self.read_apps(ws)
@@ -623,7 +692,18 @@ class Probe:
                 f"\n== Listening {self.listen:.0f} s: change the picture mode, "
                 "switch input, open the quick settings now.\n"
             )
+            started = time.monotonic()
             await asyncio.wait({reader}, timeout=self.listen)
+            if reader.done():
+                # The TV closed the channel (aiohttp ends the read loop quietly
+                # on a close frame). It does when the TV goes to standby or Art
+                # Mode: the channel exists in normal viewing only.
+                print(
+                    f"\n! The TV closed the channel after "
+                    f"{time.monotonic() - started:.1f} s of listening "
+                    f"(close code {ws.close_code}, error {ws.exception()!r}). "
+                    "Is the TV still on, in normal viewing (not off, not Art Mode)?"
+                )
         finally:
             reader.cancel()
             await ws.close()
@@ -677,6 +757,17 @@ async def main() -> int:
         metavar="NAME",
         help="launch.app: open the app tile whose title contains NAME, then go "
         "back to the TV input",
+    )
+    parser.add_argument(
+        "--vconf-list",
+        action="store_true",
+        help="try to list vconf keys (bare request, key prefixes); read-only",
+    )
+    parser.add_argument(
+        "--extras",
+        action="store_true",
+        help="tile functions/previews, saved Multi View layouts, rotator and AI "
+        "flags; read-only",
     )
     parser.add_argument(
         "--icon-variants",

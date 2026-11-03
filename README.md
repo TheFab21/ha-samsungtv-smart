@@ -21,6 +21,14 @@ picture calibration, speaker output and a reboot button work without the
 cloud — on 2020+ sets and on older ones, which use a different port that is
 tried automatically.
 
+Since 9.0 it also uses the TV's own **quick-settings channel**, the local one
+Samsung's SmartThings app talks to, which needs no pairing. Over it the
+picture mode list of the current input, the sound mode and ten quick settings
+are read and set locally, inputs and home-screen apps are opened locally, and
+the media player shows the icon of the app on screen. With IP Control
+alongside, **a Frame works day to day without SmartThings** — useful now that
+SmartThings API access is a paid plan.
+
 On a **Frame** it adds Art Mode proper: browse and upload artwork, mattes,
 slideshow, brightness and colour temperature, a gallery card and an upload
 card, uploads re-encoded to suit the panel — and optional **artwork
@@ -73,6 +81,10 @@ you can tune.
 
 - Full Samsung Smart TV (Tizen OS) control via WebSocket
 - Power on/off, volume, source selection, app launching
+- **Local quick settings, no cloud** — picture mode (the real per-input list, FILMMAKER MODE included), sound mode and ten quick-setting selects, read and set over the TV's local quick-settings channel; a change made with the remote shows within a second
+- **Local inputs and apps** — inputs switch locally, the apps on the TV's home screen fill the source list and open locally, and the media player shows the icon of the app on screen
+- **Source `select` entity** mirroring the media player's source list (the Home Assistant mobile app's media dialog shows only the current source)
+- **IP Control (local JSON-RPC)** — power, input, channel number, absolute volume, picture calibration, speaker output, reboot and expert picture settings without SmartThings; 2019-and-earlier sets on their older port are tried automatically
 - SmartThings integration for enhanced status polling (channel info, picture mode, sound mode…)
 - Background Philips Hue Sync start/stop control on supported Samsung TVs
 - **Three SmartThings authentication methods**: OAuth2, Personal Access Token, or existing ST integration
@@ -80,7 +92,8 @@ you can tune.
 - **Self-healing Art WebSocket** — auto-reconnect + a zombie-channel circuit breaker fix the long-standing "Art Mode turns off randomly, needs a reload" problem
 - **Artwork identification (opt-in)** — reverse image search (Google Vision) confirmed by an LLM (Claude / OpenAI / Gemini) shows the title, artist, date and bio of the art on your Frame, in 5 languages
 - New dedicated entities: Art Mode switch and Frame Art sensor
-- **Picture mode control** — `select` entity with dual-strategy (SmartThings API + WS fallback for HDMI inputs)
+- **Picture mode control** — `select` entity fed locally by the TV first, then SmartThings, then IP Control
+- **Power and energy sensors** (SmartThings) that fill the Energy dashboard correctly, including on TVs that report energy only per report window
 - **Audio output selection** — `select` entity for TV speaker / external / **Q-Symphony** when a compatible Samsung soundbar is paired
 - **Improved source detection** — REST fallback for Frame 2024 TVs where `supportedInputSources` returns empty; supports custom source names
 - **App name resolution** — unknown SmartThings app IDs are parsed and resolved to display names
@@ -557,6 +570,9 @@ The **Requires** column below says what each one needs.
 | `button.<tv_name>_art_mode_brightness_reset` | Button | Frame TV | Reset the Art Mode brightness to the TV default (same as the Art Mode menu entry) |
 | `sensor.<tv_name>_art_orientation` | Sensor | Frame TV | Panel orientation reported by the art app: `landscape` / `portrait` (diagnostic) |
 | `sensor.<tv_name>_art_metadata` | Sensor | Frame TV + [Artwork Identification](#artwork-identification) | Title, artist and description of the current artwork |
+| `sensor.<tv_name>_power` / `_energy` / `_energy_difference` / `_power_energy` / `_energy_saved` | Sensor | SmartThings (TV reports `powerConsumptionReport`) | Power (W) and energy (kWh), usable in the Energy dashboard. When the TV reports 0 W, *Power* shows the average draw over the last report window (attribute `source` says so); *Energy difference* is the energy of one report window (`total`, `last_reset` = window start, attributes `report_start` / `report_end`). Not polled while the TV is off |
+| `sensor.<light_sensor>_illuminance` / `_brightness_intensity` | Sensor | SmartThings (Frame with a light sensor) | Ambient light in lux and the TV's brightness level, on the light sensor's own SmartThings child device; stay live while the TV is off |
+| `sensor.<tv_name>_input_source` / `_picture_mode` / `_sound_mode` / `_picture_size` / `_mute` / `_volume` | Sensor | **IP Control** | Read-only TV state from one shared IP Control poll; unavailable while the TV is off |
 
 Where:
 
@@ -602,6 +618,8 @@ In addition to standard media player attributes, the following are available:
 - `sound_mode`, `sound_mode_list`
 - `channel`, `channel_name`, `channel_number`
 - `app_name`, `app_id`, `source`, `source_list`
+- `input_source` — the physical input (`HDMI1`, `TV`…) when local status is
+  available, next to the visible app in `app_name` / `app_id`
 - `ip_address`, `config_entry_id`
 - `screen_resolution` — the panel's native resolution (e.g. `3840x2160`), used
   to fit uploaded images to the screen
@@ -881,7 +899,7 @@ These services require a Samsung **Frame TV** with Art Mode. They are called on 
 | `samsungtv_smart.art_set_favourite` | Add/remove artwork from favourites |
 | `samsungtv_smart.art_get_device_info` | Return the art app's capability flags, the panel orientation and the Art Mode picture type |
 | `samsungtv_smart.art_set_picture_mode` | Set the Art Mode picture type (raw TV value; read the current one first with `art_get_device_info`) |
-| `samsungtv_smart.art_set_slideshow` | Configure slideshow (duration, shuffle, category). Alias of `art_set_auto_rotation` — auto-routed to whichever API the TV speaks |
+| `samsungtv_smart.art_set_slideshow` | Configure slideshow (duration or `off`, shuffle, category — a My Collection category or an Art Store collection's full id). Reports an error when the TV doesn't acknowledge, and returns the status read back afterwards. Alias of `art_set_auto_rotation` — auto-routed to whichever API the TV speaks |
 | `samsungtv_smart.art_set_auto_rotation` | Configure auto-rotation (duration, shuffle, category). Alias of `art_set_slideshow` — works on older Frames that don't support the slideshow API |
 | `samsungtv_smart.art_restart_app` | Stop and relaunch the TV's built-in Art Mode app. Last resort for a Frame whose art app has stopped answering — see below |
 
@@ -947,14 +965,30 @@ data:
   category_id: 2
 ```
 
+**Play an Art Store collection** (what the TV's own *Display All* does). Use the
+collection's full id — the Frame Art sensor's `current_category_id` while one of
+its works is shown:
+
+```yaml
+action: samsungtv_smart.art_set_slideshow
+target:
+  entity_id: media_player.samsung_frame
+data:
+  duration: 1h
+  category_id: STORE22_C0003_SC_477
+```
+
 > **Note on Frame generations.** The slideshow feature uses different underlying
 > APIs depending on firmware: newer Frames (2024+) use `slideshow_status`, while
 > older Frames (≈2020–2021) only support `auto_rotation_status`. The integration
 > detects which one your TV speaks on first use and routes automatically, so
 > `art_set_slideshow` and `art_set_auto_rotation` are interchangeable aliases —
 > use either. `duration` accepts the presets (`3min`, `15min`, `1h`, `12h`, `1d`,
-> `7d`) or any integer number of minutes (e.g. `30`, `180`); some models reject
-> values outside their supported set.
+> `7d`) or any integer number of minutes (e.g. `30`, `180`), and `off` stops
+> the slideshow; some models reject values outside their supported set. A plain
+> number such as `12` becomes the My Collection category `MY-C0012`. On some
+> models the read-back can say `off` while a slideshow is in fact rotating, so
+> treat it as a hint.
 
 ---
 
