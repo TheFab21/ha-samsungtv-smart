@@ -212,11 +212,15 @@
           "ip_control_poll_interval": "IP Control interval (s)",
           "content_list_interval": "Art content list refresh interval (s)",
           "art_exit_source": "Source after leaving Art Mode",
-          "external_audio_entity": "External soundbar or receiver status entity"
+          "external_audio_entity": "External soundbar or receiver status entity",
+          "rest_app_list": "Additional apps to detect",
+          "rest_app_poll_interval": "Additional app refresh interval (s)"
         },
         "data_description": {
           "art_exit_source": "Input or app to switch to when Art Mode is turned off from Home Assistant (Art Mode switch or art_set_artmode). Leave empty to keep the TV's own behaviour: it goes back to its last source, often TV (Samsung TV Plus) on a Frame. Not applied when Art Mode is left with the remote. Needs a source the TV can reach: a list auto-discovered from SmartThings holds ST_ keys, which fall back to the equivalent WebSocket key (ST_HDMI3 -> KEY_HDMI3) when SmartThings is unavailable. Some models ignore the numbered HDMI keys; the log says so when the TV did not move.",
-          "external_audio_entity": "Optional: use an existing media player for actual volume and mute feedback while the TV uses external speakers. TV controls stay unchanged. Leave empty to use the TV readings. No additional polling is added. Select the actual soundbar or receiver, not a group or another entity that mirrors this TV."
+          "external_audio_entity": "Optional: use an existing media player for actual volume and mute feedback while the TV uses external speakers. TV controls stay unchanged. Leave empty to use the TV readings. No additional polling is added. Select the actual soundbar or receiver, not a group or another entity that mirrors this TV.",
+          "rest_app_list": "Map display names to native Tizen app IDs for apps missing from automatic discovery. Leave empty to disable additional REST status checks.",
+          "rest_app_poll_interval": "Apps with a recent reading from the normal tracker need no extra checks. Other apps refresh every 30 seconds by default, with up to 120 scheduled checks per app per hour. Results are cached between refreshes; source changes and Art Mode events can refresh sooner. An empty app list adds no requests."
         }
       },
       "save_exit": {
@@ -239,7 +243,8 @@
       "invalid_tv_list": "Invalid list format. Please use valid JSON format.",
       "ip_control_pair_failed": "Pairing failed. Make sure the TV is on and in normal viewing (not Art Mode), and that IP Remote is enabled, then try again.",
       "ip_control_unreachable": "Could not reach the TV on port 1516 -- nothing is listening there. This model most likely does not support IP Control; the TV's state and the IP Remote setting are not the cause. Only the backlight, colour tone, picture calibration and reboot entities depend on it.",
-      "ip_control_no_host": "No host address is configured for this TV."
+      "ip_control_no_host": "No host address is configured for this TV.",
+      "invalid_rest_app_list": "Enter unique display names and native app IDs using letters, digits, dots, underscores or hyphens."
     }
   },
   "application_credentials": {
