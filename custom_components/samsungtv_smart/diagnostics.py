@@ -14,6 +14,7 @@ from .const import (
     CONF_ART_VISION_API_KEY,
     CONF_IP_CONTROL_TOKEN,
     CONF_OAUTH_TOKEN,
+    DATA_ST_POWER,
     DOMAIN,
 )
 
@@ -41,6 +42,10 @@ async def async_get_config_entry_diagnostics(
     yaml_data = hass.data[DOMAIN].get(entry.unique_id, {})
     if yaml_data:
         diag_data["config_data"] = async_redact_data(yaml_data, TO_REDACT)
+
+    power = _async_power_report(hass, entry)
+    if power is not None:
+        diag_data["smartthings_power_report"] = power
 
     device_id = entry.data.get(CONF_ID, entry.entry_id)
     hass_data = _async_device_ha_info(hass, device_id)
@@ -110,3 +115,27 @@ def _async_device_ha_info(hass: HomeAssistant, device_id: str) -> dict | None:
         }
 
     return data
+
+
+@callback
+def _async_power_report(hass: HomeAssistant, entry: ConfigEntry) -> dict | None:
+    """The raw SmartThings powerConsumptionReport the power sensors read.
+
+    The sensors only show derived numbers; without the raw report (start, end,
+    deltaEnergy, power, energy ...) a wrong power or energy reading cannot be
+    traced to what the TV actually sent. It holds no credentials.
+    """
+    coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id, {}).get(DATA_ST_POWER)
+    if coordinator is None:
+        return None
+    return {
+        "last_update_success": coordinator.last_update_success,
+        "report": {
+            key: (
+                value
+                if isinstance(value, (str, int, float, bool, type(None)))
+                else str(value)
+            )
+            for key, value in (coordinator.data or {}).items()
+        },
+    }

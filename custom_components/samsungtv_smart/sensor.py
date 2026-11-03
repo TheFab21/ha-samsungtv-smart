@@ -66,6 +66,7 @@ from .const import (
     DATA_ART_API,
     DATA_CFG,
     DATA_IP_CONTROL_STATE_COORDINATOR,
+    DATA_ST_POWER,
     DEFAULT_CONTENT_LIST_INTERVAL,
     DEFAULT_IP_CONTROL_POLL_INTERVAL,
     DEFAULT_PORT,
@@ -486,6 +487,10 @@ async def async_setup_entry(  # noqa: C901
                         power_coordinator.async_request_refresh(),
                         f"st_power_initial_refresh_{entry.entry_id}",
                     )
+                    # Diagnostics publish the raw report this coordinator holds.
+                    hass.data[DOMAIN].setdefault(entry.entry_id, {})[
+                        DATA_ST_POWER
+                    ] = power_coordinator
             except Exception as ex:
                 _LOGGER.debug("Could not check power consumption capability: %s", ex)
 
