@@ -564,6 +564,8 @@ art_set_slideshow:
               value: "1d"
             - label: "7 days"
               value: "7d"
+            - label: "Off (stop the slideshow)"
+              value: "off"
     shuffle:
       name: Shuffle
       description: Enable shuffle mode
@@ -573,14 +575,33 @@ art_set_slideshow:
         boolean:
     category_id:
       name: Category
-      description: Category number (2=My Photos, 4=Favorites, 8=Store)
+      description: >-
+        What to rotate. Pick a My Collection category, or type an Art Store
+        collection's full id to play it (what the TV's own "Display All"
+        does) - the current_category_id attribute of the Frame Art sensor
+        while one of its works is shown, e.g. STORE22_C0003_SC_477.
       required: false
-      default: 2
+      default: "2"
+      example: "4"
       selector:
-        number:
-          min: 2
-          max: 8
-          step: 2
+        select:
+          custom_value: true
+          options:
+            - label: "My Photos"
+              value: "2"
+            - label: "Favourites"
+              value: "4"
+            - label: "Purchased / Store artworks"
+              value: "8"
+    sub_category_id:
+      name: Sub-category
+      description: >-
+        Passed through as the Art app's sub_category_id. Leave empty: a 2025
+        Frame plays a collection from its full id in Category alone.
+      required: false
+      example: ""
+      selector:
+        text:
 
 art_set_auto_rotation:
   name: Set Auto Rotation
@@ -617,6 +638,8 @@ art_set_auto_rotation:
               value: "1d"
             - label: "7 days"
               value: "7d"
+            - label: "Off (stop the slideshow)"
+              value: "off"
     shuffle:
       name: Shuffle
       description: Enable shuffle mode
@@ -626,12 +649,31 @@ art_set_auto_rotation:
         boolean:
     category_id:
       name: Category
-      description: Category number (2=My Photos, 4=Favorites, 8=Store)
+      description: >-
+        What to rotate. Pick a My Collection category, or type an Art Store
+        collection's full id to play it (what the TV's own "Display All"
+        does) - the current_category_id attribute of the Frame Art sensor
+        while one of its works is shown, e.g. STORE22_C0003_SC_477.
       required: false
-      default: 2
+      default: "2"
+      example: "4"
       selector:
-        number:
-          min: 2
-          max: 8
-          step: 2
+        select:
+          custom_value: true
+          options:
+            - label: "My Photos"
+              value: "2"
+            - label: "Favourites"
+              value: "4"
+            - label: "Purchased / Store artworks"
+              value: "8"
+    sub_category_id:
+      name: Sub-category
+      description: >-
+        Passed through as the Art app's sub_category_id. Leave empty: a 2025
+        Frame plays a collection from its full id in Category alone.
+      required: false
+      example: ""
+      selector:
+        text:
 
