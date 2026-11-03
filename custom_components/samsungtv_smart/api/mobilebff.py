@@ -320,6 +320,7 @@ class SamsungMobileBFF:
         self._listeners: list[Callable[[], None]] = []
         self._layer_listeners: list[Callable[[SettingLayer], None]] = []
         self._task: asyncio.Task | None = None
+        self._background_tasks: set[asyncio.Task] = set()
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._seq = 0
         self._pending: dict[str, asyncio.Future] = {}
@@ -623,10 +624,19 @@ class SamsungMobileBFF:
             return False
         # The input list has no change broadcast: read it again once the TV
         # has had time to switch (it showed the new input within 12 s).
-        asyncio.get_running_loop().call_later(
-            3, lambda: asyncio.ensure_future(self._refresh_sources())
-        )
+        asyncio.get_running_loop().call_later(3, self._schedule_source_refresh)
         return True
+
+    def _schedule_source_refresh(self) -> None:
+        """Start the delayed input re-read, keeping a reference to the task.
+
+        The event loop holds only a weak reference to tasks; one started with
+        a bare ensure_future and never stored can be garbage-collected before
+        it finishes.
+        """
+        task = asyncio.get_running_loop().create_task(self._refresh_sources())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def async_launch_app(self, tile_id: str) -> bool:
         """Open an app tile; True when the TV accepted it."""

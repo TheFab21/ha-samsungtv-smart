@@ -21,9 +21,25 @@ _LOGGER = logging.getLogger(__name__)
 
 THUMBNAIL_URL = "/api/samsungtv_smart/thumbnail"
 _CACHE_SUBDIR = ("frame_art", ".thumb_cache")
-_MIN_W = 64
-_MAX_W = 1024
 _DEFAULT_W = 400
+# The endpoint is unauthenticated and caches one file per (image, width): with
+# any width from 64 to 1024 accepted, anyone who can reach Home Assistant could
+# make it encode and store ~960 variants of every image under www. Widths are
+# snapped UP to these sizes, so each image has at most this many cached copies
+# and a configured thumbnail_width still gets at least what it asked for.
+WIDTH_BUCKETS = (128, 256, 400, 640, 1024)
+
+
+def snap_width(raw) -> int:
+    """Return the smallest bucket >= the requested width (default 400)."""
+    try:
+        width = int(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_W
+    for bucket in WIDTH_BUCKETS:
+        if width <= bucket:
+            return bucket
+    return WIDTH_BUCKETS[-1]
 
 
 class SamsungTVThumbnailView(HomeAssistantView):
@@ -52,13 +68,10 @@ class SamsungTVThumbnailView(HomeAssistantView):
         if not raw_path:
             return web.Response(status=400, text="missing path")
 
-        try:
-            width = int(request.query.get("w", _DEFAULT_W))
-        except (TypeError, ValueError):
-            width = _DEFAULT_W
-        width = max(_MIN_W, min(_MAX_W, width))
+        width = snap_width(request.query.get("w", _DEFAULT_W))
 
-        src = self._resolve(raw_path)
+        # realpath / isfile touch the disk: keep them off the event loop.
+        src = await self._hass.async_add_executor_job(self._resolve, raw_path)
         if src is None:
             return web.Response(status=404, text="not found")
 

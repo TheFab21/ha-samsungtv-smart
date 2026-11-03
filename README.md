@@ -643,8 +643,8 @@ the physical input ID, such as `HDMI1` or `TV`, when local status is available;
 
 ### Detecting Art Mode vs. watching TV
 
-A Frame is a **tri-state** device — standby, Art Mode, or actually being
-watched — while a `media_player` only has `on` and `off`:
+A Frame has three modes — standby, Art Mode, and normal viewing. By default,
+the media player reports them as follows:
 
 | the panel is | `media_player` state | `art_mode_status` |
 |---|---|---|
@@ -652,9 +652,11 @@ watched — while a `media_player` only has `on` and `off`:
 | showing artwork | `on` | `on` |
 | being watched | `on` | `off` |
 
-Art Mode reports `on` because the panel *is* powered: it answers commands,
-accepts uploads, and `turn_on` would do nothing. The third state lives in the
-attribute. To automate on "someone is actually watching":
+By default, Art Mode reports `on` because the panel *is* powered: it answers commands,
+accepts uploads, and `turn_on` would do nothing. The distinction lives in the
+attribute. The optional **Report media player off in Art Mode** setting below
+can instead report artwork as `off`. Without that option, automate on
+"someone is actually watching" as follows:
 
 ```yaml
 template:
@@ -671,6 +673,16 @@ The `delay_on` matters: waking from standby powers the panel *before*
 SmartThings cloud rather than local IP Control), so without it a TV waking
 straight into Art Mode briefly looks like someone switched it on. Debouncing
 the rise only keeps "turned off" instantaneous.
+
+### Optional off state during Art Mode
+
+Enable **Report media player off in Art Mode** to show the media player as `off`
+while artwork is displayed. `art_mode_status` remains `on`, and the Power switch
+still shows that the TV is physically on. Turning the media player on returns
+to normal viewing.
+
+The option is disabled by default. Status updates and controls continue while
+artwork is showing.
 
 ### Frame Art Sensor Attributes
 

@@ -66,6 +66,8 @@ class _Log:
 
 
 class _Device:
+    _report_art_mode_as_off = False
+
     def __init__(self, option=None, state=_State.OFF, standby_at=None):
         self._log = _Log()
         self._options = {"art_exit_source": option} if option is not None else {}
