@@ -391,7 +391,7 @@ Configure artwork slideshow.
 | `duration` | string | Yes | - | Rotation interval |
 | `shuffle` | boolean | No | `true` | Randomize order |
 | `category_id` | integer or string | No | `2` | My Collection number (2=My Photos, 4=Favourites, 8=Purchased/Store), or a full Art-app category id for an Art Store collection |
-| `sub_category_id` | string | No | - | Art Store collection sub-category; only with a full Art Store `category_id` |
+| `sub_category_id` | string | No | - | Passed through as the Art app's `sub_category_id`. Not needed on a 2025 Frame (pass the full collection id as `category_id`) |
 
 **Duration Options:** `3min`, `15min`, `1h`, `12h`, `1d`, `7d`, `off` — or any
 integer number of minutes (e.g. `30`, `180`; `0` also stops it). Some models
@@ -402,11 +402,10 @@ The response reports what the TV says **after** the write (`status`: `value`,
 acknowledge the request — so a source the TV accepted but does not play shows
 up instead of a bare `success: true`.
 
-**Playing an Art Store collection ("Display All" from HA).** Start the
-collection once from the TV (Art Store → collection → *Display All*), then read
-`slideshow_category_id` / `slideshow_sub_category_id` from the Frame Art sensor
-(or `current_category_id` while one of its works is on screen) and pass them
-back later:
+**Playing an Art Store collection ("Display All" from HA).** Pass the
+collection's full id as `category_id` — the `current_category_id` attribute of
+the Frame Art sensor while one of its works is on screen (e.g. after starting it
+once from the TV: Art Store → collection → *Display All*):
 
 ```yaml
 action: samsungtv_smart.art_set_slideshow
@@ -414,9 +413,15 @@ target:
   entity_id: media_player.samsung_frame
 data:
   duration: "15min"
-  category_id: "STORE22_C0013"
-  sub_category_id: "STORE22_C0013_SC_001"
+  category_id: "STORE22_C0003_SC_477"
 ```
+
+Verified on a 2025 Frame (QE43LS03FAUXXH): the TV confirmed
+`category_id: STORE22_C0003_SC_477`, `type: shuffleslideshow` in the read-back
+and moved on to a new work from that collection one interval later. Splitting
+the same id into `category_id: STORE22_C0003` + `sub_category_id:
+STORE22_C0003_SC_477` was acknowledged but read back empty and never played.
+`sub_category_id` is still passed through for firmwares that want it.
 
 ```yaml
 service: samsungtv_smart.art_set_slideshow

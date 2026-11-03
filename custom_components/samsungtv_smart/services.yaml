@@ -576,10 +576,10 @@ art_set_slideshow:
     category_id:
       name: Category
       description: >-
-        What to rotate. Pick a My Collection category, or type a full
-        Art-app category id to play an Art Store collection (the same thing
-        the TV's own "Display All" does) — e.g. the slideshow_category_id or
-        current_category_id attribute of the Frame Art sensor.
+        What to rotate. Pick a My Collection category, or type an Art Store
+        collection's full id to play it (what the TV's own "Display All"
+        does) - the current_category_id attribute of the Frame Art sensor
+        while one of its works is shown, e.g. STORE22_C0003_SC_477.
       required: false
       default: "2"
       example: "4"
@@ -596,11 +596,10 @@ art_set_slideshow:
     sub_category_id:
       name: Sub-category
       description: >-
-        Art Store collection sub-category (e.g. "STORE22_C0013_SC_001"). Only
-        used together with a full Art Store category id; leave empty for
-        My Collection categories.
+        Passed through as the Art app's sub_category_id. Leave empty: a 2025
+        Frame plays a collection from its full id in Category alone.
       required: false
-      example: "STORE22_C0013_SC_001"
+      example: ""
       selector:
         text:
 
@@ -651,10 +650,10 @@ art_set_auto_rotation:
     category_id:
       name: Category
       description: >-
-        What to rotate. Pick a My Collection category, or type a full
-        Art-app category id to play an Art Store collection (the same thing
-        the TV's own "Display All" does) — e.g. the slideshow_category_id or
-        current_category_id attribute of the Frame Art sensor.
+        What to rotate. Pick a My Collection category, or type an Art Store
+        collection's full id to play it (what the TV's own "Display All"
+        does) - the current_category_id attribute of the Frame Art sensor
+        while one of its works is shown, e.g. STORE22_C0003_SC_477.
       required: false
       default: "2"
       example: "4"
@@ -671,11 +670,10 @@ art_set_auto_rotation:
     sub_category_id:
       name: Sub-category
       description: >-
-        Art Store collection sub-category (e.g. "STORE22_C0013_SC_001"). Only
-        used together with a full Art Store category id; leave empty for
-        My Collection categories.
+        Passed through as the Art app's sub_category_id. Leave empty: a 2025
+        Frame plays a collection from its full id in Category alone.
       required: false
-      example: "STORE22_C0013_SC_001"
+      example: ""
       selector:
         text:
 
