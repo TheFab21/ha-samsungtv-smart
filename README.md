@@ -560,6 +560,7 @@ The **Requires** column below says what each one needs.
 | `number.<tv_name>_backlight` | Number | **IP Control** | Panel backlight level |
 | `number.<tv_name>_contrast` / `_brightness` / `_sharpness` / … | Number | **IP Control** | Expert picture calibration sliders (normal viewing only) |
 | `button.<tv_name>_reboot` | Button | **IP Control** | Reboot the TV |
+| `switch.<tv_name>_auto_hdr_remastering` / `_brightness_optimization` / `_motion_lighting` / `_auto_power_saving`, `select.<tv_name>_auto_motion_plus` / `_apply_picture_settings`, `number.<tv_name>_gamma_bt_1886` | Switch / Select / Number | **IP Control** | Expert picture and eco settings, each accepted live on a 2025 Frame (QN55LS03FAFXZA). **Disabled by default** — enable the ones you want. Normal viewing only (unavailable in Art Mode or while off). Picture size, gamma mode, white balance and the IP Control app list are left out on purpose: the TV refused their writes, offered one usable value, has no known safe ranges, or lists apps without ids it can launch |
 | `switch.<tv_name>_art_mode` | Switch | Frame TV | Toggle Art Mode on/off |
 | `sensor.<tv_name>_frame_art` | Sensor | Frame TV | Currently displayed artwork info |
 | `sensor.<tv_name>_personal` / `_store` / `_other` | Sensor | Frame TV | Thumbnail folder size (MB) per subdirectory, with a `file_list` attribute for gallery cards (auto-created in v7) |

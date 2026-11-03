@@ -60,6 +60,7 @@ from .const import (
     WS_PREFIX,
     ip_control_port,
 )
+from .ip_settings import IP_SELECTS, IPSetting, IPSettingEntity
 from .picture_mode_keys import (
     PICTURE_MODE_GENERATED_OPTION,
     picture_mode_ip_base,
@@ -175,6 +176,16 @@ async def async_setup_entry(
         )
         _LOGGER.debug(
             "IP Control color tone + speaker selects created for %s", device_name
+        )
+        # Expert picture selects (disabled by default; see ip_settings.py).
+        async_add_entities(
+            [
+                SamsungTVIPSettingSelect(
+                    hass, entry, host, device_name, device_unique_id, setting
+                )
+                for setting in IP_SELECTS
+            ],
+            False,
         )
 
     session = async_get_clientsession(hass)
@@ -2831,3 +2842,30 @@ class SamsungTVSourceSelect(SelectEntity):
             {"entity_id": self._mp_entity_id, "source": option},
             blocking=True,
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# IP Control expert picture selects (ip_settings.py)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class SamsungTVIPSettingSelect(IPSettingEntity, SelectEntity):
+    """An IP Control enum setting (Auto Motion Plus, apply-to-all-sources)."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Initialize the select."""
+        super().__init__(*args, **kwargs)
+        setting: IPSetting = self._setting
+        self._to_tv = dict(setting.options or {})
+        self._from_tv = {tv: key for key, tv in self._to_tv.items()}
+        self._attr_options = list(self._to_tv)
+        self._attr_current_option = None
+
+    def _apply(self, value) -> None:
+        self._attr_current_option = self._from_tv.get(value) if value else None
+
+    async def async_select_option(self, option: str) -> None:
+        """Send the option to the TV."""
+        if option not in self._to_tv:
+            raise HomeAssistantError(f"Unknown option {option!r}")
+        await self._async_write(self._to_tv[option])
