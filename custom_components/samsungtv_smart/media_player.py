@@ -123,6 +123,7 @@ from .const import (
     ATTR_SHOW,
     ATTR_SHUFFLE,
     ATTR_STATUS,
+    ATTR_SUB_CATEGORY_ID,
     ATTR_TEXT,
     ATTR_WAKE,
     AUTH_METHOD_OAUTH,
@@ -691,9 +692,8 @@ async def async_setup_entry(
             # anything not in the preset map.
             vol.Required(ATTR_DURATION): cv.string,
             vol.Optional(ATTR_SHUFFLE, default=True): cv.boolean,
-            vol.Optional(ATTR_CATEGORY_ID, default=2): vol.All(
-                vol.Coerce(int), vol.Range(2, 8)
-            ),
+            vol.Optional(ATTR_CATEGORY_ID, default=2): _SLIDESHOW_CATEGORY,
+            vol.Optional(ATTR_SUB_CATEGORY_ID): cv.string,
         },
         "async_art_set_slideshow",
         supports_response=SupportsResponse.OPTIONAL,
@@ -705,13 +705,49 @@ async def async_setup_entry(
             # values in minutes. See art_set_slideshow above for rationale.
             vol.Required(ATTR_DURATION): cv.string,
             vol.Optional(ATTR_SHUFFLE, default=True): cv.boolean,
-            vol.Optional(ATTR_CATEGORY_ID, default=2): vol.All(
-                vol.Coerce(int), vol.Range(2, 8)
-            ),
+            vol.Optional(ATTR_CATEGORY_ID, default=2): _SLIDESHOW_CATEGORY,
+            vol.Optional(ATTR_SUB_CATEGORY_ID): cv.string,
         },
         "async_art_set_auto_rotation",
         supports_response=SupportsResponse.OPTIONAL,
     )
+
+
+# Slideshow source: a My Collection number (2/4/8, the historical input) or a
+# full Art-app category id such as an Art Store collection ("STORE22_C0013").
+_SLIDESHOW_CATEGORY = vol.Any(
+    vol.All(vol.Coerce(int), vol.Range(min=1, max=99)),
+    vol.All(cv.string, vol.Length(min=1)),
+)
+
+
+_SLIDESHOW_DURATIONS = {
+    "off": 0,
+    "3min": 3,
+    "15min": 15,
+    "1h": 60,
+    "12h": 720,
+    "1d": 1440,
+    "7d": 10080,
+}
+
+
+def _parse_slideshow_duration(duration) -> int | None:
+    """Return a slideshow duration in minutes, or None if it is not one.
+
+    Accepts the presets above, a bare integer ('30', 30) or a minutes string
+    ('30min'). 0 / 'off' means stop the slideshow.
+    """
+    text = str(duration).strip().lower()
+    if text in _SLIDESHOW_DURATIONS:
+        return _SLIDESHOW_DURATIONS[text]
+    if text.endswith("min"):
+        text = text[:-3].strip()
+    try:
+        minutes = int(text)
+    except ValueError:
+        return None
+    return minutes if minutes >= 0 else None
 
 
 def _get_default_app_info(app_id):
@@ -7512,8 +7548,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self,
         duration_minutes: int,
         shuffle: bool,
-        category_id: int,
-    ) -> None:
+        category_id: int | str,
+        sub_category_id: str | None = None,
+    ) -> bool:
         """Route a slideshow SET call to whichever API the TV speaks.
 
         Called by both art_set_slideshow and art_set_auto_rotation —
@@ -7521,94 +7558,117 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         feature; the integration just sends the request to the
         endpoint the TV actually responds to (detected and persisted
         by the coordinator).
+
+        Returns whether the TV acknowledged the request.
         """
         active_api = self._get_active_slideshow_api()
         self._log.debug(
             "Frame Art: routing slideshow set via %r API "
-            "(duration=%d min, shuffle=%s, category=%d)",
+            "(duration=%d min, shuffle=%s, category=%s, sub_category=%s)",
             active_api,
             duration_minutes,
             shuffle,
             category_id,
+            sub_category_id,
         )
         if active_api == "auto_rotation":
-            await self._art_api.set_auto_rotation_status(
-                duration_minutes, shuffle, category_id
+            return await self._art_api.set_auto_rotation_status(
+                duration_minutes, shuffle, category_id, sub_category_id
             )
-        else:
-            await self._art_api.set_slideshow_status(
-                duration_minutes, shuffle, category_id
-            )
+        return await self._art_api.set_slideshow_status(
+            duration_minutes, shuffle, category_id, sub_category_id
+        )
+
+    async def _get_slideshow_via_active_api(self) -> dict | None:
+        """Read the slideshow status back from whichever API the TV speaks."""
+        if self._get_active_slideshow_api() == "auto_rotation":
+            return await self._art_api.get_auto_rotation_status()
+        return await self._art_api.get_slideshow_status()
 
     async def async_art_set_slideshow(
         self,
         duration: str,
         shuffle: bool = True,
-        category_id: int = 2,
+        category_id: int | str = 2,
+        sub_category_id: str | None = None,
     ) -> dict:
         """Configure slideshow settings.
 
         Duration accepts the named presets '3min', '15min', '1h', '12h',
         '1d', '7d', or any other integer-coercible string representing
-        minutes (e.g. '30', '30min', '180'). The set of durations the
-        TV actually supports varies by Frame model and firmware — values
-        outside the TV's supported set may be silently ignored by the TV.
+        minutes (e.g. '30', '30min', '180'); '0' or 'off' stops the
+        slideshow. The set of durations the TV actually supports varies
+        by Frame model and firmware — values outside the TV's supported
+        set may be silently ignored by the TV.
+
+        ``category_id`` is either a My Collection number (2 = My Photos,
+        4 = Favourites, 8 = purchased/Store) or a full Art-app category
+        id — together with ``sub_category_id`` that plays an Art Store
+        collection, which is what the TV's own "Display All" does.
 
         The request is routed to ``slideshow_status`` or
         ``auto_rotation_status`` depending on what the coordinator
-        detected the TV listens to.
+        detected the TV listens to. The response carries the status the
+        TV reports after the write, so a request the TV accepted but did
+        not apply is visible to the caller.
         """
         if not await self._ensure_frame_tv_check():
             self._log.warning("Frame TV art mode is not supported on this device")
             return {"error": "Frame TV not supported"}
 
-        # Convert string duration to minutes
-        duration_map = {
-            "3min": 3,
-            "15min": 15,
-            "1h": 60,
-            "12h": 720,
-            "1d": 1440,
-            "7d": 10080,
-        }
-
-        duration_minutes = duration_map.get(duration)
+        duration_minutes = _parse_slideshow_duration(duration)
         if duration_minutes is None:
-            # Try to parse as integer for backwards compatibility
-            try:
-                duration_minutes = int(duration)
-            except (ValueError, TypeError):
-                return {
-                    "error": (
-                        f"Invalid duration: {duration!r}. "
-                        "Use one of the presets (3min, 15min, 1h, 12h, 1d, 7d) "
-                        "or an integer number of minutes."
-                    )
-                }
+            return {
+                "error": (
+                    f"Invalid duration: {duration!r}. "
+                    "Use one of the presets (3min, 15min, 1h, 12h, 1d, 7d), "
+                    "an integer number of minutes, or 'off'."
+                )
+            }
 
         # Ensure TV is on and in Art Mode
         if not await self._ensure_art_mode_ready():
             return {"error": "Failed to turn on TV"}
 
         try:
-            await self._set_slideshow_via_active_api(
-                duration_minutes, shuffle, category_id
+            acknowledged = await self._set_slideshow_via_active_api(
+                duration_minutes, shuffle, category_id, sub_category_id
             )
-            return {
-                "success": True,
-                "duration": duration,
-                "duration_minutes": duration_minutes,
-                "api": self._get_active_slideshow_api(),
-            }
         except Exception as ex:
             self._log.error("Error setting slideshow: %s", ex)
             return {"error": str(ex)}
+
+        if not acknowledged:
+            return {
+                "error": "The TV did not acknowledge the slideshow request",
+                "api": self._get_active_slideshow_api(),
+            }
+
+        result = {
+            "success": True,
+            "duration": duration,
+            "duration_minutes": duration_minutes,
+            "api": self._get_active_slideshow_api(),
+        }
+        try:
+            status = await self._get_slideshow_via_active_api()
+        except Exception as ex:  # noqa: BLE001 - the write already succeeded
+            self._log.debug("Frame Art: slideshow read-back failed: %s", ex)
+            status = None
+        if isinstance(status, dict):
+            result["status"] = {
+                key: status[key]
+                for key in ("value", "category_id", "sub_category_id", "type")
+                if key in status
+            }
+        return result
 
     async def async_art_set_auto_rotation(
         self,
         duration: str,
         shuffle: bool = True,
-        category_id: int = 2,
+        category_id: int | str = 2,
+        sub_category_id: str | None = None,
     ) -> dict:
         """Configure auto rotation settings.
 
@@ -7617,55 +7677,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         feature. The integration routes the request to whichever
         underlying Samsung API the TV responds to
         (``slideshow_status`` or ``auto_rotation_status``).
-
-        Duration accepts the named presets '3min', '15min', '1h', '12h',
-        '1d', '7d', or any other integer-coercible string representing
-        minutes (e.g. '30', '30min', '180').
         """
-        if not await self._ensure_frame_tv_check():
-            self._log.warning("Frame TV art mode is not supported on this device")
-            return {"error": "Frame TV not supported"}
-
-        # Convert string duration to minutes
-        duration_map = {
-            "3min": 3,
-            "15min": 15,
-            "1h": 60,
-            "12h": 720,
-            "1d": 1440,
-            "7d": 10080,
-        }
-
-        duration_minutes = duration_map.get(duration)
-        if duration_minutes is None:
-            try:
-                duration_minutes = int(duration)
-            except (ValueError, TypeError):
-                return {
-                    "error": (
-                        f"Invalid duration: {duration!r}. "
-                        "Use one of the presets (3min, 15min, 1h, 12h, 1d, 7d) "
-                        "or an integer number of minutes."
-                    )
-                }
-
-        # Ensure TV is on and in Art Mode
-        if not await self._ensure_art_mode_ready():
-            return {"error": "Failed to turn on TV"}
-
-        try:
-            await self._set_slideshow_via_active_api(
-                duration_minutes, shuffle, category_id
-            )
-            return {
-                "success": True,
-                "duration": duration,
-                "duration_minutes": duration_minutes,
-                "api": self._get_active_slideshow_api(),
-            }
-        except Exception as ex:
-            self._log.error("Error setting auto rotation: %s", ex)
-            return {"error": str(ex)}
+        return await self.async_art_set_slideshow(
+            duration, shuffle, category_id, sub_category_id
+        )
 
     async def _async_switch_entity(self, power_on: bool):
         """Switch on/off related configure HA entity."""

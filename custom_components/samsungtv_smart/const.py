@@ -41,6 +41,7 @@ DATA_OPTIONS = "options"
 DATA_ENTRY_DATA = "entry_data"  # Snapshot of entry.data to detect data changes
 DATA_ART_API = "art_api"  # Shared Frame Art API instance
 DATA_MOBILEBFF = "mobilebff"  # Shared quick-settings channel (api/mobilebff.py)
+DATA_ST_POWER = "st_power"  # SmartThings power coordinator, for diagnostics
 DATA_ART_CACHE = "art_cache"  # Shared ArtIdentifyCache instance (per entry)
 DATA_IP_CONTROL_STATE_COORDINATOR = "ip_control_state_coordinator"
 CONF_IS_FRAME_TV = "is_frame_tv"  # Persisted flag: TV confirmed as Frame TV
@@ -334,6 +335,7 @@ SERVICE_SEND_TEXT = "send_text"
 # Frame Art Service Attributes
 ATTR_CONTENT_ID = "content_id"
 ATTR_CATEGORY_ID = "category_id"
+ATTR_SUB_CATEGORY_ID = "sub_category_id"
 ATTR_FILE_PATH = "file_path"
 ATTR_FILE_TYPE = "file_type"
 ATTR_TEXT = "text"
