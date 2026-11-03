@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_OFF
@@ -41,6 +42,12 @@ from .const import (
 from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_problem
 
 _LOGGER = logging.getLogger(__name__)
+
+# Seconds between two reads of one setting. Home Assistant polls a platform at
+# its own SCAN_INTERVAL, and this integration's switch platform uses 5 s for the
+# Art Mode switch, so without this every expert switch read the TV every 5 s.
+# The values rarely change; a write reads its echo, so 30 s loses nothing.
+IP_SETTING_POLL_INTERVAL = 30.0
 
 
 @dataclass(frozen=True)
@@ -168,6 +175,7 @@ class IPSettingEntity:
         self._ip_control: SamsungIPControl | None = None
         self._ip_control_token: str | None = None
         self._live = False
+        self._last_read: float | None = None
         self._attr_unique_id = f"{device_unique_id}_{setting.key}"
         self._attr_translation_key = setting.key
         self._attr_icon = setting.icon
@@ -209,14 +217,24 @@ class IPSettingEntity:
         self._apply(None)
 
     async def async_update(self) -> None:
-        """Read the setting, only in normal viewing."""
+        """Read the setting, only in normal viewing, at most every 30 s."""
         if not tv_normal_viewing(self.hass, self._entry_id):
+            # Read again as soon as normal viewing is back.
+            self._last_read = None
             self._clear()
             return
         client = self._client()
         if client is None:
+            self._last_read = None
             self._clear()
             return
+        now = time.monotonic()
+        if (
+            self._last_read is not None
+            and 0 <= now - self._last_read < IP_SETTING_POLL_INTERVAL
+        ):
+            return
+        self._last_read = now
         try:
             value = await client.async_get_setting(
                 self._setting.method, self._setting.param
@@ -271,6 +289,7 @@ class IPSettingEntity:
             self._clear()
             raise HomeAssistantError(f"IP Control write failed: {ex}") from ex
         self._live = True
+        self._last_read = time.monotonic()
         self._apply(echoed)
         clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
         self.async_write_ha_state()
