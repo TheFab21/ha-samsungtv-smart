@@ -111,6 +111,16 @@ LIGHT_VCONF_CANDIDATES = (
 # shows up as a non-zero int that moves with the light).
 SYSTEMINFO_INT_RANGE = 120
 
+# --power: vconf keys the energy service is known (from the firmware) to write.
+# libmde-service-energy-consumption.so computes the draw on the TV (TVCalculator
+# / PowerMeter) and stores it here before pushing it to the SmartThings plugin,
+# so this is the one value that may be readable locally over mobilebff.
+POWER_VCONF_CANDIDATES = (
+    "memory/ave/powerconsumption",
+    "memory/ave/powerConsumption",
+    "memory/ave/power_consumption",
+)
+
 
 def _b64(text: str) -> str:
     return base64.b64encode(text.encode()).decode()
@@ -710,6 +720,51 @@ class Probe:
         elif ("systemInfo" in rid or "system.info" in rid) and "value" in inner:
             self._systeminfo_last = inner.get("value")
 
+    async def power_sensor(self, ws, seconds: float) -> None:
+        """Read the energy service's local power vconf and watch it over time.
+
+        libmde-service-energy-consumption writes the computed draw to
+        memory/ave/powerconsumption. It may be a string (a float) rather than
+        an int, so each key is read both ways, then re-read over the window so
+        a value that tracks TV usage shows up. If it reads non-zero and moves,
+        the integration could expose power locally, without SmartThings.
+        """
+        print(
+            "\n== Power vconf hunt\n"
+            "   Reading the energy-service keys as int and string, then watching\n"
+            f"   for {seconds:.0f} s. During the window change what draws power:\n"
+            "   raise the backlight / play bright content, then a dark scene.\n"
+        )
+        seen: dict[str, list] = {}
+
+        async def read_once() -> None:
+            for key in POWER_VCONF_CANDIDATES:
+                for kind in ("int", "string"):
+                    self.latest.pop(f"request.vconf.info.{kind}", None)
+                    await self._send(ws, f"request.vconf.info.{kind}", {"key": key})
+                    answer = await self._wait_for(
+                        f"request.vconf.info.{kind}", timeout=2
+                    )
+                    inner = ((answer or {}).get("response") or {}).get("response") or {}
+                    if inner.get("key") == key and "value" in inner:
+                        lst = seen.setdefault(f"{kind} {key}", [])
+                        if not lst or lst[-1] != inner["value"]:
+                            lst.append(inner["value"])
+
+        await read_once()
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            await asyncio.sleep(5)
+            await read_once()
+        print("\n== Power vconf result")
+        if not seen:
+            print("   No answer for any power key (not readable over mobilebff).")
+        for k, v in seen.items():
+            nonzero = any(str(x) not in ("0", "", "0.0", "None") for x in v)
+            tag = "  <<< NON-ZERO" if nonzero else ""
+            tag += "  <<< MOVED" if len(v) > 1 else ""
+            print(f"   {k}: {v}{tag}")
+
     async def light_sensor(self, ws, seconds: float) -> None:
         """Hunt for a local ambient-light reading by watching what moves.
 
@@ -801,6 +856,8 @@ class Probe:
                 await self.read_vconf(ws, actions.vconf)
             if actions.light_sensor:
                 await self.light_sensor(ws, actions.light_sensor)
+            if actions.power:
+                await self.power_sensor(ws, actions.power)
             if actions.toggle_sound_mode:
                 await self.toggle_setting(ws, "soundmode")
             for name in actions.toggle_setting or ():
@@ -940,6 +997,14 @@ async def main() -> int:
         help="hunt for a local ambient-light reading: subscribe to candidate "
         "vconf keys, brute the systeminfo ints, then watch for SECONDS which "
         "value moves while you vary the room light; read-only",
+    )
+    parser.add_argument(
+        "--power",
+        type=float,
+        metavar="SECONDS",
+        help="read the energy service's local power vconf "
+        "(memory/ave/powerconsumption) as int and string and watch it for "
+        "SECONDS while the TV draw changes; read-only",
     )
     args = parser.parse_args()
     if args.vconf_defaults:
