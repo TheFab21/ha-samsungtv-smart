@@ -210,6 +210,9 @@ class Probe:
         # in order. A key whose list grows while the room light changes is the
         # ambient reading we are hunting for.
         self.sensor_values: dict[str, list] = {}
+        # Latest systeminfo int answer (it echoes no key, so the keyed sweep
+        # reads this right after sending one enum to attribute the value).
+        self._systeminfo_last = None
 
     def _record(self, direction: str, payload) -> None:
         item = {
@@ -683,26 +686,29 @@ class Probe:
     def _note_sensor_value(self, data: dict) -> None:
         """Track distinct values of a vconf/systeminfo answer, keyed by its key.
 
-        vconf and systemInfo answers carry ``response: {key, value}``. We index
-        by the key (with the request id, so an int and a string key never mix)
-        and keep the ordered list of distinct values, so --light-sensor can
-        later report which key actually moved while the room light changed.
+        The vconf answer nests twice: ``response: {response: {key, value}}``.
+        A vconf key is indexed by its name; a systeminfo answer carries no key
+        back, so its latest value is stashed for the keyed sweep to attribute.
         """
         rid = data.get("id") or ""
-        if not (
-            rid.startswith("request.vconf.info")
-            or "systemInfo" in rid
-            or "system.info" in rid
-        ):
-            return
         response = data.get("response")
-        if not isinstance(response, dict) or "value" not in response:
+        if not isinstance(response, dict):
             return
-        label = f"{rid} {response.get('key')}"
-        seen = self.sensor_values.setdefault(label, [])
-        value = response.get("value")
-        if not seen or seen[-1] != value:
-            seen.append(value)
+        inner = (
+            response.get("response")
+            if isinstance(response.get("response"), dict)
+            else response
+        )
+        if rid.startswith("request.vconf.info"):
+            key = inner.get("key")
+            if key is None or "value" not in inner:
+                return
+            seen = self.sensor_values.setdefault(f"{rid} {key}", [])
+            value = inner.get("value")
+            if not seen or seen[-1] != value:
+                seen.append(value)
+        elif ("systemInfo" in rid or "system.info" in rid) and "value" in inner:
+            self._systeminfo_last = inner.get("value")
 
     async def light_sensor(self, ws, seconds: float) -> None:
         """Hunt for a local ambient-light reading by watching what moves.
@@ -723,44 +729,56 @@ class Probe:
         for key in LIGHT_VCONF_CANDIDATES:
             await self._send(ws, "request.vconf.info.int", {"key": key})
             await asyncio.sleep(0.2)
-        for enum_value in range(SYSTEMINFO_INT_RANGE):
-            await self._send(
-                ws, "get.systemInfo.getValue.int", {"key": str(enum_value)}
-            )
-            await self._send(ws, "get.system.info.int", {"key": str(enum_value)})
-            await asyncio.sleep(0.05)
-        baseline = {k: list(v) for k, v in self.sensor_values.items()}
+        # Keyed systeminfo sweep: the answer echoes no key, so send one enum,
+        # wait, and attribute the next answer to it. Keep the non-zero ones.
+        sysinfo = await self._systeminfo_sweep(ws, range(SYSTEMINFO_INT_RANGE))
+        interesting = [e for e, v in sysinfo.items() if str(v) not in ("0", "", "None")]
+        print(
+            f"   Non-zero systeminfo enums at start: "
+            f"{ {e: sysinfo[e] for e in interesting} }"
+        )
         end = time.monotonic() + seconds
-        # Re-poll the subscribed keys every 5 s in case the TV does not push a
-        # broadcast on change (then we see it move across polls instead).
+        sysinfo_track: dict[int, list] = {e: [sysinfo[e]] for e in interesting}
+        # Over the window, re-poll the vconf keys and the non-zero systeminfo
+        # enums so a value that moves with the light shows up across polls.
         while time.monotonic() < end:
             await asyncio.sleep(5)
             for key in LIGHT_VCONF_CANDIDATES:
                 await self._send(ws, "request.vconf.info.int", {"key": key})
                 await asyncio.sleep(0.1)
+            resweep = await self._systeminfo_sweep(ws, interesting)
+            for e, v in resweep.items():
+                lst = sysinfo_track.setdefault(e, [])
+                if not lst or lst[-1] != v:
+                    lst.append(v)
         print("\n== Light-sensor result")
-        moved = [
-            (k, v)
-            for k, v in self.sensor_values.items()
-            if len(v) > 1 or baseline.get(k) != v
-        ]
-        changed = [(k, v) for k, v in moved if len(v) > 1]
-        if changed:
-            print("   KEYS THAT CHANGED (candidate ambient-light readings):")
+        changed = [(k, v) for k, v in self.sensor_values.items() if len(v) > 1]
+        sys_changed = [(e, v) for e, v in sysinfo_track.items() if len(v) > 1]
+        if changed or sys_changed:
+            print("   VALUES THAT CHANGED while the light varied:")
             for k, v in changed:
                 print(f"     {k}: {v}")
+            for e, v in sys_changed:
+                print(f"     systemInfo.int[{e}]: {v}")
         else:
-            print("   No key changed while the light varied.")
-        nonzero = [
-            (k, v[-1])
-            for k, v in self.sensor_values.items()
-            if "systemInfo" in k or "system.info" in k
-            if v and str(v[-1]) not in ("0", "", "False", "None")
-        ]
-        if nonzero:
-            print("   Non-zero systeminfo ints (for reference):")
-            for k, v in nonzero[:40]:
-                print(f"     {k} = {v}")
+            print("   No vconf or systeminfo value moved while the light varied.")
+        if interesting:
+            print(f"   (non-zero systeminfo enums watched: {interesting})")
+
+    async def _systeminfo_sweep(self, ws, enums) -> dict:
+        """Read each SystemInfoKeye int, attributing the keyless answer by order."""
+        out: dict[int, object] = {}
+        for enum_value in enums:
+            self._systeminfo_last = None
+            await self._send(
+                ws, "get.systemInfo.getValue.int", {"key": str(enum_value)}
+            )
+            for _ in range(6):
+                await asyncio.sleep(0.05)
+                if self._systeminfo_last is not None:
+                    break
+            out[enum_value] = self._systeminfo_last
+        return out
 
     async def read_vconf(self, ws, keys: list[str]) -> None:
         """Read each key as int, string and bool; the TV answers the right one."""
