@@ -82,6 +82,35 @@ VCONF_CANDIDATES = (
     "memory/tv/power_consumption",
 )
 
+# Int vconf keys to subscribe to in --light-sensor mode. The real ambient
+# reading is the one that MOVES when the room light changes, so the mode reads
+# these, then watches the change broadcasts while you vary the light. The first
+# is the only one named in the decompiled firmware (set.lux.value writes it);
+# the rest are guesses at where the hardware eco sensor (avoc_get_eco_sensor on
+# the ExLink bus) might be mirrored. An unknown key answers 0 and never changes.
+LIGHT_VCONF_CANDIDATES = (
+    "memory/sensor/mobile/illumination",
+    "memory/sensor/illumination",
+    "memory/sensor/illuminance",
+    "memory/sensor/lux",
+    "memory/sensor/light",
+    "memory/sensor/eco",
+    "memory/sensor/ecosensor",
+    "memory/sensor/brightness",
+    "memory/picture/eco_sensor",
+    "memory/picture/ecosensor",
+    "memory/picture/ambient_light",
+    "memory/picture/room_light",
+    "memory/mbr/eco_sensor",
+    "memory/eco/sensor",
+    "memory/eco/light",
+    "memory/avoc/eco_sensor",
+)
+# How many SystemInfoKeye ints to brute in --light-sensor mode (get.systemInfo
+# .getValue.int takes an int-as-string enum value; the illuminance one, if any,
+# shows up as a non-zero int that moves with the light).
+SYSTEMINFO_INT_RANGE = 120
+
 
 def _b64(text: str) -> str:
     return base64.b64encode(text.encode()).decode()
@@ -177,6 +206,10 @@ class Probe:
         # Latest decoded "data" per response id (get.settings.data, ...).
         self.latest: dict[str, dict] = {}
         self._last_settings_read = 0.0
+        # --light-sensor: vconf/systeminfo key -> list of distinct values seen,
+        # in order. A key whose list grows while the room light changes is the
+        # ambient reading we are hunting for.
+        self.sensor_values: dict[str, list] = {}
 
     def _record(self, direction: str, payload) -> None:
         item = {
@@ -253,6 +286,7 @@ class Probe:
                 continue
             if data.get("id"):
                 self.latest[data["id"]] = data
+            self._note_sensor_value(data)
             if data.get("id") == "get.settings.data":
                 self._last_settings_read = time.monotonic()
             if (
@@ -646,6 +680,88 @@ class Probe:
             await self._send(ws, "launch.extsource", {"requestId": tv["sourceId"]})
             await asyncio.sleep(5)
 
+    def _note_sensor_value(self, data: dict) -> None:
+        """Track distinct values of a vconf/systeminfo answer, keyed by its key.
+
+        vconf and systemInfo answers carry ``response: {key, value}``. We index
+        by the key (with the request id, so an int and a string key never mix)
+        and keep the ordered list of distinct values, so --light-sensor can
+        later report which key actually moved while the room light changed.
+        """
+        rid = data.get("id") or ""
+        if not (
+            rid.startswith("request.vconf.info")
+            or "systemInfo" in rid
+            or "system.info" in rid
+        ):
+            return
+        response = data.get("response")
+        if not isinstance(response, dict) or "value" not in response:
+            return
+        label = f"{rid} {response.get('key')}"
+        seen = self.sensor_values.setdefault(label, [])
+        value = response.get("value")
+        if not seen or seen[-1] != value:
+            seen.append(value)
+
+    async def light_sensor(self, ws, seconds: float) -> None:
+        """Hunt for a local ambient-light reading by watching what moves.
+
+        Subscribes to the candidate int vconf keys (the subscription registers
+        for change broadcasts) and brute-reads the SystemInfoKeye int range,
+        then listens while you change the room light. Any key whose value
+        changes is the ambient reading; everything else is a dead guess.
+        """
+        print(
+            "\n== Light-sensor hunt\n"
+            "   Subscribing to candidate keys and reading the systeminfo ints.\n"
+            f"   Then watching for {seconds:.0f} s — DURING that window, change\n"
+            "   the room light at the TV: cover the sensor (bottom bezel) with\n"
+            "   your hand for ~10 s, then shine a phone torch on it. Watch for a\n"
+            "   value that moves.\n"
+        )
+        for key in LIGHT_VCONF_CANDIDATES:
+            await self._send(ws, "request.vconf.info.int", {"key": key})
+            await asyncio.sleep(0.2)
+        for enum_value in range(SYSTEMINFO_INT_RANGE):
+            await self._send(
+                ws, "get.systemInfo.getValue.int", {"key": str(enum_value)}
+            )
+            await self._send(ws, "get.system.info.int", {"key": str(enum_value)})
+            await asyncio.sleep(0.05)
+        baseline = {k: list(v) for k, v in self.sensor_values.items()}
+        end = time.monotonic() + seconds
+        # Re-poll the subscribed keys every 5 s in case the TV does not push a
+        # broadcast on change (then we see it move across polls instead).
+        while time.monotonic() < end:
+            await asyncio.sleep(5)
+            for key in LIGHT_VCONF_CANDIDATES:
+                await self._send(ws, "request.vconf.info.int", {"key": key})
+                await asyncio.sleep(0.1)
+        print("\n== Light-sensor result")
+        moved = [
+            (k, v)
+            for k, v in self.sensor_values.items()
+            if len(v) > 1 or baseline.get(k) != v
+        ]
+        changed = [(k, v) for k, v in moved if len(v) > 1]
+        if changed:
+            print("   KEYS THAT CHANGED (candidate ambient-light readings):")
+            for k, v in changed:
+                print(f"     {k}: {v}")
+        else:
+            print("   No key changed while the light varied.")
+        nonzero = [
+            (k, v[-1])
+            for k, v in self.sensor_values.items()
+            if "systemInfo" in k or "system.info" in k
+            if v and str(v[-1]) not in ("0", "", "False", "None")
+        ]
+        if nonzero:
+            print("   Non-zero systeminfo ints (for reference):")
+            for k, v in nonzero[:40]:
+                print(f"     {k} = {v}")
+
     async def read_vconf(self, ws, keys: list[str]) -> None:
         """Read each key as int, string and bool; the TV answers the right one."""
         print(f"\n== vconf reads: {keys}")
@@ -665,6 +781,8 @@ class Probe:
             await self._wait_for("get.extsources")
             if actions.vconf:
                 await self.read_vconf(ws, actions.vconf)
+            if actions.light_sensor:
+                await self.light_sensor(ws, actions.light_sensor)
             if actions.toggle_sound_mode:
                 await self.toggle_setting(ws, "soundmode")
             for name in actions.toggle_setting or ():
@@ -796,6 +914,14 @@ async def main() -> int:
         "--vconf-defaults",
         action="store_true",
         help=f"also read {len(VCONF_CANDIDATES)} candidate keys (see VCONF_CANDIDATES)",
+    )
+    parser.add_argument(
+        "--light-sensor",
+        type=float,
+        metavar="SECONDS",
+        help="hunt for a local ambient-light reading: subscribe to candidate "
+        "vconf keys, brute the systeminfo ints, then watch for SECONDS which "
+        "value moves while you vary the room light; read-only",
     )
     args = parser.parse_args()
     if args.vconf_defaults:
