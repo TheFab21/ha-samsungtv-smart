@@ -28,6 +28,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.helpers.storage import Store
 
 from .api.art import SamsungTVAsyncArt
 from .api.ipcontrol import (
@@ -40,7 +41,13 @@ from .api.ipcontrol import (
     SamsungIPControlUnsupportedError,
     resolve_speaker_select_option,
 )
-from .api.mobilebff import SamsungMobileBFF, SettingLayer, picture_mode_ocf
+from .api.mobilebff import (
+    SamsungMobileBFF,
+    SettingLayer,
+    apps_from_data,
+    apps_to_data,
+    picture_mode_ocf,
+)
 from .api.shared_read import shared_json_get
 from .const import (
     AUTH_METHOD_OAUTH,
@@ -239,11 +246,30 @@ async def async_setup_entry(
     # The TV's quick-settings channel: the picture modes the current input
     # offers, and the current one, pushed locally (see api/mobilebff.py).
     # Opened only while the TV is in normal viewing, where the list matters.
+    #
+    # The home-screen app list also comes from this channel, so on a Frame
+    # (which never answers the legacy WebSocket app-list request) the apps are
+    # unknown until the TV is next watched after a restart — they vanish from
+    # the source list in the meantime. Cache the last list on disk and seed the
+    # client with it, so the apps are a source immediately, and refresh it
+    # whenever a live read brings a different list.
+    app_store = Store(hass, 1, f"{DOMAIN}_apps_{entry.entry_id}")
+    cached = await app_store.async_load()
+    initial_apps = apps_from_data(
+        cached.get("apps") if isinstance(cached, dict) else None
+    )
+
+    @callback
+    def _save_apps(apps) -> None:
+        app_store.async_delay_save(lambda: {"apps": apps_to_data(apps)}, 5)
+
     mobilebff = SamsungMobileBFF(
         session,
         host,
         f"{WS_PREFIX} {ws_name} Settings",
         lambda: _tv_normal_viewing(hass, entry.entry_id),
+        initial_apps=initial_apps,
+        on_apps_changed=_save_apps,
     )
     # Shared with the media player (local input switch and sound mode).
     hass.data[DOMAIN][entry.entry_id][DATA_MOBILEBFF] = mobilebff
