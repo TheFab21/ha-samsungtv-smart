@@ -229,6 +229,32 @@ def parse_app_tiles(response: Any) -> tuple[AppTile, ...] | None:
     return tuple(tiles)
 
 
+def apps_to_data(apps: tuple[AppTile, ...]) -> list[dict]:
+    """Serialize app tiles for the on-disk cache (plain JSON-safe dicts)."""
+    return [
+        {"tile_id": a.tile_id, "title": a.title, "icon_path": a.icon_path} for a in apps
+    ]
+
+
+def apps_from_data(data: Any) -> tuple[AppTile, ...]:
+    """Rebuild app tiles from the cache; tolerant of a missing/garbage file."""
+    if not isinstance(data, list):
+        return ()
+    tiles = []
+    for item in data:
+        if isinstance(item, dict) and isinstance(item.get("tile_id"), str):
+            title = item.get("title")
+            icon = item.get("icon_path")
+            tiles.append(
+                AppTile(
+                    item["tile_id"],
+                    title if isinstance(title, str) else item["tile_id"],
+                    icon if isinstance(icon, str) and icon else None,
+                )
+            )
+    return tuple(tiles)
+
+
 def parse_setting_layer(layer: Any) -> SettingLayer | None:
     """Parse any quick-settings layer; None when it has no usable element."""
     if not isinstance(layer, dict) or not isinstance(layer.get("id"), str):
@@ -318,6 +344,8 @@ class SamsungMobileBFF:
         host: str,
         name: str,
         should_connect: Callable[[], bool],
+        initial_apps: tuple[AppTile, ...] = (),
+        on_apps_changed: Callable[[tuple[AppTile, ...]], None] | None = None,
     ) -> None:
         self._session = session
         self._host = host
@@ -333,7 +361,12 @@ class SamsungMobileBFF:
         self.picture_modes: PictureModeLayer | None = None
         self.layers: dict[str, SettingLayer] = {}
         self.sources: tuple[ExtSource, ...] = ()
-        self.apps: tuple[AppTile, ...] = ()
+        # Seeded from the on-disk cache so the home-screen apps are a source
+        # list the instant the entry loads, even with the TV in Art Mode or off
+        # (the channel, hence a fresh get.apptiles, exists only in normal
+        # viewing). A live read replaces them and fires on_apps_changed to save.
+        self.apps: tuple[AppTile, ...] = tuple(initial_apps)
+        self._on_apps_changed = on_apps_changed
 
     @property
     def connected(self) -> bool:
@@ -456,6 +489,8 @@ class SamsungMobileBFF:
             apps = parse_app_tiles(response)
             if apps and apps != self.apps:
                 self.apps = apps
+                if self._on_apps_changed is not None:
+                    self._on_apps_changed(apps)
                 self._notify()
 
     async def _run(self) -> None:
