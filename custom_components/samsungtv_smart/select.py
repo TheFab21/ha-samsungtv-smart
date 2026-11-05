@@ -2822,7 +2822,15 @@ class SamsungTVSourceSelect(SelectEntity):
                 if isinstance(item, str) and item and item not in options:
                     options.append(item)
             source = state.attributes.get("source")
-            current = source if source in options else None
+            if isinstance(source, str) and source:
+                # The media player's current source is not always one of the
+                # presets (live TV, a channel, an app the home screen doesn't
+                # list). Show it anyway — a select whose current_option is not
+                # in its options reads "Unknown", so add it rather than leave
+                # the entity blank whenever nothing from the list is selected.
+                if source not in options:
+                    options.append(source)
+                current = source
             available = bool(options)
         if not options:
             # Keep the last list while the TV is off, so the entity's options

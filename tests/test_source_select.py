@@ -38,10 +38,15 @@ def test_every_published_source_is_an_option():
     assert entity._apply(_state()) is False
 
 
-def test_a_source_outside_the_list_shows_no_option():
+def test_a_source_outside_the_list_is_shown_not_unknown():
+    # A select whose current_option is not in its options reads "Unknown".
+    # The live source (a channel, an app the home screen doesn't list) is
+    # added to the options so the entity reflects the TV instead of blanking.
     entity = _entity()
-    entity._apply(_state(source="Netflix"))
-    assert entity.current_option is None
+    assert entity._apply(_state(source="Netflix")) is True
+    assert entity.current_option == "Netflix"
+    assert "Netflix" in entity.options
+    assert entity._attr_available is True
 
 
 def test_off_keeps_the_list_but_is_unavailable():
