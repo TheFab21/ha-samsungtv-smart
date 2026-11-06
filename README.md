@@ -384,7 +384,7 @@ After initial setup, click **Configure** on the integration card to access these
 | Option | Description |
 |---|---|
 | **Source list** | Define custom input sources (JSON: `{"HDMI 1": "KEY_HDMI1", ...}`); on supported IP Control TVs, local sources can use values such as `IP_HDMI1`. A list left empty is auto-discovered from SmartThings and then holds `ST_` keys only — see [Which channel a source key uses](#which-channel-a-source-key-uses) |
-| **App list** | Define custom app shortcuts (JSON) |
+| **App list** | Define custom app shortcuts (JSON `{"name": "id"}`). Usually unnecessary — most TVs auto-list their home-screen apps as sources; see [Where the app list comes from](#where-the-app-list-comes-from-and-why-older-tvs-may-show-none) |
 | **App load method** | How to load the app list: All, Default, or Disabled |
 | **App launch method** | Standard, Remote, or REST |
 | **Power on method** | How the TV is woken when it is off: **Wake-on-LAN** (default), **SmartThings**, or **IP Control**. This is an explicit choice, not "whatever is available" — pairing IP Control does not make it the wake method. Note that IP Control cannot wake a set that has left the network (port 1516 stops answering when it is off, and the integration then falls back to WOL), so on a Frame that drops off Wi-Fi in standby, **SmartThings** is the reliable option, with WOL next if the magic packet reaches it |
@@ -512,6 +512,40 @@ data:
 Use it in the `play_media` call, **not** in the `app_list` option: the value stored there
 is also what the integration asks the TV about to know which app is running, and a
 suffix on it would stop that app ever being detected as the current source.
+
+#### Where the app list comes from (and why older TVs may show none)
+
+The apps in `source_list` (and the `select.<tv>_source` dropdown) are filled from the
+first of these that returns anything:
+
+1. **The quick-settings channel (MobileBFF), on newer TVs (≈2024+).** It lists the
+   home-screen tiles with the Tizen id the TV itself uses, so the apps appear as sources
+   and launch by that id — no manual setup, always current, nothing to maintain. Since
+   9.0.5 the last list is cached on disk, so the apps are present immediately after a
+   Home Assistant restart even while the TV is in Art Mode or off (the channel itself is
+   open only in normal viewing). This is why these TVs auto-populate their apps.
+2. **The legacy WebSocket installed-app list** (`ed.installedApp.get`), the classic path
+   on older sets. Some models answer it, some don't.
+3. **A manual list** under **Advanced Options → Configure Applications** (`name: id`).
+
+**Older sets (e.g. a 2020) may expose neither auto list** — they have no MobileBFF app,
+and their firmware often doesn't answer the legacy query. Then the dropdown shows only
+inputs, and the **manual Application list is the intended fallback** (it is not a sign of
+a broken remote: if app launching works, the WebSocket is authorised — the TV just does
+not serve an app list). When you do enter apps by hand:
+
+- prefer the **Tizen application id** (e.g. `LBUAQX1exg.Hulu`) over a numeric Samsung
+  content id, which drifts between firmwares and silently stops launching when it no
+  longer matches (both WebSocket launch methods are fire-and-forget);
+- append `@run_app_rest` to an app on a set that accepts the WebSocket launch and ignores
+  it (`Hulu: 'LBUAQX1exg.Hulu@run_app_rest'`), or set **App launch method → REST** for the
+  whole TV;
+- find an app's current id from its REST status, or the TV's `ms.application.get`.
+
+A TV that serves an auto list needs **no** manual entries — selecting the app from the
+dropdown launches it by the TV's own id. Keep a manual entry only for an app that is not
+on the TV's Home/First Screen (so it is not a MobileBFF tile) on a set that also does not
+answer the legacy query.
 
 #### Connection layers (the architecture — they coexist)
 
