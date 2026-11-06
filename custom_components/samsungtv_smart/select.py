@@ -689,6 +689,24 @@ async def _load_motion_options(
                 device_info, "support_brightness_sensor"
             )
 
+            # A set whose art app says it has no sensor still answers the
+            # setting reads: the 2026 Micro RGB R95H (support_motion_sensor and
+            # support_brightness_sensor both FALSE) returns motion_sensitivity
+            # "false", motion_timer 240 and brightness_sensor_setting on - the
+            # settings exist in the firmware, the hardware behind them does
+            # not, and the Motion Sensitivity select built from them had
+            # "false" as its only option. The flags are the TV's own word on
+            # the hardware (that is why #402 reads them), so a definite FALSE
+            # discards the matching answers; None (the channel did not say)
+            # keeps the controls the TV answered, as before. Motion Timer is
+            # Sleep After, "off after N minutes without motion" in Samsung's
+            # words, so it follows the motion flag.
+            if supports_motion is False:
+                sensitivity_item = None
+                timer_item = None
+            if supports_brightness is False:
+                brightness_sensor_item = None
+
             entities = []
 
             if isinstance(sensitivity_item, dict) and sensitivity_item.get("value"):
@@ -779,7 +797,7 @@ async def _load_motion_options(
                     "(support_motion_sensor and support_brightness_sensor are "
                     "FALSE), so the Motion Sensitivity, Motion Timer and "
                     "Brightness Sensor controls are intentionally not created. "
-                    "This is expected on Frames without the sensor; it is not "
+                    "This is expected on TVs without the sensor; it is not "
                     "an error.",
                     device_name,
                 )

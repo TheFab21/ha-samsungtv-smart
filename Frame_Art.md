@@ -37,6 +37,10 @@ Frame Art Mode allows you to:
 ### Hardware
 - Samsung Frame TV (2018+ models)
 - Tested on: QE55LS03D (2024), QE55LS03B (2023), QE55LS03A (2022)
+- A non-Frame set that runs the art app: tested on a 2026 Micro RGB
+  (MRN75R95HAFXZA, art api_version 6.0.0.0) with **Frame Art on a non-Frame TV**
+  enabled in the advanced options (no motion or brightness sensor on that set);
+  see the README section of that name
 
 ### Software
 - Home Assistant 2024.1+

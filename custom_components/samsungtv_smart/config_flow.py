@@ -75,6 +75,7 @@ from .const import (
     CONF_ART_LLM_API_KEY,
     CONF_ART_LLM_MODEL,
     CONF_ART_LLM_PROVIDER,
+    CONF_ART_ON_NON_FRAME,
     CONF_ART_PORT,
     CONF_ART_VISION_API_KEY,
     CONF_AUTH_METHOD,
@@ -193,6 +194,7 @@ ADVANCED_OPTIONS = [
     CONF_TOGGLE_ART_MODE,
     CONF_USE_MUTE_CHECK,
     CONF_REPORT_ART_MODE_AS_OFF,
+    CONF_ART_ON_NON_FRAME,
 ]
 
 ENUM_OPTIONS = [
@@ -1905,6 +1907,10 @@ class OptionsFlowHandler(OptionsFlow):
                     default=options.get(
                         CONF_REPORT_ART_MODE_AS_OFF, DEFAULT_REPORT_ART_MODE_AS_OFF
                     ),
+                ): bool,
+                vol.Required(
+                    CONF_ART_ON_NON_FRAME,
+                    default=options.get(CONF_ART_ON_NON_FRAME, False),
                 ): bool,
                 vol.Optional(
                     CONF_ART_EXIT_SOURCE,

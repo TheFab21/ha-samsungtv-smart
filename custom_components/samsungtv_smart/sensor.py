@@ -72,6 +72,7 @@ from .const import (
     DEFAULT_PORT,
     DEFAULT_ST_POLL_ON_INTERVAL,
     DOMAIN,
+    IS_FRAME_TV_ART_APP,
     ST_POLL_OFF_INTERVAL,
     TUNER_INPUT_SOURCES,
     WS_PREFIX,
@@ -355,12 +356,18 @@ async def async_setup_entry(  # noqa: C901
             is_supported = False
 
         if is_supported:
-            # Persist the flag so future reloads skip this live check
+            # Persist the flag so future reloads skip this live check: True for
+            # a Frame (REST flag), IS_FRAME_TV_ART_APP when the art-app probe
+            # confirmed a non-Frame set. __init__.py needs the difference to
+            # drop only the probe's flag when the option is turned off.
+            flag = IS_FRAME_TV_ART_APP if art_api.art_channel_confirmed else True
             hass.config_entries.async_update_entry(
-                entry, data={**entry.data, CONF_IS_FRAME_TV: True}
+                entry, data={**entry.data, CONF_IS_FRAME_TV: flag}
             )
             _LOGGER.info(
-                "Frame TV confirmed for %s, persisting flag in entry data", host
+                "Frame TV confirmed for %s (%s), persisting flag in entry data",
+                host,
+                "art-app channel" if flag is not True else "FrameTVSupport",
             )
 
     if is_supported:

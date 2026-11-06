@@ -311,9 +311,20 @@ class SamsungTVAsyncArt:
         name: str = "HomeAssistant",
         supports_get_brightness: bool | None = None,
         supports_get_color_temperature: bool | None = None,
+        art_on_non_frame: bool = False,
     ) -> None:
         """Initialize the Art API."""
         self._host = host
+        # CONF_ART_ON_NON_FRAME: also ask the art-app channel when the REST
+        # flag says "not a Frame" (see supported()).
+        self._art_on_non_frame = art_on_non_frame
+        # Set once the probe got an api_version answer, or seeded from the
+        # persisted IS_FRAME_TV_ART_APP flag (mark_art_channel_confirmed).
+        # Read through art_channel_confirmed so the sensor platform can
+        # persist where the confirmation came from.
+        self._art_channel_verified = False
+        # One INFO line per session for a probe that gets no answer.
+        self._probe_silent_logged = False
         self._log = _DeviceLoggerAdapter(_LOGGER, {"host": host})
         self._port = port
         self._token = token
@@ -406,6 +417,9 @@ class SamsungTVAsyncArt:
         # overwriting event-keyed pending requests and amplifying a slow TV
         # into a reconnect storm.
         self._request_lock = asyncio.Lock()
+        # Serialises _probe_art_channel(): the platform setups call supported()
+        # together, all before the first probe has answered.
+        self._probe_lock = asyncio.Lock()
         self._request_cooldown_until = 0.0
         # Consecutive wedges on connections that never answered anything. Each
         # one doubles the recovery cooldown, so a channel the TV keeps killing
@@ -1680,8 +1694,41 @@ class SamsungTVAsyncArt:
 
     # ==================== REST API Methods ====================
 
+    @property
+    def art_channel_confirmed(self) -> bool:
+        """True when art support was confirmed by the art-app probe, not REST.
+
+        False for a Frame (the REST flag answered first and the channel was
+        never asked) and until the probe has answered on a non-Frame set.
+        """
+        return self._art_channel_verified
+
+    def mark_art_channel_confirmed(self) -> None:
+        """Trust an earlier session's probe answer (IS_FRAME_TV_ART_APP).
+
+        The platforms skip the live check on that persisted flag; the media
+        player's own check (_ensure_frame_tv_check) does not read the entry,
+        so without this it re-asked the channel on the first art service after
+        every restart and, while the TV sat in deep standby, answered each art
+        service "Frame TV not supported" instead of the channel's real error.
+        Like a Frame's persisted True, the confirmation is not re-verified
+        until the option is toggled.
+        """
+        self._art_channel_verified = True
+
     async def supported(self) -> bool:
-        """Check if the TV supports Frame TV art mode."""
+        """Check if the TV supports Frame TV art mode.
+
+        The REST device info flag FrameTVSupport is the normal answer. With
+        art_on_non_frame set, a TV that reports it "false" is asked for the
+        art-app channel's api_version instead: a version string means the app
+        is there and the art features work (2026 Micro RGB R95H). A positive
+        probe is kept for the session; a silent channel is not, so a set that
+        was asleep at startup is asked again on the next call, as the REST
+        path already does.
+        """
+        if self._art_channel_verified:
+            return True
         try:
             session = await self._get_session()
             url = f"http://{self._host}:8001/api/v2/"
@@ -1690,10 +1737,62 @@ class SamsungTVAsyncArt:
                     if resp.status == 200:
                         data = await resp.json()
                         device = data.get("device", {})
-                        return device.get("FrameTVSupport") == "true"
+                        if device.get("FrameTVSupport") == "true":
+                            return True
         except Exception as ex:
             self._log.debug("Art API: Error checking support: %s", ex)
-        return False
+        if not self._art_on_non_frame:
+            return False
+        return await self._probe_art_channel()
+
+    async def _probe_art_channel(self) -> bool:
+        """Ask the art-app channel for its api_version (art_on_non_frame only).
+
+        A version string means the art app is there: remember it for the
+        session and return True. A silent channel (no answer, the request
+        cooldown, a closed socket) returns False and is not remembered, so the
+        next supported() call asks again.
+
+        The request is ``api_version`` straight away, not get_api_version():
+        that helper asks ``get_api_version`` first, which the 6.0 app on the
+        R95H never answers, so the probe would pay a full timeout before
+        asking the question the app does answer. The platform setups call
+        supported() together, all before the first probe has answered, so the
+        probe is serialised and the first answer serves the rest: one request
+        on the wire, one log line.
+        """
+        async with self._probe_lock:
+            if self._art_channel_verified:
+                return True
+            try:
+                data = await self._send_art_request(
+                    {"request": "api_version"}, timeout=self._timeout
+                )
+            except Exception as ex:
+                self._log.debug("Art API: art-app channel probe failed: %s", ex)
+                return False
+            # _send_art_request returns None when the channel does not answer.
+            version = data.get("version") if isinstance(data, dict) else None
+            if not version:
+                # Say so once per session at INFO, as the connection path does
+                # when it gives up: with the option on and the channel silent
+                # the art entities quietly stay away, and DEBUG is off by
+                # default.
+                self._log.log(
+                    logging.DEBUG if self._probe_silent_logged else logging.INFO,
+                    "Art API: FrameTVSupport is not 'true' and the art-app "
+                    "channel did not answer api_version - Art Mode features "
+                    "stay off until it does (Frame Art on a non-Frame TV is on)",
+                )
+                self._probe_silent_logged = True
+                return False
+            self._art_channel_verified = True
+            self._log.info(
+                "Art API: FrameTVSupport is not 'true' but the art-app channel "
+                "answers (api_version %s) - Art Mode features enabled",
+                version,
+            )
+            return True
 
     async def on(self) -> bool:
         """Check if the TV is on."""
