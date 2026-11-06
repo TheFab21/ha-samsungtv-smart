@@ -1334,7 +1334,13 @@ class FolderGalleryCard extends HTMLElement {
       const isMy = upper.startsWith('MY-') || upper.startsWith('MY_');
       const isOther = !isSam && !isMy;
       showSelect = isSam || isMy;
-      showUnfavourite = isSam;
+      // A SAM- id is any TV-side work — a Store or Purchased piece as well as a
+      // favourite — so "Unfavourite" on every SAM- work offered it on pieces
+      // that are in no favourites folder, where it is a silent no-op (#401).
+      // Auto mode cannot tell a favourite apart from the content id, so it does
+      // not offer Unfavourite; use `gallery_type: favorites` for that button,
+      // where every listed work is known to be a favourite.
+      showUnfavourite = false;
       showUpload = isOther;
       showDelete = isMy;
     }
@@ -1356,28 +1362,46 @@ class FolderGalleryCard extends HTMLElement {
     return this._config.frame_tv_entity || this._config.tv_entity || '';
   }
 
-  _callUnfavourite(imageData) {
+  // Both services return {success} or {error} and declare SupportsResponse, so
+  // wait for the answer and toast the real outcome. Toasting right after the
+  // call (before it returned) told the user an action had happened when the TV
+  // never confirmed it (#401). notifyOnError=false, returnResponse=true.
+  async _callUnfavourite(imageData) {
     if (!this._hass) return;
     const entityId = this._getEntityId();
     const contentId = imageData.content_id || imageData.name || '';
-    this._hass.callService(
-      'samsungtv_smart', 'art_set_favourite',
-      { content_id: contentId, status: 'off' },
-      { entity_id: entityId }
-    );
-    this.showToast(this._t('removed_fav'));
+    try {
+      const result = await this._hass.callService(
+        'samsungtv_smart', 'art_set_favourite',
+        { content_id: contentId, status: 'off' },
+        { entity_id: entityId },
+        false, true
+      );
+      const err = result && result.response && result.response.error;
+      if (err) this.showToast(this._t('error', { msg: err }), true);
+      else this.showToast(this._t('removed_fav'));
+    } catch (e) {
+      this.showToast(this._t('error', { msg: e.message }), true);
+    }
   }
 
-  _callDelete(imageData) {
+  async _callDelete(imageData) {
     if (!this._hass) return;
     const entityId = this._getEntityId();
     const contentId = imageData.content_id || imageData.name || '';
-    this._hass.callService(
-      'samsungtv_smart', 'art_delete',
-      { content_id: contentId },
-      { entity_id: entityId }
-    );
-    this.showToast(this._t('artwork_deleted'));
+    try {
+      const result = await this._hass.callService(
+        'samsungtv_smart', 'art_delete',
+        { content_id: contentId },
+        { entity_id: entityId },
+        false, true
+      );
+      const err = result && result.response && result.response.error;
+      if (err) this.showToast(this._t('error', { msg: err }), true);
+      else this.showToast(this._t('artwork_deleted'));
+    } catch (e) {
+      this.showToast(this._t('error', { msg: e.message }), true);
+    }
   }
 
   closeLightbox() {

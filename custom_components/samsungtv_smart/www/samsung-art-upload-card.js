@@ -64,12 +64,19 @@ class SamsungArtUploadCard extends HTMLElement {
     form.append("file", this._file, this._file.name);
 
     try {
-      const token = this._hass.auth?.data?.access_token;
-      const resp = await fetch("/api/samsungtv_smart/art_upload", {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      });
+      // Use fetchWithAuth so the frontend renews an expired access token before
+      // the request. The stored hass.auth.data.access_token lives 30 min, so a
+      // plain fetch with it failed with 401 on a page left open longer (#396).
+      const url = "/api/samsungtv_smart/art_upload";
+      const resp = this._hass.fetchWithAuth
+        ? await this._hass.fetchWithAuth(url, { method: "POST", body: form })
+        : await fetch(url, {
+            method: "POST",
+            headers: this._hass.auth?.data?.access_token
+              ? { Authorization: `Bearer ${this._hass.auth.data.access_token}` }
+              : {},
+            body: form,
+          });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.message || `HTTP ${resp.status}`);
       this._setMsg(`Uploaded ✓ (${data.content_id || "done"})`);

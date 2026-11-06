@@ -885,11 +885,20 @@ class SamsungTVArtBrightnessNumber(SamsungTVArtNumberBase):
                 ui_brightness,
                 tv_brightness,
             )
-            await self._art_api.set_brightness(tv_brightness)
+            if not await self._art_api.set_brightness(tv_brightness):
+                # set_brightness is False when the TV never confirmed (a silent
+                # channel or its cooldown): keep the old value rather than show
+                # a brightness the TV never took (#401).
+                raise HomeAssistantError(
+                    "The TV did not confirm the Art Mode brightness change."
+                )
             self._attr_native_value = ui_brightness
             self.async_write_ha_state()
+        except HomeAssistantError:
+            raise
         except Exception as ex:
             _LOGGER.error("Error setting art mode brightness: %s", ex)
+            raise HomeAssistantError(f"Error setting Art Mode brightness: {ex}") from ex
 
     async def async_update(self) -> None:
         """Read current brightness from TV (TV scale 1-10) and convert to 0-100."""
@@ -931,11 +940,22 @@ class SamsungTVArtColorTemperatureNumber(SamsungTVArtNumberBase):
         ct_value = int(value)
         try:
             _LOGGER.debug("Frame Art: Setting color temperature to %d", ct_value)
-            await self._art_api.set_color_temperature(ct_value)
+            if not await self._art_api.set_color_temperature(ct_value):
+                # False when the TV never confirmed (a silent channel or its
+                # cooldown): keep the old value rather than show one the TV
+                # never took (#401).
+                raise HomeAssistantError(
+                    "The TV did not confirm the Art Mode colour-temperature change."
+                )
             self._attr_native_value = ct_value
             self.async_write_ha_state()
+        except HomeAssistantError:
+            raise
         except Exception as ex:
             _LOGGER.error("Error setting art mode color temperature: %s", ex)
+            raise HomeAssistantError(
+                f"Error setting Art Mode colour temperature: {ex}"
+            ) from ex
 
     async def async_update(self) -> None:
         """Read current color temperature from TV."""

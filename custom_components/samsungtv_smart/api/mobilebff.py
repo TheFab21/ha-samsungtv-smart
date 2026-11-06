@@ -255,14 +255,111 @@ def apps_from_data(data: Any) -> tuple[AppTile, ...]:
     return tuple(tiles)
 
 
+def _list_tiles(layer: dict) -> tuple[list[SettingElement], int | None] | None:
+    """Options of a 2026-firmware "list preview" layer, with the current index.
+
+    On ``26_RSM_FTV`` a list setting (picture mode, colour space, …) arrives as
+    one ``SettingPreview`` element, and the real options sit two levels down:
+    ``layer.child[0]`` is a ``Commonlayer`` (``type: Layer``, ``hasListInfo``),
+    and ITS ``child[]`` are the option tiles (``type: SecondDepthOption``). Each
+    tile is a one-element layer whose ``id`` carries the value after ``@`` and
+    whose element holds the title, ``is_selected`` and ``dim`` (#399).
+    """
+    for child in layer.get("child") or ():
+        if not isinstance(child, dict):
+            continue
+        inner = child.get("elements") or ()
+        head = inner[0] if inner and isinstance(inner[0], dict) else None
+        if head is None or str(head.get("hasListInfo")).lower() != "true":
+            continue
+        elements: list[SettingElement] = []
+        current: int | None = None
+        for tile in child.get("child") or ():
+            if not isinstance(tile, dict) or not isinstance(tile.get("id"), str):
+                continue
+            opts = tile.get("elements") or ()
+            opt = opts[0] if opts and isinstance(opts[0], dict) else {}
+            title = opt.get("title")
+            title = title.strip() if isinstance(title, str) else ""
+            if str(opt.get("is_selected")).lower() == "true":
+                current = len(elements)
+            elements.append(
+                SettingElement(
+                    tile["id"],
+                    title,
+                    title,
+                    str(opt.get("dim")).lower() == "true",
+                )
+            )
+        if elements:
+            return elements, current
+    return None
+
+
+def _toggle_elements(
+    raw: list[dict],
+) -> tuple[list[SettingElement], int | None] | None:
+    """A broken toggle layer (``@Off``/``@On``), labelled by id suffix.
+
+    Some 2026 toggles carry the *current* state as the ``subTitle`` of BOTH
+    elements (``Off`` twice while off), with a constant ``current_element_
+    index``, so the generic reader labels them the same and always picks the
+    second (AI Mode, #399). The discriminator is a toggle whose two subtitles
+    are identical: label each element by its id suffix and find the current one
+    by matching that shared subtitle to a suffix. A toggle whose subtitles
+    already differ (energy saving) is a normal two-option list — left to the
+    generic reader, which this returns None for.
+    """
+    if len(raw) < 2 or not all(
+        element.get("actionType") == "toggle" and "@" in element["id"]
+        for element in raw
+    ):
+        return None
+    subtitles = {
+        element["subTitle"].strip()
+        for element in raw
+        if isinstance(element.get("subTitle"), str) and element["subTitle"].strip()
+    }
+    if len(subtitles) != 1:
+        return None  # distinct subtitles are real labels; the generic reader fits
+    state = next(iter(subtitles))
+    elements: list[SettingElement] = []
+    current: int | None = None
+    for element in raw:
+        suffix = element["id"].rpartition("@")[2]
+        title = element.get("title")
+        if suffix.strip().lower() == state.lower():
+            current = len(elements)
+        elements.append(
+            SettingElement(
+                element["id"],
+                title if isinstance(title, str) else "",
+                suffix,
+                str(element.get("dim")).lower() == "true",
+            )
+        )
+    return elements, current
+
+
 def parse_setting_layer(layer: Any) -> SettingLayer | None:
     """Parse any quick-settings layer; None when it has no usable element."""
     if not isinstance(layer, dict) or not isinstance(layer.get("id"), str):
         return None
-    elements: list[SettingElement] = []
-    for element in layer.get("elements") or ():
-        if not isinstance(element, dict) or not isinstance(element.get("id"), str):
-            continue
+    listed = _list_tiles(layer)
+    if listed is not None:
+        elements, current = listed
+        return SettingLayer(layer["id"], tuple(elements), current)
+    raw = [
+        element
+        for element in (layer.get("elements") or ())
+        if isinstance(element, dict) and isinstance(element.get("id"), str)
+    ]
+    toggled = _toggle_elements(raw)
+    if toggled is not None:
+        elements, current = toggled
+        return SettingLayer(layer["id"], tuple(elements), current)
+    elements = []
+    for element in raw:
         label = element.get("subTitle")
         title = element.get("title")
         elements.append(

@@ -70,6 +70,21 @@ async def test_fallback_catalogue_when_get_matte_list_times_out():
     assert len(select_mod._MATTE_COLORS_FALLBACK) > 1
 
 
+async def test_fallback_catalogue_when_get_matte_list_is_not_answered():
+    # #402: a silent channel answers None (not an empty list). That must be
+    # retried and fall back to the catalogue, never read as "this TV has no
+    # mattes" and left stuck on one option.
+    art_api = MagicMock()
+    art_api.get_matte_list = AsyncMock(return_value=None)
+
+    type_select, color_select = await _run_load(art_api)
+
+    type_select.set_options.assert_called_once_with(select_mod._MATTE_TYPES_FALLBACK)
+    color_select.set_options.assert_called_once_with(select_mod._MATTE_COLORS_FALLBACK)
+    # It kept trying rather than settling on the first None.
+    assert art_api.get_matte_list.await_count == 2
+
+
 async def test_real_list_is_used_and_fallback_not_applied():
     art_api = MagicMock()
     art_api.get_matte_list = AsyncMock(
