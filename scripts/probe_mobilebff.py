@@ -121,6 +121,26 @@ POWER_VCONF_CANDIDATES = (
     "memory/ave/power_consumption",
 )
 
+# --power-keys: on a 2025 Frame memory/ave/powerconsumption held the *inputs*
+# of the energy model (APL, DutySum, TEMP ...), not watts (issue #395). These
+# are guesses at where the energy service might also write the *computed*
+# result, so a local power sensor could read it straight rather than recompute
+# the model. An unknown key answers 0 / "" like a real empty one.
+POWER_OUTPUT_CANDIDATES = (
+    "memory/ave/power",
+    "memory/ave/dailypowerconsumption",
+    "memory/ave/savedpowerconsumption",
+    "memory/energy/consumption",
+    "memory/energy/power",
+    "memory/energy/daily",
+    "memory/power/consumption",
+    "memory/power/current",
+    "memory/tv/power",
+    "db/energy/consumption",
+    "db/smartthing/energy/ai_energy_info_changed",
+    "db/smartthing/energy/ai_energy_mode",
+)
+
 
 def _b64(text: str) -> str:
     return base64.b64encode(text.encode()).decode()
@@ -720,25 +740,17 @@ class Probe:
         elif ("systemInfo" in rid or "system.info" in rid) and "value" in inner:
             self._systeminfo_last = inner.get("value")
 
-    async def power_sensor(self, ws, seconds: float) -> None:
-        """Read the energy service's local power vconf and watch it over time.
+    async def _watch_vconf_keys(self, ws, keys, seconds: float) -> None:
+        """Read each key as int and string, then re-read over the window.
 
-        libmde-service-energy-consumption writes the computed draw to
-        memory/ave/powerconsumption. It may be a string (a float) rather than
-        an int, so each key is read both ways, then re-read over the window so
-        a value that tracks TV usage shows up. If it reads non-zero and moves,
-        the integration could expose power locally, without SmartThings.
+        A value may be a string (a float, or a JSON blob of inputs) rather than
+        an int, so each key is read both ways. Re-reading over the window shows
+        which value tracks TV usage. Prints the distinct values per key.
         """
-        print(
-            "\n== Power vconf hunt\n"
-            "   Reading the energy-service keys as int and string, then watching\n"
-            f"   for {seconds:.0f} s. During the window change what draws power:\n"
-            "   raise the backlight / play bright content, then a dark scene.\n"
-        )
         seen: dict[str, list] = {}
 
         async def read_once() -> None:
-            for key in POWER_VCONF_CANDIDATES:
+            for key in keys:
                 for kind in ("int", "string"):
                     self.latest.pop(f"request.vconf.info.{kind}", None)
                     await self._send(ws, f"request.vconf.info.{kind}", {"key": key})
@@ -756,14 +768,43 @@ class Probe:
         while time.monotonic() < end:
             await asyncio.sleep(5)
             await read_once()
-        print("\n== Power vconf result")
         if not seen:
-            print("   No answer for any power key (not readable over mobilebff).")
+            print("   No answer for any key (not readable over mobilebff).")
         for k, v in seen.items():
             nonzero = any(str(x) not in ("0", "", "0.0", "None") for x in v)
             tag = "  <<< NON-ZERO" if nonzero else ""
             tag += "  <<< MOVED" if len(v) > 1 else ""
             print(f"   {k}: {v}{tag}")
+
+    async def power_sensor(self, ws, seconds: float) -> None:
+        """Read the energy service's power input vconf and watch it over time.
+
+        memory/ave/powerconsumption holds the inputs the energy model computes
+        the draw from (APL, DutySum, TEMP ..., issue #395), not watts.
+        """
+        print(
+            "\n== Power vconf hunt (model inputs)\n"
+            "   Reading the energy-service keys as int and string, then watching\n"
+            f"   for {seconds:.0f} s. During the window change what draws power:\n"
+            "   raise the backlight / play bright content, then a dark scene.\n"
+        )
+        await self._watch_vconf_keys(ws, POWER_VCONF_CANDIDATES, seconds)
+
+    async def power_keys(self, ws, seconds: float) -> None:
+        """Hunt for a local vconf that holds the *computed* watts, not the inputs.
+
+        memory/ave/powerconsumption is the model input (issue #395); this sweeps
+        guesses at where the energy service might also write the result, so a
+        local power sensor could read it directly instead of recomputing.
+        """
+        print(
+            "\n== Power output-key hunt (computed watts)\n"
+            f"   Sweeping {len(POWER_OUTPUT_CANDIDATES)} candidate keys for "
+            f"{seconds:.0f} s.\n"
+            "   During the window change what draws power (bright vs dark "
+            "content); a key that holds watts/Wh should read non-zero and move.\n"
+        )
+        await self._watch_vconf_keys(ws, POWER_OUTPUT_CANDIDATES, seconds)
 
     async def light_sensor(self, ws, seconds: float) -> None:
         """Hunt for a local ambient-light reading by watching what moves.
@@ -788,10 +829,8 @@ class Probe:
         # wait, and attribute the next answer to it. Keep the non-zero ones.
         sysinfo = await self._systeminfo_sweep(ws, range(SYSTEMINFO_INT_RANGE))
         interesting = [e for e, v in sysinfo.items() if str(v) not in ("0", "", "None")]
-        print(
-            f"   Non-zero systeminfo enums at start: "
-            f"{ {e: sysinfo[e] for e in interesting} }"
-        )
+        at_start = {e: sysinfo[e] for e in interesting}
+        print(f"   Non-zero systeminfo enums at start: {at_start}")
         end = time.monotonic() + seconds
         sysinfo_track: dict[int, list] = {e: [sysinfo[e]] for e in interesting}
         # Over the window, re-poll the vconf keys and the non-zero systeminfo
@@ -858,6 +897,8 @@ class Probe:
                 await self.light_sensor(ws, actions.light_sensor)
             if actions.power:
                 await self.power_sensor(ws, actions.power)
+            if actions.power_keys:
+                await self.power_keys(ws, actions.power_keys)
             if actions.toggle_sound_mode:
                 await self.toggle_setting(ws, "soundmode")
             for name in actions.toggle_setting or ():
@@ -1005,6 +1046,14 @@ async def main() -> int:
         help="read the energy service's local power vconf "
         "(memory/ave/powerconsumption) as int and string and watch it for "
         "SECONDS while the TV draw changes; read-only",
+    )
+    parser.add_argument(
+        "--power-keys",
+        type=float,
+        metavar="SECONDS",
+        help="sweep candidate vconf keys for the computed watts (not the model "
+        "inputs memory/ave/powerconsumption holds) for SECONDS while the TV "
+        "draw changes; read-only",
     )
     args = parser.parse_args()
     if args.vconf_defaults:
