@@ -2358,27 +2358,32 @@ class SamsungTVAsyncArt:
         )
         return data is not None
 
-    async def get_matte_list(self, include_color: bool = False) -> list | tuple:
-        """Get list of available matte types."""
-        data = await self._send_art_request({"request": "get_matte_list"})
-        if data:
-            matte_types = data.get("matte_list", data.get("matte_type_list", "[]"))
-            if isinstance(matte_types, str):
-                try:
-                    matte_types = json.loads(matte_types)
-                except json.JSONDecodeError:
-                    matte_types = []
+    async def get_matte_list(self, include_color: bool = False) -> list | tuple | None:
+        """Get list of available matte types.
 
-            if include_color:
-                matte_colors = data.get("matte_color_list", "[]")
-                if isinstance(matte_colors, str):
-                    try:
-                        matte_colors = json.loads(matte_colors)
-                    except json.JSONDecodeError:
-                        matte_colors = []
-                return matte_types, matte_colors
-            return matte_types
-        return ([], []) if include_color else []
+        Returns ``None`` when the TV did not answer — a silent channel or its
+        recovery cooldown. A caller must tell that apart from a genuine empty
+        list: an unanswered request is not "this TV has no mattes" (#402).
+        """
+        data = await self._send_art_request({"request": "get_matte_list"})
+        if data is None:
+            return None
+        matte_types = data.get("matte_list", data.get("matte_type_list", "[]"))
+        if isinstance(matte_types, str):
+            try:
+                matte_types = json.loads(matte_types)
+            except json.JSONDecodeError:
+                matte_types = []
+
+        if include_color:
+            matte_colors = data.get("matte_color_list", "[]")
+            if isinstance(matte_colors, str):
+                try:
+                    matte_colors = json.loads(matte_colors)
+                except json.JSONDecodeError:
+                    matte_colors = []
+            return matte_types, matte_colors
+        return matte_types
 
     async def change_matte(
         self,
@@ -3183,20 +3188,27 @@ class SamsungTVAsyncArt:
         return await self.delete_list([content_id])
 
     async def delete_list(self, content_ids: list[str]) -> bool:
-        """Delete multiple uploaded pieces of art."""
+        """Delete uploaded art; True once the TV confirms with image_deleted.
+
+        The request is dropped silently during the socket-recovery cooldown and
+        the TV may never answer a dead channel, so returning True unconditionally
+        told a caller a delete had happened when nothing left HA (#401). Wait for
+        the ``image_deleted`` broadcast and report whether it came.
+        """
         content_id_list = [{"content_id": cid} for cid in content_ids]
-        await self._send_art_request(
+        data = await self._send_art_request(
             {
                 "request": "delete_image_list",
                 "content_id_list": content_id_list,
-            }
+            },
+            wait_for_event="image_deleted",
         )
-        # The TV broadcasts image_added when art appears but nothing when it is
-        # removed, so tell the listeners ourselves: the Frame Art coordinator
+        # The TV broadcasts image_added when art appears but nothing else when it
+        # is removed, so tell the listeners ourselves: the Frame Art coordinator
         # caches the library size and would otherwise keep publishing the old
         # count until its refresh interval elapsed.
         self._fire_art_content_event()
-        return True
+        return data is not None
 
     # ==================== Context Manager ====================
 

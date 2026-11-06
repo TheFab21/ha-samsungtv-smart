@@ -86,6 +86,11 @@ _LOGGER = logging.getLogger(__name__)
 _RETRY_INTERVAL = 30  # seconds between checks/retries
 _MAX_RETRIES = 10  # give up after 10 failed requests while the TV is reachable
 
+# A generated picture-mode code read within this many seconds of a media-player
+# source change is not trusted as a content code: an app switch briefly reports
+# a home-screen id the TV never accepts for a set (#397).
+_SOURCE_SETTLE_SECONDS = 10
+
 # Matte catalogue to fall back on when the TV never answers get_matte_list.
 # A 2019 Frame (art API 0.97, #315) does not serve that enumeration, so the
 # Matte Type / Matte Color selects would otherwise stay stuck on a single
@@ -492,9 +497,22 @@ async def _load_matte_options(
 
         try:
             async with asyncio.timeout(10):
-                matte_types, matte_colors = await art_api.get_matte_list(
-                    include_color=True
+                matte = await art_api.get_matte_list(include_color=True)
+
+            if matte is None:
+                # No answer (silent channel or its cooldown), not "no mattes":
+                # retry, then fall back to the catalogue — never log [] | []
+                # and leave the selects stuck on one option (#402).
+                _LOGGER.debug(
+                    "Matte list not answered (attempt %d/%d), retrying in %ds",
+                    attempt,
+                    _MAX_RETRIES,
+                    _RETRY_INTERVAL,
                 )
+                await asyncio.sleep(_RETRY_INTERVAL)
+                continue
+
+            matte_types, matte_colors = matte
 
             type_options = [
                 m["matte_type"] if isinstance(m, dict) else str(m) for m in matte_types
@@ -626,6 +644,18 @@ def _parse_artmode_setting_options(item: dict) -> list[str]:
     return [str(current)] if current is not None else []
 
 
+def _art_supports(device_info: dict | None, flag: str) -> bool | None:
+    """Read a ``support_*`` flag from art device_info; None when it is unknown.
+
+    The TV reports the flags as the strings ``"TRUE"``/``"FALSE"``. None means
+    the channel did not answer get_device_info, or the flag is absent — not the
+    same as a definite "no".
+    """
+    if not isinstance(device_info, dict) or flag not in device_info:
+        return None
+    return str(device_info.get(flag)).strip().upper() == "TRUE"
+
+
 async def _load_motion_options(
     hass: HomeAssistant,
     art_api: SamsungTVAsyncArt,
@@ -636,13 +666,16 @@ async def _load_motion_options(
 ) -> None:
     """Probe Art Mode motion sensor settings and create selects only if present.
 
-    Not every Frame model has a motion sensor, and there is no dedicated
-    "supported" flag for it — the only way to know is to ask
-    get_artmode_settings and see whether the TV reports the item.
+    Not every Frame model has a motion/ambient-light sensor. The TV's own
+    ``get_device_info`` reports ``support_motion_sensor`` /
+    ``support_brightness_sensor``: those tell a model that truly has no sensor
+    apart from a channel that merely did not answer yet, so a silent channel at
+    setup is retried instead of being written off as "no such sensor" (#402).
     """
     for attempt in range(_MAX_RETRIES):
         try:
             async with asyncio.timeout(10):
+                device_info = await art_api.get_device_info()
                 sensitivity_item = await art_api.get_artmode_settings(
                     "motion_sensitivity"
                 )
@@ -650,6 +683,11 @@ async def _load_motion_options(
                 brightness_sensor_item = await art_api.get_artmode_settings(
                     "brightness_sensor_setting"
                 )
+
+            supports_motion = _art_supports(device_info, "support_motion_sensor")
+            supports_brightness = _art_supports(
+                device_info, "support_brightness_sensor"
+            )
 
             entities = []
 
@@ -707,16 +745,53 @@ async def _load_motion_options(
                     device_name,
                     [e._setting_name for e in entities],
                 )
+                return
+
+            # Nothing to create. Decide whether that is final or just a channel
+            # that has not answered yet (#402).
+            channel_silent = (
+                device_info is None
+                and sensitivity_item is None
+                and timer_item is None
+                and brightness_sensor_item is None
+            )
+            supported_but_unread = (
+                supports_motion is True or supports_brightness is True
+            )
+            if (channel_silent or supported_but_unread) and attempt + 1 < _MAX_RETRIES:
+                _LOGGER.debug(
+                    "Art Mode motion/brightness settings not ready for %s "
+                    "(attempt %d/%d; support_motion=%s support_brightness=%s), "
+                    "retrying in %ds",
+                    device_name,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    supports_motion,
+                    supports_brightness,
+                    _RETRY_INTERVAL,
+                )
+                await asyncio.sleep(_RETRY_INTERVAL)
+                continue
+
+            if supports_motion is False and supports_brightness is False:
+                _LOGGER.info(
+                    "TV %s reports no motion/brightness sensor "
+                    "(support_motion_sensor and support_brightness_sensor are "
+                    "FALSE), so the Motion Sensitivity, Motion Timer and "
+                    "Brightness Sensor controls are intentionally not created. "
+                    "This is expected on Frames without the sensor; it is not "
+                    "an error.",
+                    device_name,
+                )
             else:
                 _LOGGER.info(
                     "TV %s did not report any Art Mode motion/brightness sensor "
                     "settings (motion_sensitivity, motion_timer, "
-                    "brightness_sensor_setting) — this model has no such sensor, "
-                    "so the Motion Sensitivity, Motion Timer and Brightness "
-                    "Sensor controls are intentionally not created. This is "
-                    "expected on Frames without the motion/ambient-light sensor "
-                    "(e.g. some 2020/2021 models); it is not an error.",
+                    "brightness_sensor_setting) after %d attempts — the controls "
+                    "are not created. If the TV does have the sensor, reload the "
+                    "entry once its art channel is answering again.",
                     device_name,
+                    _MAX_RETRIES,
                 )
             return
 
@@ -1114,6 +1189,15 @@ class SamsungTVIPControlPictureModeSelect(_SharedIPSelect):
         self._attr_current_option: str | None = None
         # Last value the TV reported, variant included (e.g. StandardHDR).
         self._tv_value: str | None = None
+        # The last generated (AI Customisation) code the TV took for content:
+        # one it accepted on a set, or reported during stable playback. The
+        # set falls back to it when the freshly-learned code is a stale
+        # home-screen / app-switch id the TV refuses with -32002 (#397).
+        self._last_usable_generated: str | None = None
+        # Media-player source last seen, and when it last changed, so a
+        # generated reading taken during an app switch is not trusted (#397).
+        self._last_source: str | None = None
+        self._source_changed_at: float = 0.0
         self._attr_available = False
         self._unsupported_logged = False
 
@@ -1158,8 +1242,30 @@ class SamsungTVIPControlPictureModeSelect(_SharedIPSelect):
         """Expose the raw value the TV reported (HDR variant included)."""
         return {"tv_picture_mode": self._tv_value} if self._tv_value else None
 
-    def _apply_tv_value(self, value: str) -> None:
-        """Show what the TV reported, learning a mode not offered yet."""
+    def _mp_source(self) -> str | None:
+        """The source the media player reports for this TV, if any."""
+        hass = getattr(self, "hass", None)
+        if hass is None:
+            return None
+        try:
+            registry = er.async_get(hass)
+            for entity in registry.entities.get_entries_for_config_entry_id(
+                self._entry_id
+            ):
+                if entity.domain != "media_player":
+                    continue
+                state = hass.states.get(entity.entity_id)
+                return state.attributes.get("source") if state else None
+        except (AttributeError, TypeError):
+            return None
+        return None
+
+    def _apply_tv_value(self, value: str, *, from_set: bool = False) -> None:
+        """Show what the TV reported, learning a mode not offered yet.
+
+        ``from_set`` marks a value the TV just accepted on a set, so it is
+        always a code good for the current content.
+        """
         self._tv_value = value
         if picture_mode_ip_is_generated(value):
             # AI Customisation: one option for the whole generated family, and
@@ -1167,6 +1273,22 @@ class SamsungTVIPControlPictureModeSelect(_SharedIPSelect):
             # back only the id it is reporting for what is on screen (#352).
             option = PICTURE_MODE_GENERATED_OPTION
             ocf = value
+            # Remember a generated code the TV took for content, so a later
+            # set can fall back to it when the freshly-learned id is a stale
+            # home-screen / app-switch one the TV refuses (#397). Trust a code
+            # it just accepted on a set; from a poll, trust it only once the
+            # media-player source has settled (an app switch reports an id the
+            # TV never accepts for content).
+            if from_set:
+                self._last_usable_generated = value
+            else:
+                now = time.monotonic()
+                source = self._mp_source()
+                if source != self._last_source:
+                    self._last_source = source
+                    self._source_changed_at = now
+                if now - self._source_changed_at >= _SOURCE_SETTLE_SECONDS:
+                    self._last_usable_generated = value
         else:
             ocf = picture_mode_ip_base(value)
             option = picture_mode_slug(ocf)
@@ -1234,10 +1356,30 @@ class SamsungTVIPControlPictureModeSelect(_SharedIPSelect):
         if not value:
             raise HomeAssistantError(f"Unknown picture mode '{option}'.")
         revision = self._begin_shared_write()
-        try:
-            applied = await client.async_set_picture_mode(
-                value, picture_mode_ip_variant(value, self._tv_value)
+        if option == PICTURE_MODE_GENERATED_OPTION:
+            # AI Customisation takes only the generated id the TV reports for
+            # what is on screen, and a switch/home-screen reading is one it
+            # never accepts for content. Send the freshly-learned id, but fall
+            # back to the last one that played, so a set during video survives
+            # a stale reading (#397). A Gen_ code has no HDR variant.
+            primary = value
+            fallback = (
+                self._last_usable_generated
+                if self._last_usable_generated and self._last_usable_generated != value
+                else None
             )
+        else:
+            variant = picture_mode_ip_variant(value, self._tv_value)
+            if variant:
+                # While HDR plays the TV reports e.g. StandardHDR and takes
+                # only that name for a standard mode — the plain name answers
+                # -32002 and flashes "function not available" on screen (#400).
+                # Send the suffixed variant first, the plain name as fallback.
+                primary, fallback = variant, value
+            else:
+                primary, fallback = value, variant
+        try:
+            applied = await client.async_set_picture_mode(primary, fallback)
         except SamsungIPControlAuthError as ex:
             self._mark_unavailable()
             notify_token_problem(
@@ -1255,19 +1397,19 @@ class SamsungTVIPControlPictureModeSelect(_SharedIPSelect):
             # input does not offer), not a transport fault: keep the entity
             # available so another choice can be made right away.
             if option == PICTURE_MODE_GENERATED_OPTION:
+                sent = primary if not fallback else f"{primary}, then {fallback}"
                 raise HomeAssistantError(
                     f"The TV refused picture mode '{option}' ({ex}). It takes "
                     "only the code it is reporting for what is on screen right "
-                    f"then, and the last one read was '{self._tv_value}'. Turn "
-                    "AI Customisation on from the TV's own AI Mode settings "
-                    "instead."
+                    f"then; the code sent was {sent}. Turn AI Customisation on "
+                    "from the TV's own AI Mode settings instead."
                 ) from ex
             raise HomeAssistantError(
                 f"The TV refused picture mode '{option}': {ex}"
             ) from ex
 
         if self._record_direct_result(revision):
-            self._apply_tv_value(applied)
+            self._apply_tv_value(applied, from_set=True)
             self._attr_available = True
         clear_token_problem(self.hass, self._entry_id, METHOD_IP_CONTROL)
         self.async_write_ha_state()

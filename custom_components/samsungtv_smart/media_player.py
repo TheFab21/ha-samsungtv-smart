@@ -2073,8 +2073,14 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._app_list = double_list[0]
             self._app_list_st = double_list[1]
         else:
-            self._app_list = None if first_load else {}
-            self._app_list_st = None if first_load else {}
+            # No manual app list → discover the TV's own apps (home-screen
+            # tiles over the quick-settings channel, or the legacy WS list).
+            # This must be None, not {}, on a live options update too: {} is a
+            # built list of "no apps" that blocks _gen_installed_app_list from
+            # ever filling it, so emptying the option used to drop every app
+            # until the next full load (#398).
+            self._app_list = None
+            self._app_list_st = None
 
         # load channels list
         self._channel_list = self._get_option(CONF_CHANNEL_LIST, {})
@@ -6499,12 +6505,15 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return None
 
         try:
-            matte_types, matte_colors = await self._art_api.get_matte_list(
-                include_color=True
-            )
+            matte = await self._art_api.get_matte_list(include_color=True)
         except Exception as ex:  # noqa: BLE001 - never block an upload on this
             self._log.debug("Frame Art: could not read the matte list: %s", ex)
             return None
+        if matte is None:
+            # The TV did not answer — never block an upload that would work.
+            self._log.debug("Frame Art: the TV did not answer get_matte_list")
+            return None
+        matte_types, matte_colors = matte
 
         def _ids(entries, key: str) -> set[str]:
             """Names from a matte list, which is dicts on some models, strings
@@ -6731,8 +6740,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if not content_id.startswith("MY"):
             return {"error": "Can only delete user-uploaded content (MY-*)"}
         try:
-            await self._art_api.delete(content_id)
-
+            confirmed = await self._art_api.delete(content_id)
+            if not confirmed:
+                # delete() is False when the TV never confirmed the removal
+                # (a silent channel or its cooldown): don't claim success (#401).
+                return {"error": "no answer from the TV"}
             return {"success": True}
         except Exception as ex:
             self._log.error("Error deleting artwork: %s", ex)
@@ -7427,9 +7439,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._log.warning("Frame TV art mode is not supported on this device")
             return {"error": "Frame TV not supported"}
         try:
-            matte_types, matte_colors = await self._art_api.get_matte_list(
-                include_color=True
-            )
+            matte = await self._art_api.get_matte_list(include_color=True)
+            if matte is None:
+                return {"error": "The TV did not answer get_matte_list"}
+            matte_types, matte_colors = matte
             result = {"matte_types": matte_types, "matte_colors": matte_colors}
             self._log.info(
                 "%s - Available matte types: %s | Available matte colors: %s",
@@ -7554,7 +7567,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._log.warning("Frame TV art mode is not supported on this device")
             return {"error": "Frame TV not supported"}
         try:
-            await self._art_api.set_favourite(content_id, status)
+            confirmed = await self._art_api.set_favourite(content_id, status)
+            if not confirmed:
+                # set_favourite returns False/None when the TV never confirmed
+                # (a silent channel or its cooldown): don't claim success (#401).
+                return {"error": "no answer from the TV"}
             return {"success": True}
         except Exception as ex:
             self._log.error("Error setting favourite status: %s", ex)

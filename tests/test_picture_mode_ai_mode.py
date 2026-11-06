@@ -112,6 +112,10 @@ def _select() -> PictureModeSelect:
     entity._attr_options = list(entity._ocf_by_option)
     entity._attr_current_option = None
     entity._tv_value = None
+    entity._last_usable_generated = None
+    entity._last_source = None
+    entity._source_changed_at = 0.0
+    entity.hass = None
     return entity
 
 
@@ -245,6 +249,79 @@ def test_a_successful_set_follows_the_echo(monkeypatch):
     assert entity._tv_value == "Intelligent"
 
 
+def test_a_switch_moment_reading_is_not_kept_as_the_usable_one(monkeypatch):
+    # #397: during an app switch the TV briefly reports the home-screen id, one
+    # it never accepts for content. That reading must not become the fallback.
+    entity = _select()
+    clock = {"t": 1000.0}
+    source = {"v": "YouTube"}
+    monkeypatch.setattr(sel.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(entity, "_mp_source", lambda: source["v"])
+
+    # Steady playback: the SDR video id, source unchanged -> trusted.
+    entity._apply_tv_value(SDR_VIDEO)  # first sighting of the source
+    clock["t"] += 60
+    entity._apply_tv_value(SDR_VIDEO)  # settled now -> remembered as usable
+    assert entity._last_usable_generated == SDR_VIDEO
+
+    # App switch: the source changes and the home-screen id arrives at once.
+    source["v"] = "Focus Sat"
+    clock["t"] += 1
+    entity._apply_tv_value(HOME_SCREEN)
+    # The live reading still follows the screen, but the usable id does not move.
+    assert entity._ocf_by_option[AI_CUSTOM] == HOME_SCREEN
+    assert entity._last_usable_generated == SDR_VIDEO
+
+
+def test_a_set_falls_back_to_the_last_played_id(monkeypatch):
+    # #397: selecting AI Customisation while the learned id is a stale
+    # home-screen one sends it first, then the last id that played.
+    entity = _select()
+    entity._last_usable_generated = SDR_VIDEO
+    entity._ocf_by_option[AI_CUSTOM] = HOME_SCREEN
+    entity._attr_options = [*entity._attr_options, AI_CUSTOM]
+    client = _Recording()
+    _wired(entity, monkeypatch, client)
+
+    asyncio.run(entity.async_select_option(AI_CUSTOM))
+
+    assert client.sent == [(HOME_SCREEN, SDR_VIDEO)]
+
+
+def test_a_successful_set_is_remembered_as_the_usable_id(monkeypatch):
+    # #397: the id the TV accepts on a set is, by definition, good for content.
+    entity = _select()
+    client = _Recording(echo=HDR_VIDEO)
+    _wired(entity, monkeypatch, client)
+    entity._ocf_by_option[AI_CUSTOM] = HDR_VIDEO
+    entity._attr_options = [*entity._attr_options, AI_CUSTOM]
+
+    asyncio.run(entity.async_select_option(AI_CUSTOM))
+
+    assert entity._last_usable_generated == HDR_VIDEO
+
+
+def test_the_refusal_names_both_codes_it_sent(monkeypatch):
+    # #397: when a fallback exists, the message names what was actually sent.
+    entity = _select()
+
+    class _Refusing:
+        async def async_set_picture_mode(self, value, fallback=None):
+            raise sel.SamsungIPControlModeLockedError("-32002 not offered")
+
+    _wired(entity, monkeypatch, _Refusing())
+    entity._last_usable_generated = SDR_VIDEO
+    entity._ocf_by_option[AI_CUSTOM] = HOME_SCREEN
+    entity._attr_options = [*entity._attr_options, AI_CUSTOM]
+
+    with pytest.raises(sel.HomeAssistantError) as caught:
+        asyncio.run(entity.async_select_option(AI_CUSTOM))
+
+    message = str(caught.value)
+    assert HOME_SCREEN in message
+    assert SDR_VIDEO in message
+
+
 def test_a_refused_ai_customisation_explains_why(monkeypatch):
     # -32002 for an id the TV is not reporting is the normal answer here, so
     # the error has to say what would have worked instead of just failing.
@@ -264,7 +341,7 @@ def test_a_refused_ai_customisation_explains_why(monkeypatch):
 
     message = str(caught.value)
     assert "on screen" in message
-    assert "Standard" in message  # the last reading, so the user can see why
+    assert SDR_VIDEO in message  # the code that was SENT, so the user sees why
     assert "AI Mode settings" in message
     # The reading is untouched by a refusal.
     assert entity._tv_value == "Standard"

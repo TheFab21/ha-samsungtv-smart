@@ -99,6 +99,155 @@ def test_greyed_out_options_are_marked():
     assert all(e.dim for e in bff.parse_setting_layer(game).elements)
 
 
+# --- 2026 firmware (26_RSM_FTV): nested list tiles and shared-subtitle toggles
+
+
+def _tile(suffix, title, selected=False, dim="false"):
+    return {
+        "id": f"s/setting.layer.picturemodetile@{suffix}",
+        "elements": [
+            {
+                "title": title,
+                "is_selected": "true" if selected else "false",
+                "dim": dim,
+                "type": "SecondDepthOption",
+            }
+        ],
+    }
+
+
+def _nested_list_layer():
+    """A 2026 list setting: one preview element over a Commonlayer of tiles."""
+    return {
+        "id": "s/setting.layer.picturemode",
+        "current_element_index": "0",
+        "elements": [
+            {
+                "id": "s/setting.layer.picturemode",
+                "title": "Picture Mode",
+                "subTitle": "Standard",
+                "actionType": "list",
+                "type": "SettingPreview",
+            }
+        ],
+        "child": [
+            {
+                "id": "s/setting.layer.picturemodelayer",
+                "current_element_index": "0",
+                "elements": [
+                    {
+                        "id": "s/setting.layer.picturemodelayer",
+                        "title": "Commonlayer",
+                        "hasListInfo": "true",
+                        "type": "Layer",
+                    }
+                ],
+                "child": [
+                    _tile(0, "Dynamic"),
+                    _tile(1, "Standard", selected=True),
+                    _tile(2, "Eco"),
+                    _tile(3, "Movie (Calibrated)"),
+                    _tile(4, "FILMMAKER MODE"),
+                ],
+            }
+        ],
+    }
+
+
+def _toggle_layer(off_subtitle, on_subtitle):
+    return {
+        "id": "s/setting.layer.aitech",
+        "current_element_index": "1",
+        "elements": [
+            {
+                "id": "s/setting.layer.aitech@Off",
+                "title": "AI Mode",
+                "subTitle": off_subtitle,
+                "actionType": "toggle",
+                "dim": "false",
+            },
+            {
+                "id": "s/setting.layer.aitech@On",
+                "title": "AI Mode",
+                "subTitle": on_subtitle,
+                "actionType": "toggle",
+                "dim": "false",
+            },
+        ],
+    }
+
+
+def test_a_2026_list_setting_reads_its_options_from_the_grandchild_tiles():
+    layer = bff.parse_setting_layer(_nested_list_layer())
+    assert [e.label for e in layer.elements] == [
+        "Dynamic",
+        "Standard",
+        "Eco",
+        "Movie (Calibrated)",
+        "FILMMAKER MODE",
+    ]
+    # is_selected, not current_element_index, marks the current option.
+    assert layer.current_element.label == "Standard"
+    # The value the write carries is the id after '@'.
+    assert layer.elements[4].element_id.endswith("@4")
+    assert sel.quick_setting_options(layer) == [
+        "Dynamic",
+        "Standard",
+        "Eco",
+        "Movie (Calibrated)",
+        "FILMMAKER MODE",
+    ]
+
+
+def test_a_2026_list_tile_that_is_greyed_out_is_marked():
+    raw = _nested_list_layer()
+    raw["child"][0]["child"][0]["elements"][0]["dim"] = "true"
+    layer = bff.parse_setting_layer(raw)
+    assert layer.elements[0].dim is True
+    assert layer.elements[1].dim is False
+
+
+def test_a_2026_shared_subtitle_toggle_is_labelled_and_read_by_id_suffix():
+    # Both elements say "Off" and current_element_index is a constant "1";
+    # the suffix gives the labels and the subtitle picks the current one.
+    layer = bff.parse_setting_layer(_toggle_layer("Off", "Off"))
+    assert [e.label for e in layer.elements] == ["Off", "On"]
+    assert layer.current == 0
+    assert sel.quick_setting_options(layer) == ["Off", "On"]
+
+    on = bff.parse_setting_layer(_toggle_layer("On", "On"))
+    assert on.current == 1
+
+
+def test_a_toggle_with_distinct_subtitles_is_left_to_the_generic_reader():
+    # Energy saving is the same shape but its subtitles already differ, so the
+    # subtitles are the labels and current_element_index is right.
+    layer = bff.parse_setting_layer(
+        {
+            "id": "s/setting.layer.energysavingsolution",
+            "current_element_index": "0",
+            "elements": [
+                {
+                    "id": "s/setting.layer.energysavingsolution@Off",
+                    "title": "Energy Saving",
+                    "subTitle": "Off",
+                    "actionType": "toggle",
+                    "dim": "false",
+                },
+                {
+                    "id": "s/setting.layer.energysavingsolution@On",
+                    "title": "Energy Saving",
+                    "subTitle": "On",
+                    "actionType": "toggle",
+                    "dim": "false",
+                },
+            ],
+        }
+    )
+    assert [e.label for e in layer.elements] == ["Off", "On"]
+    assert layer.current == 0
+
+
 def test_inputs_match_by_id_before_the_cec_name():
     client = _client()
     client._handle(_msg("get.extsources", SOURCES))

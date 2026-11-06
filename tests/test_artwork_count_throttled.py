@@ -322,7 +322,7 @@ class WiringTest(unittest.TestCase):
 
     def test_a_delete_notifies_the_listeners(self):
         block = ART[ART.index("async def delete_list") :]
-        block = block[: block.index("return True")]
+        block = block[: block.index("return data is not None")]
         self.assertIn("self._fire_art_content_event()", block)
 
     def test_the_option_is_no_longer_decorative(self):
