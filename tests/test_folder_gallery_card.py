@@ -15,6 +15,9 @@ ROOT = Path(__file__).parents[1]
 CARD = ROOT / "custom_components" / "samsungtv_smart" / "www" / "folder-gallery-card.js"
 JS_TEST = ROOT / "tests" / "js" / "folder_gallery_helpers.test.mjs"
 JS_OVERLAY_TEST = ROOT / "tests" / "js" / "folder_gallery_overlay.test.mjs"
+JS_RESPONSE_TEST = (
+    ROOT / "tests" / "js" / "folder_gallery_service_response.test.mjs"
+)
 
 
 def test_the_card_is_bundled_with_the_integration():
@@ -70,3 +73,25 @@ def test_open_overlays_lift_the_card_above_its_siblings():
         timeout=60,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+def test_an_entity_services_error_reaches_the_toast():
+    # art_delete / art_set_favourite are entity services, so Home Assistant
+    # keys their response by entity id. 9.0.8 read response.error and toasted
+    # success for every answer (tests/js/folder_gallery_service_response.mjs).
+    result = subprocess.run(
+        ["node", str(JS_RESPONSE_TEST)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_the_card_reads_the_response_by_entity_id():
+    src = CARD.read_text()
+    assert "_serviceError(result, entityId)" in src
+    assert "response[entityId]" in src
+    # The flat read that silently swallowed every error must not come back.
+    assert "result.response.error" not in src

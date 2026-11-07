@@ -219,6 +219,44 @@ def test_a_2026_shared_subtitle_toggle_is_labelled_and_read_by_id_suffix():
     assert on.current == 1
 
 
+def test_a_shared_subtitle_toggle_sends_the_tvs_own_subtitle_on_the_wire():
+    # #404: 9.0.8 labelled the elements by their id suffix and sent that suffix
+    # as subTitle too; the TV answered ok and did not apply it. set.settings.data
+    # is echo-based, so the label HA shows and the subTitle sent must differ:
+    # the label is the suffix, the wire carries what the TV reported.
+    layer = bff.parse_setting_layer(_toggle_layer("Off", "Off"))
+    on = layer.elements[1]
+    assert on.label == "On"  # what HA shows
+    assert on.params == {
+        "id": "s/setting.layer.aitech@On",
+        "title": "AI Mode",
+        "subTitle": "Off",  # what the TV sent for this element
+    }
+    # The current element is unaffected by the split.
+    assert layer.current == 0
+    assert layer.elements[0].params["subTitle"] == "Off"
+
+
+def test_a_list_tile_still_sends_its_own_title():
+    # The tile path has no synthesised label, so the wire payload is unchanged
+    # (contrast enhancer / colour space set fine on the 2026 firmware).
+    layer = bff.parse_setting_layer(_nested_list_layer())
+    assert layer.elements[4].params == {
+        "id": "s/setting.layer.picturemodetile@4",
+        "title": "FILMMAKER MODE",
+        "subTitle": "FILMMAKER MODE",
+    }
+
+
+def test_a_generic_element_still_sends_its_subtitle():
+    layer = bff.parse_setting_layer(_layer(COLORTONE, COLORTONE_OPTIONS, 1))
+    assert layer.current_element.params == {
+        "id": f"{COLORTONE}@Standard",
+        "title": "T",
+        "subTitle": "Standard",
+    }
+
+
 def test_a_toggle_with_distinct_subtitles_is_left_to_the_generic_reader():
     # Energy saving is the same shape but its subtitles already differ, so the
     # subtitles are the labels and current_element_index is right.
