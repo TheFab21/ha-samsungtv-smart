@@ -401,6 +401,10 @@ SIGNAL_CONFIG_ENTITY = f"{DOMAIN}_config"
 # Sent by the Art Mode switch, suffixed with the entry id, once it has turned
 # Art Mode off: the media player then applies CONF_ART_EXIT_SOURCE.
 SIGNAL_ART_EXITED = f"{DOMAIN}_art_exited"
+# Sent by the Art Mode switch while it waits for a TV that answers on the
+# network but still reads as off: the media player re-sends its configured
+# wake, never KEY_POWER (#319).
+SIGNAL_WAKE_NUDGE = f"{DOMAIN}_wake_nudge"
 
 STD_APP_LIST = {
     "org.tizen.browser": {

@@ -55,6 +55,7 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
     SIGNAL_ART_EXITED,
+    SIGNAL_WAKE_NUDGE,
     WS_PREFIX,
     ip_control_port,
 )
@@ -226,6 +227,13 @@ async def async_setup_entry(
     # Create the switch entities
     if entities:
         async_add_entities(entities)
+
+
+# Seconds of "answers but reads as off" after which the ready-wait asks the
+# media player for another wake. Twice at most in a 20 s wait: a set still
+# booting reads as on well before the first, and a wake costs a magic packet,
+# a SmartThings command or an IP Control call, never a KEY_POWER toggle.
+WAKE_NUDGE_AFTER = (3, 10)
 
 
 class FrameArtModeSwitch(SwitchEntity):
@@ -758,6 +766,9 @@ class FrameArtModeSwitch(SwitchEntity):
         """
         self._log.debug("Waiting for TV to be ready (max %ds)...", max_wait)
 
+        # Seconds the TV has passed the support check while still reading as
+        # off, i.e. answering on the network with its panel dark.
+        answered_off = 0
         for i in range(max_wait):
             await asyncio.sleep(1)
 
@@ -789,6 +800,21 @@ class FrameArtModeSwitch(SwitchEntity):
                     i + 1,
                     max_wait,
                 )
+                answered_off += 1
+                if answered_off in WAKE_NUDGE_AFTER:
+                    # The power-on's KEY_POWER went out while the TV could not
+                    # hear it, and a magic packet can wake the network alone
+                    # (#319). Now that the TV answers, have the media player
+                    # send its configured wake again; it never sends KEY_POWER.
+                    self._log.debug(
+                        "TV %s answers but stays off after %ds; asking for "
+                        "another wake",
+                        self._device_name,
+                        answered_off,
+                    )
+                    async_dispatcher_send(
+                        self._hass, f"{SIGNAL_WAKE_NUDGE}_{self._entry.entry_id}"
+                    )
                 continue
 
             self._log.debug("TV not ready yet, waiting... (%d/%d)", i + 1, max_wait)

@@ -75,9 +75,16 @@ async def test_the_art_channel_alone_does_not_mean_the_tv_is_awake():
         _is_tv_on=AsyncMock(return_value=False),
     )
 
-    with patch("asyncio.sleep", new=AsyncMock()):
+    nudge = MagicMock()
+    with (
+        patch("asyncio.sleep", new=AsyncMock()),
+        patch.object(sw, "async_dispatcher_send", nudge),
+    ):
         assert await entity._wait_for_tv_ready(max_wait=3) is False
 
+    # Three seconds answering while off: another wake was asked for (#319,
+    # tests/test_wake_nudge.py).
+    nudge.assert_called_once()
     # It kept asking rather than giving up on the first answer.
     assert entity._art_api.supported.await_count == 3
     assert entity._is_tv_on.await_count == 3
