@@ -1,0 +1,124 @@
+name: "Publish release"
+
+# The release button: Actions -> Publish release -> Run workflow.
+#
+# It reads the version the shipping PR already bumped
+# custom_components/samsungtv_smart/manifest.json to, tags master at that
+# commit and publishes the release with the HACS zip attached and GitHub's
+# generated changelog as the body (the same body 9.0.8 and 9.0.9 got).
+#
+# Why this does the whole job instead of only creating the release and leaving
+# the zip to release.yml: a release created with the default GITHUB_TOKEN does
+# NOT trigger other workflows, so release.yml would never fire and the asset
+# would never be attached. release.yml is left untouched for a release cut by
+# hand in the GitHub UI, where a person is the actor and it does fire.
+#
+# It always releases master, whichever branch the run is started from, so a
+# feature branch cannot be published by mistake.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (empty = the one in manifest.json)"
+        required: false
+        type: string
+      notes:
+        description: "Extra notes, placed above the generated changelog"
+        required: false
+        type: string
+      prerelease:
+        description: "Publish as a pre-release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# Never let two publishes race for the same tag.
+concurrency:
+  group: "publish-release"
+  cancel-in-progress: false
+
+env:
+  MANIFEST: "custom_components/samsungtv_smart/manifest.json"
+
+jobs:
+  publish:
+    name: "Publish"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout master"
+        uses: actions/checkout@v4
+        with:
+          ref: "refs/heads/master"
+          # Full history and tags, so an already-published version is caught
+          # before anything is created.
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Work out the version and check it can be released"
+        id: version
+        env:
+          # Passed through env, never interpolated into the script itself.
+          GIVEN: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          in_manifest="$(jq -r '.version' "$MANIFEST")"
+          version="${GIVEN:-$in_manifest}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)*$'; then
+            echo "::error::'$version' is not a version like 9.0.10"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            echo "::error::$version is already released. Bump $MANIFEST in a PR first (it says $in_manifest)."
+            exit 1
+          fi
+          echo "manifest=$in_manifest" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing $version (manifest says $in_manifest)."
+
+      - name: "Align the manifest when a version was typed in"
+        if: steps.version.outputs.version != steps.version.outputs.manifest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          jq --arg v "$VERSION" '.version = $v' "$MANIFEST" > tmp.json
+          mv tmp.json "$MANIFEST"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$MANIFEST"
+          git commit -m "chore: bump manifest version to $VERSION"
+          git push origin HEAD:refs/heads/master
+
+      - name: "Record the commit to tag"
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: "ZIP the integration directory"
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}/custom_components/samsungtv_smart"
+          zip samsungtv_smart.zip -r ./
+
+      - name: "Create the release with the ZIP attached"
+        uses: softprops/action-gh-release@v2.0.8
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          target_commitish: ${{ steps.commit.outputs.sha }}
+          body: ${{ inputs.notes }}
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}
+          files: ${{ github.workspace }}/custom_components/samsungtv_smart/samsungtv_smart.zip
+
+      - name: "Say where it went"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "### Published $VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- commit \`${{ steps.commit.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- https://github.com/${{ github.repository }}/releases/tag/$VERSION" >> "$GITHUB_STEP_SUMMARY"
