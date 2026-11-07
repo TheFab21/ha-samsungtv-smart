@@ -215,14 +215,16 @@
           "external_audio_entity": "External soundbar or receiver status entity",
           "rest_app_list": "Additional apps to detect",
           "rest_app_poll_interval": "Additional app refresh interval (s)",
-          "report_art_mode_as_off": "Report media player off in Art Mode"
+          "report_art_mode_as_off": "Report media player off in Art Mode",
+          "art_on_non_frame": "Frame Art on a non-Frame TV"
         },
         "data_description": {
           "art_exit_source": "Input or app to switch to when Art Mode is turned off from Home Assistant (Art Mode switch or art_set_artmode). Leave empty to keep the TV's own behaviour: it goes back to its last source, often TV (Samsung TV Plus) on a Frame. Not applied when Art Mode is left with the remote. Needs a source the TV can reach: a list auto-discovered from SmartThings holds ST_ keys, which fall back to the equivalent WebSocket key (ST_HDMI3 -> KEY_HDMI3) when SmartThings is unavailable. Some models ignore the numbered HDMI keys; the log says so when the TV did not move.",
           "external_audio_entity": "Optional: use an existing media player for actual volume and mute feedback while the TV uses external speakers. TV controls stay unchanged. Leave empty to use the TV readings. No additional polling is added. Select the actual soundbar or receiver, not a group or another entity that mirrors this TV.",
           "rest_app_list": "Map display names to native Tizen app IDs for apps missing from automatic discovery. Leave empty to disable additional REST status checks.",
           "rest_app_poll_interval": "Apps with a recent reading from the normal tracker need no extra checks. Other apps refresh every 30 seconds by default, with up to 120 scheduled checks per app per hour. Results are cached between refreshes; source changes and Art Mode events can refresh sooner. An empty app list adds no requests.",
-          "report_art_mode_as_off": "Optional: report artwork as off while keeping art_mode_status on. Normal viewing remains on; physical power tracking and Art Mode controls continue. Disabled by default."
+          "report_art_mode_as_off": "Optional: report artwork as off while keeping art_mode_status on. Normal viewing remains on; physical power tracking and Art Mode controls continue. Disabled by default.",
+          "art_on_non_frame": "Optional: enable Art Mode for a TV that reports itself as not a Frame but runs the art app, such as the 2026 Micro RGB R95H. The art-app channel is asked for its version and the Art Mode entities are created only when it answers. Have the TV on the first time. Disabled by default."
         }
       },
       "save_exit": {

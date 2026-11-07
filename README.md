@@ -398,6 +398,7 @@ After initial setup, click **Configure** on the integration card to access these
 | **Sync turn on/off** | Optional entity to mirror TV power state |
 | **External power entity** | Use an external sensor to determine power state |
 | **Toggle Art Mode** | Toggle Art Mode when turning on a Frame TV that is already in Art Mode |
+| **Frame Art on a non-Frame TV** | Enable the Art Mode entities on a TV that reports itself as not a Frame but runs the art app (for example the 2026 Micro RGB R95H). Off by default; see [Frame Art on a non-Frame TV](#frame-art-on-a-non-frame-tv) |
 | **Source after leaving Art Mode** | Input or app (a name from the source or app list, or an id such as `HDMI1`) to switch to when Art Mode is turned off **from Home Assistant** — the Art Mode switch or `art_set_artmode`. Empty (default): the TV goes back to its last source, which on a Frame is often *TV*, i.e. Samsung TV Plus starting a channel. Not applied when Art Mode is left with the remote, so it never overrides what someone picks by hand, nor when the TV announces it is going to standby — on a Frame, turning Art Mode off is often turning the TV off, and then there is no source to switch to |
 | **IP Control poll interval** | How often the local IP Control state is read (5–600 s, default 10). This snapshot carries the input source, picture/sound modes and — on the tuner — the channel number, so it decides how fast those follow a change made with the remote. Local LAN calls, no cloud quota: lower is fine on modern panels, raise it if an older TV is slow to answer |
 | **Ping port** | Port used to detect TV presence |
@@ -754,6 +755,30 @@ to normal viewing.
 
 The option is disabled by default. Status updates and controls continue while
 artwork is showing.
+
+### Frame Art on a non-Frame TV
+
+The art entities and services are created when the TV's device information
+says `FrameTVSupport: "true"`. Some sets say `"false"` and run the art app
+anyway: a 2026 Micro RGB (MRN75R95HAFXZA) answers `api_version 6.0.0.0` on the
+art-app channel and takes Art Mode on/off, Art Store slideshows and mattes like
+a Frame.
+
+For such a TV enable **Frame Art on a non-Frame TV** in the advanced options.
+The integration then asks the art-app channel for its version and enables the
+art features only when it answers; on a TV without the app no art entities are
+created. Have the TV on the first time, so the channel can answer.
+
+Expect only what the set has. The R95H has no motion or brightness sensor and
+its art app says so (`support_motion_sensor` / `support_brightness_sensor`
+FALSE), so the Motion Sensitivity, Motion Timer and Brightness Sensor selects
+are not created for it, as on a Frame without the sensor. Art Mode on/off, the
+Frame Art sensor, Art Store slideshows and mattes are what has been tested on
+it; the other art entities and the cards are offered as on a Frame.
+
+Turning the option off again stops creating the art entities at the reload it
+triggers; their entity-registry entries stay behind as unavailable until you
+delete them. A Frame's own confirmation is never touched. Off by default.
 
 ### Frame Art Sensor Attributes
 

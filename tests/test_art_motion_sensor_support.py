@@ -143,3 +143,148 @@ async def test_controls_are_created_on_a_healthy_channel_without_retry():
 
     assert len(added) == 3
     assert art_api.get_device_info.await_count == 1
+
+
+async def test_answered_settings_without_the_hardware_create_no_controls():
+    # The R95H (a non-Frame set running the art app, CONF_ART_ON_NON_FRAME):
+    # both support flags FALSE, yet every setting read answers - the settings
+    # exist in the firmware, the sensor does not. Built from those answers the
+    # Motion Sensitivity select had "false" as its only option. The flags win.
+    art_api = MagicMock()
+    art_api.get_device_info = AsyncMock(
+        return_value={
+            "support_motion_sensor": "FALSE",
+            "support_brightness_sensor": "FALSE",
+        }
+    )
+    art_api.get_artmode_settings = AsyncMock(
+        side_effect=[
+            _item("motion_sensitivity", "false"),
+            _item("motion_timer", "240", {"valid_values": '["off","60","240"]'}),
+            _item("brightness_sensor_setting", "on"),
+        ]
+    )
+
+    added = await _run_load(art_api, max_retries=3)
+
+    assert added == []
+    assert art_api.get_device_info.await_count == 1  # final, no retry
+
+
+async def test_one_missing_sensor_keeps_the_other_control():
+    # Motion sensor absent, brightness sensor present: only the Brightness
+    # Sensor control is created, and Motion Timer follows the motion flag.
+    art_api = MagicMock()
+    art_api.get_device_info = AsyncMock(
+        return_value={
+            "support_motion_sensor": "FALSE",
+            "support_brightness_sensor": "TRUE",
+        }
+    )
+    art_api.get_artmode_settings = AsyncMock(
+        side_effect=[
+            _item("motion_sensitivity", "false"),
+            _item("motion_timer", "240", {"valid_values": '["off","60","240"]'}),
+            _item("brightness_sensor_setting", "on"),
+        ]
+    )
+
+    added = await _run_load(art_api, max_retries=3)
+
+    assert [e._setting_name for e in added] == ["brightness_sensor_setting"]
+
+
+async def test_a_flagged_off_sensor_does_not_stop_the_other_one_retrying():
+    # Motion sensor absent (flag FALSE) and its answers discarded, brightness
+    # sensor present (TRUE) but unreadable on the first pass: the loader must
+    # still retry for the brightness control instead of giving up at once.
+    art_api = MagicMock()
+    art_api.get_device_info = AsyncMock(
+        return_value={
+            "support_motion_sensor": "FALSE",
+            "support_brightness_sensor": "TRUE",
+        }
+    )
+    motion = [
+        _item("motion_sensitivity", "false"),
+        _item("motion_timer", "240", {"valid_values": '["off","60","240"]'}),
+    ]
+    art_api.get_artmode_settings = AsyncMock(
+        side_effect=[
+            *motion,
+            None,  # brightness_sensor_setting: first attempt, nothing readable
+            *motion,
+            _item("brightness_sensor_setting", "on"),
+        ]
+    )
+
+    added = await _run_load(art_api, max_retries=3)
+
+    assert [e._setting_name for e in added] == ["brightness_sensor_setting"]
+    assert art_api.get_device_info.await_count == 2
+
+
+async def test_a_missing_flag_keeps_whatever_the_tv_answered():
+    # Only the motion flag is reported (FALSE). The brightness flag is absent
+    # (None = "the TV did not say"), so its answered setting is still used.
+    art_api = MagicMock()
+    art_api.get_device_info = AsyncMock(return_value={"support_motion_sensor": "FALSE"})
+    art_api.get_artmode_settings = AsyncMock(
+        side_effect=[
+            _item("motion_sensitivity", "false"),
+            _item("motion_timer", "240", {"valid_values": '["off","60","240"]'}),
+            _item("brightness_sensor_setting", "on"),
+        ]
+    )
+
+    added = await _run_load(art_api, max_retries=3)
+
+    assert [e._setting_name for e in added] == ["brightness_sensor_setting"]
+    assert art_api.get_device_info.await_count == 1
+
+
+async def test_no_brightness_sensor_keeps_the_motion_controls():
+    # The common real Frame without the light sensor: motion sensitivity and
+    # the motion timer stay, only the brightness control is dropped.
+    art_api = MagicMock()
+    art_api.get_device_info = AsyncMock(
+        return_value={
+            "support_motion_sensor": "TRUE",
+            "support_brightness_sensor": "FALSE",
+        }
+    )
+    art_api.get_artmode_settings = AsyncMock(
+        side_effect=[
+            _item("motion_sensitivity", "5", {"min": 1, "max": 10}),
+            _item("motion_timer", "off", {"valid_values": '["off","60"]'}),
+            _item("brightness_sensor_setting", "on"),
+        ]
+    )
+
+    added = await _run_load(art_api, max_retries=3)
+
+    assert [e._setting_name for e in added] == ["motion_sensitivity", "motion_timer"]
+    assert art_api.get_device_info.await_count == 1
+
+
+async def test_the_timer_follows_the_motion_flag_not_its_own_answer():
+    # A motion_timer that answers on a set whose motion flag is FALSE is not a
+    # control: the timer is "off after no motion for that long".
+    art_api = MagicMock()
+    art_api.get_device_info = AsyncMock(
+        return_value={
+            "support_motion_sensor": "FALSE",
+            "support_brightness_sensor": "FALSE",
+        }
+    )
+    art_api.get_artmode_settings = AsyncMock(
+        side_effect=[
+            None,
+            _item("motion_timer", "240", {"valid_values": '["off","60","240"]'}),
+            None,
+        ]
+    )
+
+    added = await _run_load(art_api, max_retries=3)
+
+    assert added == []

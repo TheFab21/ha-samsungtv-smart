@@ -194,6 +194,15 @@ CONF_SYNC_TURN_ON = "sync_turn_on"
 CONF_TOGGLE_ART_MODE = "toggle_art_mode"
 CONF_REPORT_ART_MODE_AS_OFF = "report_art_mode_as_off"
 DEFAULT_REPORT_ART_MODE_AS_OFF = False
+# Advanced option: enable the art features on a TV whose REST device info says
+# FrameTVSupport "false" but whose art-app channel answers (2026 Micro RGB
+# MRN75R95HAFXZA, api_version 6.0.0.0). Off by default.
+CONF_ART_ON_NON_FRAME = "art_on_non_frame"
+# CONF_IS_FRAME_TV value when the art-app probe, not the REST flag, confirmed
+# the art support. Truthy like True for every reader; __init__.py uses it to
+# drop the flag again when the option is turned off, leaving a Frame's own
+# True alone, and to seed the shared art client with the confirmation.
+IS_FRAME_TV_ART_APP = "art_app"
 CONF_USE_LOCAL_LOGO = "use_local_logo"
 CONF_USE_MUTE_CHECK = "use_mute_check"
 CONF_USE_ST_CHANNEL_INFO = "use_st_channel_info"

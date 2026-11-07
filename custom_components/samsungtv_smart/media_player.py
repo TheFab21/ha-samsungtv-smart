@@ -132,6 +132,7 @@ from .const import (
     CONF_APP_LIST,
     CONF_APP_LOAD_METHOD,
     CONF_ART_EXIT_SOURCE,
+    CONF_ART_ON_NON_FRAME,
     CONF_ART_PORT,
     CONF_AUTH_METHOD,
     CONF_CHANNEL_LIST,
@@ -979,6 +980,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 supports_get_color_temperature=config.get(
                     CONF_SUPPORTS_GET_COLOR_TEMPERATURE
                 ),
+                art_on_non_frame=(entry_data or {})
+                .get(DATA_OPTIONS, {})
+                .get(CONF_ART_ON_NON_FRAME, False),
             )
         self._art_api.register_capability_callback(self._persist_art_capability)
         self._art_api.register_port_callback(self._persist_art_port)
