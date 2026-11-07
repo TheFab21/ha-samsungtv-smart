@@ -275,6 +275,41 @@ AUTH_METHOD_ST_ENTRY = "st_entry"
 # reconfigure strips every SmartThings/OAuth credential from the entry (#258).
 AUTH_METHOD_NONE = "none"
 
+# The entry title the config flow gives a new entry carries the way it reaches
+# SmartThings: "<name> (OAuth)", "<name> (SmartThings)", or the bare name when
+# there is no cloud credential. A reconfigure that changes the auth method used
+# to leave that suffix behind, so an entry switched to local only kept reading
+# "(OAuth)" (#409).
+_AUTH_TITLE_SUFFIX = {
+    AUTH_METHOD_OAUTH: " (OAuth)",
+    AUTH_METHOD_PAT: " (SmartThings)",
+    AUTH_METHOD_ST_ENTRY: " (SmartThings)",
+}
+
+
+def auto_entry_title(name: str, auth_method: str | None) -> str:
+    """The title the config flow gives an entry for this name and auth method."""
+    return name + _AUTH_TITLE_SUFFIX.get(auth_method or "", "")
+
+
+def retitled_entry(
+    current: str, name: str | None, auth_method: str | None
+) -> str | None:
+    """The new title after an auth change, or None to leave the title alone.
+
+    Only a title that is still one the flow generated for this name is
+    rewritten: Home Assistant lets the user rename an entry, and a name they
+    chose must survive a reconfigure. None also when nothing would change.
+    """
+    if not name:
+        return None
+    generated = {name, *(name + suffix for suffix in _AUTH_TITLE_SUFFIX.values())}
+    if current not in generated:
+        return None
+    title = auto_entry_title(name, auth_method)
+    return None if title == current else title
+
+
 # obsolete
 CONF_UPDATE_METHOD = "update_method"
 CONF_UPDATE_CUSTOM_PING_URL = "update_custom_ping_url"

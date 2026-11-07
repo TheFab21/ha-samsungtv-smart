@@ -49,6 +49,27 @@ def test_a_source_outside_the_list_is_shown_not_unknown():
     assert entity._attr_available is True
 
 
+def test_the_unidentified_input_placeholder_is_not_an_option():
+    # #409: on a local-only UE82NU8005 the media player reported source
+    # "TV/HDMI" (DEFAULT_APP: a TV input it could not name) and the select
+    # offered it as a fourth option. select_source("TV/HDMI") matches no
+    # source, app or channel, so choosing it did nothing.
+    entity = _entity()
+    entity._apply(_state(source_list=("TV", "HDMI"), source=sel.DEFAULT_APP))
+    assert sel.DEFAULT_APP not in entity.options
+    assert entity.options == ["TV", "HDMI"]
+    assert entity.current_option is None
+    assert entity._attr_available is True
+
+
+def test_a_named_source_after_the_placeholder_is_current_again():
+    entity = _entity()
+    entity._apply(_state(source_list=("TV", "HDMI"), source=sel.DEFAULT_APP))
+    assert entity._apply(_state(source_list=("TV", "HDMI"), source="HDMI")) is True
+    assert entity.current_option == "HDMI"
+    assert entity.options == ["TV", "HDMI"]
+
+
 def test_off_keeps_the_list_but_is_unavailable():
     entity = _entity()
     entity._apply(_state())

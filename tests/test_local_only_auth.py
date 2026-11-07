@@ -90,7 +90,8 @@ class StripBehaviourTest(unittest.TestCase):
 
     def test_it_replaces_data_rather_than_merging(self):
         # data_updates can't delete keys; a full data= replace can.
-        self.assertIn("self.async_update_and_abort(entry, data=data)", self.block)
+        self.assertIn("self.async_update_and_abort(", self.block)
+        self.assertIn("entry, data=data,", self.block)
         self.assertNotIn("data_updates=", self.block)
 
     def test_it_marks_the_entry_as_local_only_and_forces_a_reload(self):

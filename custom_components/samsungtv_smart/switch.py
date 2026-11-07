@@ -745,10 +745,10 @@ class FrameArtModeSwitch(SwitchEntity):
             return False
 
     async def _wait_for_tv_ready(self, max_wait: int = 15) -> bool:
-        """Wait until the TV is awake AND answering on the art channel.
+        """Wait until the TV passes the art support check AND reads as on.
 
-        The art channel alone proves nothing. A Frame in standby accepts the
-        connection on port 8001 and answers ``ms.channel.ready``, so probing it
+        The support check alone proves nothing. A Frame in standby answers on
+        port 8001 (REST and ``ms.channel.ready`` alike), so probing it
         reported the TV ready one second after a power-on it had ignored
         (#319: "TV ready after 1 seconds" logged against an unbroken run of
         ``PowerState='standby'``, after which the art write went nowhere and
@@ -761,7 +761,10 @@ class FrameArtModeSwitch(SwitchEntity):
         for i in range(max_wait):
             await asyncio.sleep(1)
 
-            # Try to connect to Art API
+            # supported() is the art support check, not a connection to the art
+            # channel: a REST GET on port 8001 for a Frame (answered in standby
+            # too), and no request at all for a set the art-app probe already
+            # confirmed (Frame Art on a non-Frame TV keeps that for the session).
             art_ready = False
             try:
                 async with asyncio.timeout(3):
@@ -775,10 +778,14 @@ class FrameArtModeSwitch(SwitchEntity):
                 if await self._is_tv_on():
                     self._log.debug("TV ready after %d seconds", i + 1)
                     return True
+                # The wording names what was checked. It used to say "the art
+                # channel answers", which was never asked here: it sent a #319
+                # diagnosis looking at the art channel when the log showed the
+                # TV half-awake, answering REST as PowerState=standby.
                 self._log.debug(
-                    "TV not ready yet, waiting... (%d/%d: the art channel "
-                    "answers, which a TV in standby also does, but the TV "
-                    "still reads as off)",
+                    "TV not ready yet, waiting... (%d/%d: the Frame support "
+                    "check passes, as it does in standby, but the TV still "
+                    "reads as off)",
                     i + 1,
                     max_wait,
                 )
