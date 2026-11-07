@@ -219,6 +219,7 @@ from .const import (
     SERVICE_STOP_HUE_SYNC,
     SIGNAL_ART_EXITED,
     SIGNAL_CONFIG_ENTITY,
+    SIGNAL_WAKE_NUDGE,
     ST_POLL_OFF_INTERVAL,
     STD_APP_LIST,
     TUNER_INPUT_SOURCES,
@@ -1941,6 +1942,14 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 self.hass,
                 f"{SIGNAL_ART_EXITED}_{self._entry_id}",
                 self._on_art_exited,
+            )
+        )
+        # The Art Mode switch asks for a second wake when the TV half-woke.
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_WAKE_NUDGE}_{self._entry_id}",
+                self._on_wake_nudge,
             )
         )
 
@@ -5403,6 +5412,53 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self._art_write_guard().note_source_switch()
 
     @callback
+    def _on_wake_nudge(self) -> None:
+        """The Art Mode switch saw a half-woken TV: wake it again."""
+        self.hass.async_create_task(self._async_wake_nudge())
+
+    async def _async_wake_nudge(self) -> None:
+        """Re-send the configured wake to a TV that answers but reads as off.
+
+        #319: the magic packet brought a Frame's network up but not its panel.
+        From 13:12:42 it answered REST as PowerState=standby, the Art Mode
+        switch waited 20 s for "on", and the panel stayed dark until a second
+        power-on five minutes later woke it in 1.4 s. The one KEY_POWER of a
+        power-on goes out first, while the TV is still unreachable, so it times
+        out, and nothing was sent again once the TV could hear.
+
+        Only an idempotent wake is sent here: the configured SmartThings ON, IP
+        Control powerOn or WOL. Never KEY_POWER, a toggle that turns off a set
+        that is already booting, or one that woke into Art Mode while it still
+        reports standby (2025 Frames do).
+        """
+        if self.state != MediaPlayerState.OFF:
+            return
+        method = PowerOnMethod(
+            self._get_option(CONF_POWER_ON_METHOD, PowerOnMethod.WOL.value)
+        )
+        self._log.debug(
+            "Power on %s: the TV answers but still reads as off; re-sending the "
+            "%s wake (never KEY_POWER)",
+            self._host,
+            method.name,
+        )
+        if method == PowerOnMethod.SmartThings and self._st:
+            await self._st.async_turn_on()
+            return
+        if method == PowerOnMethod.IPControl:
+            ip_client = self._get_ip_control_client()
+            if ip_client is not None:
+                try:
+                    await ip_client.async_power_on()
+                    return
+                except SamsungIPControlError as ex:
+                    self._log.debug(
+                        "IP Control power-on nudge for %s failed (%s); using WOL",
+                        self._host,
+                        ex,
+                    )
+        await self.hass.async_add_executor_job(self._send_wol_packet)
+
     def _on_art_exited(self) -> None:
         """Art Mode was turned off from Home Assistant: apply the exit source."""
         self.hass.async_create_task(self._async_apply_art_exit_source())
