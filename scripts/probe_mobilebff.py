@@ -15,6 +15,8 @@ with an explicit option, and each one is undone by the script:
 
   --toggle-sound-mode      set.settings.data: sound mode to another option, back
   --toggle-setting LAYER   the same for any quick setting (colortone, ...)
+  --probe-toggle LAYER     try every payload shape for a toggle (aitech) and
+                           report which one the TV applies
   --switch-source NAME     launch.extsource: to that input, then back
   --apps                   get.apptiles / recent / recommended (read-only)
   --icons                  fetch a few app/input icons, two ways (read-only)
@@ -394,6 +396,133 @@ class Probe:
         await asyncio.sleep(8)
         await self._set_element(ws, original)
         await asyncio.sleep(8)
+
+    async def probe_toggle(self, ws, name: str) -> None:
+        """Try each plausible set.settings.data payload for a toggle layer.
+
+        AI Mode (``s/setting.layer.aitech``) answers ``ok`` and does not apply
+        it (#404): both of its elements carry the CURRENT state as ``subTitle``
+        and ``current_element_index`` is a constant, so what the TV wants for a
+        toggle is unknown. Send each candidate, re-read the layer and report
+        whether the state word moved. Writes to the TV; it tries to put the
+        setting back as soon as one variant works.
+        """
+        layer_id = f"s/setting.layer.{name}"
+
+        def state_of(lay):
+            els = (lay or {}).get("elements") or []
+            return (
+                [e.get("subTitle") for e in els],
+                (lay or {}).get("current_element_index"),
+            )
+
+        await self._fresh_settings(ws)
+        layer = self._layer(layer_id)
+        elements = (layer or {}).get("elements") or []
+        if len(elements) < 2:
+            print(f"! {layer_id}: {len(elements)} element(s); nothing to toggle")
+            return
+
+        before = state_of(layer)
+        print(f"\n== {layer_id}")
+        print(f"   subtitles {before[0]}, current_element_index {before[1]!r}")
+        for element in elements:
+            print(
+                f"   element {element.get('id')}  "
+                f"subTitle={element.get('subTitle')!r}  "
+                f"actionType={element.get('actionType')!r}"
+            )
+
+        # The target is the element whose id suffix is NOT the state word the
+        # TV is reporting; the other one is what it calls current.
+        shared = str(
+            next((e.get("subTitle") for e in elements if e.get("subTitle")), "")
+        ).strip().lower()
+        target = next(
+            (
+                e
+                for e in elements
+                if e["id"].rpartition("@")[2].strip().lower() != shared
+            ),
+            elements[0],
+        )
+        other = next((e for e in elements if e is not target), elements[-1])
+        suffix = target["id"].rpartition("@")[2]
+        print(f"   -> trying to set {suffix!r} (element {target.get('id')})")
+
+        def shape(element, subtitle, extra=None):
+            params = {
+                "id": element.get("id"),
+                "title": element.get("title"),
+                "subTitle": subtitle,
+            }
+            if extra:
+                params.update(extra)
+            return params
+
+        variants = [
+            (
+                "target id + the desired state as subTitle (what 9.0.8 sent)",
+                shape(target, suffix),
+            ),
+            (
+                "target id + the subTitle the TV itself sent (9.0.9)",
+                shape(target, target.get("subTitle")),
+            ),
+            (
+                "the element the TV marks current, echoed as sent",
+                shape(other, other.get("subTitle")),
+            ),
+            (
+                "target id + actionType",
+                shape(
+                    target,
+                    target.get("subTitle"),
+                    {"actionType": target.get("actionType")},
+                ),
+            ),
+            ("the target element echoed verbatim", dict(target)),
+            ("the current element echoed verbatim", dict(other)),
+            (
+                "the layer id itself, no @suffix",
+                {
+                    "id": layer_id,
+                    "title": target.get("title"),
+                    "subTitle": target.get("subTitle"),
+                },
+            ),
+        ]
+
+        for label, params in variants:
+            print(f"\n-- variant: {label}")
+            print(f"   sending {params}")
+            await self._send(ws, "set.settings.data", params)
+            await asyncio.sleep(3)
+            await self._fresh_settings(ws)
+            after = state_of(self._layer(layer_id))
+            print(
+                f"   now subtitles {after[0]}, "
+                f"current_element_index {after[1]!r}"
+            )
+            if after[0] == before[0]:
+                print("   -> no change")
+                continue
+            print("   -> APPLIED. This is the payload the TV takes.")
+            back = dict(params)
+            back["id"] = other.get("id")
+            if params.get("subTitle") == suffix:
+                back["subTitle"] = other["id"].rpartition("@")[2]
+            print(f"   putting it back with {back}")
+            await self._send(ws, "set.settings.data", back)
+            await asyncio.sleep(3)
+            await self._fresh_settings(ws)
+            final = state_of(self._layer(layer_id))
+            print(f"   restored: subtitles {final[0]}")
+            if final[0] != before[0]:
+                print("   ! could not put it back; use the TV's own menu")
+            return
+
+        print("\n! No variant moved the setting; the TV may use another request")
 
     async def switch_source(self, ws, target: str) -> None:
         """Launch another input, then back.
@@ -903,6 +1032,8 @@ class Probe:
                 await self.toggle_setting(ws, "soundmode")
             for name in actions.toggle_setting or ():
                 await self.toggle_setting(ws, name)
+            for name in actions.probe_toggle or ():
+                await self.probe_toggle(ws, name)
             if actions.switch_source:
                 await self.switch_source(ws, actions.switch_source)
             if actions.apps or actions.launch_app or actions.icons:
@@ -980,6 +1111,14 @@ async def main() -> int:
         help="set.settings.data: switch the quick setting s/setting.layer.LAYER "
         "(colortone, automotion, contrastenhancer, ...) to another option, "
         "then back (repeatable)",
+    )
+    writes.add_argument(
+        "--probe-toggle",
+        metavar="LAYER",
+        action="append",
+        help="set.settings.data: try each plausible payload for the toggle "
+        "quick setting s/setting.layer.LAYER (aitech, energysavingsolution) "
+        "and report which one the TV actually applies (repeatable)",
     )
     writes.add_argument(
         "--switch-source",

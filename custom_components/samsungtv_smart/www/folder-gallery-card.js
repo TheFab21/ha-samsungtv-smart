@@ -1366,6 +1366,25 @@ class FolderGalleryCard extends HTMLElement {
   // wait for the answer and toast the real outcome. Toasting right after the
   // call (before it returned) told the user an action had happened when the TV
   // never confirmed it (#401). notifyOnError=false, returnResponse=true.
+  //
+  // They are ENTITY services, and Home Assistant keys an entity service's
+  // response by entity id: {"media_player.x": {"error": "..."}}. Reading
+  // response.error straight off found undefined and toasted success for every
+  // answer (#405). Fall back to the single entry when the id we targeted is
+  // not the key (a target given as a device or area resolves to another).
+  _serviceError(result, entityId) {
+    const response = result && result.response;
+    if (!response || typeof response !== 'object') return null;
+    let entry = response[entityId];
+    if (!entry) {
+      const entries = Object.values(response).filter(
+        (v) => v && typeof v === 'object'
+      );
+      if (entries.length === 1) entry = entries[0];
+    }
+    return (entry && entry.error) || null;
+  }
+
   async _callUnfavourite(imageData) {
     if (!this._hass) return;
     const entityId = this._getEntityId();
@@ -1377,7 +1396,7 @@ class FolderGalleryCard extends HTMLElement {
         { entity_id: entityId },
         false, true
       );
-      const err = result && result.response && result.response.error;
+      const err = this._serviceError(result, entityId);
       if (err) this.showToast(this._t('error', { msg: err }), true);
       else this.showToast(this._t('removed_fav'));
     } catch (e) {
@@ -1396,7 +1415,7 @@ class FolderGalleryCard extends HTMLElement {
         { entity_id: entityId },
         false, true
       );
-      const err = result && result.response && result.response.error;
+      const err = this._serviceError(result, entityId);
       if (err) this.showToast(this._t('error', { msg: err }), true);
       else this.showToast(this._t('artwork_deleted'));
     } catch (e) {

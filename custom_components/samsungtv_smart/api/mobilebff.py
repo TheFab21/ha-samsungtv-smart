@@ -156,13 +156,19 @@ class SettingElement:
 
     element_id: str  # e.g. s/setting.layer.colortone@Warm1 (not always unique)
     title: str  # the setting's name in the menu language
-    label: str  # the option's label in the menu language (subTitle)
+    label: str  # the option's label shown in HA (usually the TV's subTitle)
     dim: bool  # greyed out on the TV's own menu
+    # The subTitle the TV itself sent for this element, when that differs from
+    # the label HA shows. set.settings.data is echo-based: every working write
+    # sends the element's own fields back, so a label we synthesised for display
+    # (a toggle's id suffix, #399) must not go on the wire (#404).
+    wire_label: str | None = None
 
     @property
     def params(self) -> dict[str, str]:
         """What set.settings.data takes to select this option."""
-        return {"id": self.element_id, "title": self.title, "subTitle": self.label}
+        subtitle = self.label if self.wire_label is None else self.wire_label
+        return {"id": self.element_id, "title": self.title, "subTitle": subtitle}
 
 
 @dataclass(frozen=True)
@@ -336,6 +342,9 @@ def _toggle_elements(
                 title if isinstance(title, str) else "",
                 suffix,
                 str(element.get("dim")).lower() == "true",
+                # The suffix is the label HA shows; the TV is sent back the
+                # subTitle it reported itself (#404).
+                wire_label=state,
             )
         )
     return elements, current
