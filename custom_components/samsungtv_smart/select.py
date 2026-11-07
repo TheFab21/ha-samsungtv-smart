@@ -62,6 +62,7 @@ from .const import (
     DATA_ART_API,
     DATA_CFG,
     DATA_MOBILEBFF,
+    DEFAULT_APP,
     DEFAULT_PORT,
     DOMAIN,
     WS_PREFIX,
@@ -2982,6 +2983,14 @@ class SamsungTVSourceSelect(SelectEntity):
                 if isinstance(item, str) and item and item not in options:
                     options.append(item)
             source = state.attributes.get("source")
+            if source == DEFAULT_APP:
+                # "TV/HDMI" is the media player's placeholder for "a TV input,
+                # not identified" (no app in front, and no SmartThings or
+                # source-list entry naming the input). Promoted to an option it
+                # looked selectable, and select_source("TV/HDMI") matches no
+                # source, app or channel, so picking it did nothing (#409).
+                # No current option is the honest reading.
+                source = None
             if isinstance(source, str) and source:
                 # The media player's current source is not always one of the
                 # presets (live TV, a channel, an app the home screen doesn't

@@ -82,7 +82,9 @@ async def test_the_art_channel_alone_does_not_mean_the_tv_is_awake():
     assert entity._art_api.supported.await_count == 3
     assert entity._is_tv_on.await_count == 3
     said = " ".join(str(c.args[0]) for c in entity._log.debug.call_args_list)
-    assert "a TV in standby also does" in said
+    # The log says why a pass is not proof the TV woke (wording since 9.1.1:
+    # it names the support check, not the art channel, which is not asked).
+    assert "check passes, as it does in standby" in said
     entity._log.warning.assert_called_once()
 
 

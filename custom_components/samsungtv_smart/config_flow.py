@@ -143,6 +143,7 @@ from .const import (
     AppLoadMethod,
     PowerOnMethod,
     __min_ha_version__,
+    retitled_entry,
 )
 from .logo import LOGO_OPTION_DEFAULT, LogoOption
 
@@ -1095,6 +1096,10 @@ class SamsungTVSmartOAuth2FlowHandler(
         if not self._reauth_entry:
             return self.async_abort(reason="reauth_failed")
 
+        # A reconfigure from PAT / local only to OAuth also ends here; a plain
+        # token reauth of an OAuth entry finds its title already right.
+        if retitle := self._retitle(self._reauth_entry, AUTH_METHOD_OAUTH):
+            self.hass.config_entries.async_update_entry(self._reauth_entry, **retitle)
         update_shared_oauth_token(
             self.hass,
             self._reauth_entry,
@@ -1165,7 +1170,23 @@ class SamsungTVSmartOAuth2FlowHandler(
 
         # Update the entry data only; the update listener schedules the reload
         # (combining an in-flow reload with an update listener is deprecated).
-        return self.async_update_and_abort(entry, data_updates=updates)
+        retitle = (
+            self._retitle(entry, updates[CONF_AUTH_METHOD])
+            if CONF_AUTH_METHOD in updates
+            else {}
+        )
+        return self.async_update_and_abort(entry, data_updates=updates, **retitle)
+
+    @staticmethod
+    def _retitle(entry: ConfigEntry, auth_method: str) -> dict[str, str]:
+        """``title=`` for an auth change, when the title is still the generated one.
+
+        The title only feeds the integrations page: entity ids come from the
+        device name, and the reload fingerprint ignores the title, so a new
+        title neither renames an entity nor costs a reload (#409).
+        """
+        title = retitled_entry(entry.title, entry.data.get(CONF_NAME), auth_method)
+        return {"title": title} if title else {}
 
     def _apply_local_only_and_reload(self) -> ConfigFlowResult:
         """Strip every SmartThings/OAuth credential and reload local-only (#258).
@@ -1194,7 +1215,9 @@ class SamsungTVSmartOAuth2FlowHandler(
         data[CONF_AUTH_METHOD] = AUTH_METHOD_NONE
         # Force the reload even though the removed keys are the only change.
         data[CONF_RECONFIGURE_GENERATION] = uuid.uuid4().hex
-        return self.async_update_and_abort(entry, data=data)
+        return self.async_update_and_abort(
+            entry, data=data, **self._retitle(entry, AUTH_METHOD_NONE)
+        )
 
     @callback
     def _save_entry(self) -> ConfigFlowResult:
