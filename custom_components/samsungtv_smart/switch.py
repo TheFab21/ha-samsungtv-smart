@@ -1498,11 +1498,6 @@ class SamsungTVPowerSwitch(SwitchEntity):
         )
 
     @property
-    def name(self) -> str:
-        """Return the name of the switch."""
-        return "Power"
-
-    @property
     def available(self) -> bool:
         """Available unless the media_player is truly unreachable."""
         state = self._get_media_player_state()

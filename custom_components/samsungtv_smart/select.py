@@ -889,7 +889,7 @@ class SamsungTVIPControlColorToneSelect(SelectEntity):
         self._ip_control: SamsungIPControl | None = None
         self._ip_control_token: str | None = None
         self._attr_unique_id = f"{device_unique_id}_ip_control_color_tone"
-        self._attr_name = "Color Tone"
+        self._attr_translation_key = "ip_color_tone"
         self._attr_options = list(COLOR_TONE_OPTIONS)
         self._attr_current_option: str | None = None
         self._attr_available = False
@@ -1547,7 +1547,7 @@ class SamsungTVIPControlSpeakerSelect(_SharedIPSelect):
         self._ip_control: SamsungIPControl | None = None
         self._ip_control_token: str | None = None
         self._attr_unique_id = f"{device_unique_id}_ip_control_speaker_select"
-        self._attr_name = "Speaker Select"
+        self._attr_translation_key = "speaker_select"
         self._attr_options = list(_SPEAKER_BASE_OPTIONS)
         self._attr_current_option: str | None = None
         self._attr_available = False
@@ -1865,7 +1865,7 @@ class SamsungTVSTMediaOutputSelect(SelectEntity):
         self._device_id = device_id
         self._session = session
         self._attr_unique_id = f"{device_unique_id}_st_media_output"
-        self._attr_name = "Speaker Select"
+        self._attr_translation_key = "speaker_select"
         self._attr_options: list[str] = []
         self._attr_current_option: str | None = None
         # Cooldown: skip polls briefly after a change (cloud lags behind).
@@ -2323,7 +2323,7 @@ class SamsungTVArtMotionSensitivitySelect(SamsungTVArtMotionSelectBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._attr_unique_id = f"{self._device_unique_id}_art_motion_sensitivity"
-        self._attr_name = "Motion Sensitivity"
+        self._attr_translation_key = "art_motion_sensitivity"
 
     async def _async_set(self, option: str) -> None:
         await self._art_api.set_motion_sensitivity(option)
@@ -2357,7 +2357,7 @@ class SamsungTVArtBrightnessSensorSelect(SamsungTVArtMotionSelectBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._attr_unique_id = f"{self._device_unique_id}_art_brightness_sensor"
-        self._attr_name = "Brightness Sensor"
+        self._attr_translation_key = "art_brightness_sensor"
 
     async def _async_set(self, option: str) -> None:
         await self._art_api.set_brightness_sensor_setting(option)
@@ -2397,7 +2397,7 @@ class SamsungTVPictureModeSelect(SelectEntity):
         self._session = session
 
         self._attr_unique_id = f"{device_unique_id}_picture_mode"
-        self._attr_name = "Picture Mode"
+        self._attr_translation_key = "st_picture_mode"
         self._attr_options: list[str] = []
         self._attr_current_option: str | None = None
 

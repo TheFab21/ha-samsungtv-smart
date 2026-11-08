@@ -211,28 +211,28 @@ IP_CONTROL_STATE_SENSORS: tuple[SamsungIPControlSensorDescription, ...] = (
     SamsungIPControlSensorDescription(
         key="inputSource",
         source="tv",
-        name="Input Source",
+        translation_key="ip_input_source",
         icon="mdi:import",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SamsungIPControlSensorDescription(
         key="pictureMode",
         source="tv",
-        name="Picture Mode",
+        translation_key="ip_picture_mode",
         icon="mdi:image-multiple-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SamsungIPControlSensorDescription(
         key="soundMode",
         source="tv",
-        name="Sound Mode",
+        translation_key="ip_sound_mode",
         icon="mdi:music-note",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SamsungIPControlSensorDescription(
         key="pictureSize",
         source="tv",
-        name="Picture Size",
+        translation_key="ip_picture_size",
         icon="mdi:aspect-ratio",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
@@ -242,14 +242,14 @@ IP_CONTROL_STATE_SENSORS: tuple[SamsungIPControlSensorDescription, ...] = (
     SamsungIPControlSensorDescription(
         key="mute",
         source="tv",
-        name="Mute",
+        translation_key="ip_mute",
         icon="mdi:volume-mute",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SamsungIPControlSensorDescription(
         key="volume",
         source="tv",
-        name="Volume",
+        translation_key="ip_volume",
         icon="mdi:volume-high",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -1773,7 +1773,7 @@ class FrameArtMetadataSensor(SensorEntity):
         self._device_name = device_name
         self._device_unique_id = device_unique_id
         self._attr_unique_id = f"{entry.entry_id}_art_metadata"
-        self._attr_name = "Art Metadata"
+        self._attr_translation_key = "art_metadata"
         self._attr_native_value: str | None = None
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._frame_art_entity_id: str | None = None
@@ -1952,7 +1952,10 @@ class FrameArtFolderSensor(SensorEntity):
         self._entry = entry
         self._subdir = subdir  # "personal", "store", or "other"
         self._attr_unique_id = f"{entry.entry_id}_folder_{subdir}"
-        self._attr_name = f"{device_name} {subdir}"
+        # Named by translation key; the device name is prefixed by HA, it was
+        # repeated here ("The Frame The Frame personal").
+        self._attr_has_entity_name = True
+        self._attr_translation_key = f"art_folder_{subdir}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_unique_id)},
         )
@@ -2079,8 +2082,10 @@ class FrameArtSensor(ChangedCoordinatorEntity, SensorEntity):
         self._entry = entry
         self._art_api = art_api
         self._attr_unique_id = f"{entry.entry_id}_frame_art"
-        # Use explicit name instead of has_entity_name to avoid "None" prefix
-        self._attr_name = f"{device_name} Frame Art"
+        # Named by translation key under the TV device; the device name was
+        # repeated in the old explicit name ("The Frame The Frame Frame Art").
+        self._attr_has_entity_name = True
+        self._attr_translation_key = "frame_art"
         self._last_service_result: dict[str, Any] | None = None
 
         # Device info to link with the main TV entity
@@ -2510,11 +2515,6 @@ class SmartThingsIlluminanceSensor(SensorEntity):
             model="Frame TV Light Sensor",
         )
 
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return "Light Level"
-
     async def async_update(self) -> None:
         """Update the sensor value from SmartThings."""
         # Local WS is primary: skip while the TV is off and throttle to the
@@ -2608,11 +2608,6 @@ class SmartThingsBrightnessIntensitySensor(SensorEntity):
             manufacturer="Samsung",
             model="Frame TV Light Sensor",
         )
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return "Brightness Intensity"
 
     async def async_update(self) -> None:
         """Update the sensor value from SmartThings."""
@@ -2884,16 +2879,12 @@ class SmartThingsPowerConsumptionSensor(ChangedCoordinatorEntity, SensorEntity):
         self._attr_state_class = state_class
         self._attr_native_unit_of_measurement = unit
         self._attr_unique_id = f"{coordinator.device_id}_{suffix}"
+        self._attr_translation_key = f"st_{suffix}"
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return device info - link to the TV device."""
         return DeviceInfo(identifiers={(DOMAIN, self._parent_device_id)})
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return self._friendly
 
     @property
     def native_value(self):

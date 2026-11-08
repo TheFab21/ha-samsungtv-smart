@@ -287,6 +287,54 @@
           "landscape": "Landscape",
           "portrait": "Portrait"
         }
+      },
+      "ip_input_source": {
+        "name": "Input source"
+      },
+      "ip_picture_mode": {
+        "name": "Picture mode"
+      },
+      "ip_sound_mode": {
+        "name": "Sound mode"
+      },
+      "ip_picture_size": {
+        "name": "Picture size"
+      },
+      "ip_mute": {
+        "name": "Mute"
+      },
+      "ip_volume": {
+        "name": "Volume"
+      },
+      "art_metadata": {
+        "name": "Art metadata"
+      },
+      "art_folder_personal": {
+        "name": "Personal photos"
+      },
+      "art_folder_store": {
+        "name": "Art Store"
+      },
+      "art_folder_other": {
+        "name": "Other art"
+      },
+      "frame_art": {
+        "name": "Frame Art"
+      },
+      "st_power": {
+        "name": "Power"
+      },
+      "st_energy": {
+        "name": "Energy"
+      },
+      "st_energy_difference": {
+        "name": "Energy difference"
+      },
+      "st_power_energy": {
+        "name": "Power energy"
+      },
+      "st_energy_saved": {
+        "name": "Energy saved"
       }
     },
     "switch": {
@@ -439,11 +487,50 @@
           "low": "Low",
           "high": "High"
         }
+      },
+      "ip_color_tone": {
+        "name": "Color tone (IP Control)"
+      },
+      "speaker_select": {
+        "name": "Speaker select"
+      },
+      "art_motion_sensitivity": {
+        "name": "Motion sensitivity"
+      },
+      "art_brightness_sensor": {
+        "name": "Brightness sensor"
+      },
+      "st_picture_mode": {
+        "name": "Picture mode"
       }
     },
     "number": {
       "ip_gamma_bt1886": {
         "name": "Gamma (BT.1886)"
+      },
+      "ip_backlight": {
+        "name": "Backlight"
+      },
+      "ip_contrast": {
+        "name": "Contrast"
+      },
+      "ip_brightness": {
+        "name": "Brightness"
+      },
+      "ip_sharpness": {
+        "name": "Sharpness"
+      },
+      "ip_color": {
+        "name": "Color"
+      },
+      "ip_tint": {
+        "name": "Tint"
+      },
+      "art_brightness": {
+        "name": "Art Mode brightness"
+      },
+      "art_color_temperature": {
+        "name": "Art Mode color temperature"
       }
     }
   }
