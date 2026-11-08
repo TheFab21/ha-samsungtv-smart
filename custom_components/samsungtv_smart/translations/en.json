@@ -309,7 +309,7 @@
         "name": "Auto power saving"
       },
       "ip_energy_saving_solution": {
-        "name": "Energy saving solution"
+        "name": "Energy saving solution (IP Control)"
       }
     },
     "select": {
@@ -433,7 +433,7 @@
         }
       },
       "ip_contrast_enhancer": {
-        "name": "Contrast enhancer",
+        "name": "Contrast enhancer (IP Control)",
         "state": {
           "off": "Off",
           "low": "Low",
