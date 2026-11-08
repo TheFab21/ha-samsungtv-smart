@@ -1,9 +1,10 @@
 """IP Control picture/eco settings the integration did not expose yet.
 
-Every setting below was accepted, read and written, on a QN55LS03FAFXZA
-(2025 Frame, firmware T-PTMFAKUC-0090-1296.8) in normal viewing - see
-notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md, "Expert Picture Methods". Values
-the TV rejected there are not offered. Like the other IP Control picture
+Every setting below was accepted, read and written, in normal viewing on a
+QN55LS03FAFXZA (2025 Frame, firmware T-PTMFAKUC-0090-1296.8) - see
+notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md, "Expert Picture Methods" - or on a
+TQ65S95HFTXXC (2026 S95H, Tizen 10) - see notes/TQ65S95HFTXXC/IPCONTROL_LIVE.md.
+Values a TV rejected are not offered. Like the other IP Control picture
 entities they answer only in normal viewing (not in Art Mode or while off), so
 they poll only then and are unavailable otherwise.
 
@@ -80,6 +81,23 @@ IP_SELECTS = (
         "mdi:television-shimmer",
         options={"current_source": "CurrentSource", "all_sources": "AllSources"},
     ),
+    # The TV menu's three values. The 2025 Frame answered -32002 to the getter,
+    # so this select is simply unavailable there; the S95H accepted all three.
+    IPSetting(
+        "ip_peak_brightness",
+        "peakBrightnessControl",
+        "peakBrightness",
+        "mdi:brightness-7",
+        options={"off": "Off", "medium": "Medium", "high": "High"},
+    ),
+    # Off / Low / High on both sets; "Medium" is refused.
+    IPSetting(
+        "ip_contrast_enhancer",
+        "contrastEnhancerControl",
+        "contrastEnhancer",
+        "mdi:contrast-box",
+        options={"off": "Off", "low": "Low", "high": "High"},
+    ),
 )
 
 # Off/On settings, shown as switches.
@@ -107,6 +125,17 @@ IP_SWITCHES = (
         "autoPowerSavingControl",
         "autoPowerSaving",
         "mdi:leaf",
+    ),
+    # The quick-settings "Energy Saving Solution" tile. While it is On the TV
+    # caps the backlight and refuses backlightControl writes with -32002, so
+    # anyone driving the backlight from HA wants to see and clear this one;
+    # the quick-setting select (qs_energy_saving_solution) covers the same
+    # tile over the local mobilebff channel on TVs that have it.
+    IPSetting(
+        "ip_energy_saving_solution",
+        "energySavingSolutionControl",
+        "energySavingSolution",
+        "mdi:leaf-circle-outline",
     ),
 )
 

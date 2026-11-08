@@ -1,9 +1,10 @@
-"""IP Control expert settings exposed from the 2025 Frame's verified method map.
+"""IP Control expert settings exposed from the verified method maps.
 
 notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md lists, per method, what a
-QN55LS03FAFXZA accepted live. The new entities must only use methods and
-values marked accepted there, and every one of them must be a picture write so
-a -32002 ("not in this picture mode / input") is reported as a TV-side state
+QN55LS03FAFXZA accepted live, and notes/TQ65S95HFTXXC/IPCONTROL_LIVE.md the same
+for a TQ65S95HFTXXC. The entities must only use methods and values marked
+accepted in one of them, and every picture setting must be a picture write so a
+-32002 ("not in this picture mode / input") is reported as a TV-side state
 rather than a broken pairing.
 
 ip_settings.py and ipcontrol.py need Home Assistant to import, so their pieces
@@ -18,7 +19,13 @@ import unittest
 
 ROOT = Path(__file__).parents[1]
 CC = ROOT / "custom_components" / "samsungtv_smart"
-NOTES = (ROOT / "notes" / "QN55LS03FAFXZA" / "IPCONTROL_DECOMPILED.md").read_text()
+NOTES = "\n".join(
+    (ROOT / "notes" / model / name).read_text()
+    for model, name in (
+        ("QN55LS03FAFXZA", "IPCONTROL_DECOMPILED.md"),
+        ("TQ65S95HFTXXC", "IPCONTROL_LIVE.md"),
+    )
+)
 IPCONTROL = (CC / "api" / "ipcontrol.py").read_text()
 SETTINGS = (CC / "ip_settings.py").read_text()
 
@@ -42,15 +49,18 @@ SETTINGS_FOUND = _settings()
 
 
 def _verified_row(method):
-    for line in NOTES.splitlines():
-        if line.startswith(f"| `{method}` |") and "✅" in line:
-            return line
-    return None
+    """The accepted rows for the method, joined: a value verified on either TV counts."""
+    rows = [
+        line
+        for line in NOTES.splitlines()
+        if line.startswith(f"| `{method}` |") and "✅" in line
+    ]
+    return " ".join(rows) if rows else None
 
 
 class TableTest(unittest.TestCase):
-    def test_eight_settings(self):
-        self.assertEqual(len(SETTINGS_FOUND), 7)
+    def test_ten_settings(self):
+        self.assertEqual(len(SETTINGS_FOUND), 10)
 
     def test_every_method_was_accepted_live(self):
         for key, method, _param, _options in SETTINGS_FOUND:
@@ -75,7 +85,7 @@ class TableTest(unittest.TestCase):
         block = IPCONTROL[IPCONTROL.index("PICTURE_WRITE_METHODS = frozenset(") :]
         block = block[: block.index(")")]
         for key, method, _param, _options in SETTINGS_FOUND:
-            if method == "autoPowerSavingControl":
+            if method in ("autoPowerSavingControl", "energySavingSolutionControl"):
                 continue  # eco, not picture: a -32002 there is a plain error
             self.assertIn(f'"{method}"', block, key)
 

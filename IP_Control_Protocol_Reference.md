@@ -144,6 +144,9 @@ model generation:
 | `backlightControl` | `backlight`: int (0–50) | `backlight` | Panel backlight. `-32003` on the 2018 set of #206. |
 | `colorToneControl` | `colorTone` | `colorTone` | White balance preset. `-32003` on the same TV. |
 | `getDeviceInformation` | — | `modelID`, `FWVersion` | Read once after pairing to gate model-dependent features. `-32003` on the same TV, so those installs keep their last known model/firmware. |
+| `energySavingSolutionControl` | `energySavingSolution` ∈ `Off` / `On` | `energySavingSolution` | The quick-settings **Energy Saving Solution** tile. On a 2026 S95H (TQ65S95HFTXXC) both values are accepted and echoed; `Low`/`Medium`/`High`/`Auto` answer `-32002`, as they did on the 2025 Frame (which accepted `Off`). While `On` the TV caps the backlight and `backlightControl` writes answer `-32002`; `Off` restores the previous backlight on its own. Separate from `brightnessOptimizationControl`, which read `Off` while this one was `On`. See `notes/TQ65S95HFTXXC/IPCONTROL_LIVE.md`. |
+| `peakBrightnessControl` | `peakBrightness` ∈ `Off` / `Medium` / `High` | `peakBrightness` | The TV menu's three values, all accepted and echoed on the S95H; `Low` answers `-32002`. The 2025 Frame answered `-32002` to the getter, so this one is model dependent and the select is unavailable there. |
+| `contrastEnhancerControl` | `contrastEnhancer` ∈ `Off` / `Low` / `High` | `contrastEnhancer` | Accepted on both the 2025 Frame and the S95H; `Medium` answers `-32002`. |
 
 ---
 

@@ -307,6 +307,9 @@
       },
       "ip_auto_power_saving": {
         "name": "Auto power saving"
+      },
+      "ip_energy_saving_solution": {
+        "name": "Energy saving solution"
       }
     },
     "select": {
@@ -419,6 +422,22 @@
         "state": {
           "current_source": "Current source",
           "all_sources": "All sources"
+        }
+      },
+      "ip_peak_brightness": {
+        "name": "Peak brightness",
+        "state": {
+          "off": "Off",
+          "medium": "Medium",
+          "high": "High"
+        }
+      },
+      "ip_contrast_enhancer": {
+        "name": "Contrast enhancer",
+        "state": {
+          "off": "Off",
+          "low": "Low",
+          "high": "High"
         }
       }
     },
