@@ -5649,15 +5649,33 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if client is None:
             return False
         match = _SOURCE_KEY_ID.match(source_key)
-        target = client.find_source(match.group(1) if match else "", source)
+        short_id = match.group(1) if match else ""
+        target = client.find_source(short_id, source)
         if target is None:
-            return False
+            # A Frame 2023 answers get.extsources with an empty list and ignores
+            # KEY_HDMIx, but lists its inputs as home-screen tiles, and
+            # launch.app on one switched the input at once (#413).
+            return await self._async_local_source_tile(client, source, short_id)
         if not await client.async_launch_source(target.source_id):
             return False
         self._log.debug(
             "Source '%s' selected locally (%s) over the quick-settings channel",
             source,
             target.source_id,
+        )
+        return True
+
+    async def _async_local_source_tile(
+        self, client, source: str, short_id: str
+    ) -> bool:
+        """Switch input by launching its home-screen tile; False to fall back."""
+        tile = client.find_source_tile(short_id, source)
+        if tile is None or not await client.async_launch_app(tile.tile_id):
+            return False
+        self._log.debug(
+            "Source '%s' selected locally through its home-screen tile (%s)",
+            source,
+            tile.tile_id,
         )
         return True
 

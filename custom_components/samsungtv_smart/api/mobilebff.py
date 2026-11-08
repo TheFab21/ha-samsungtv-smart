@@ -214,6 +214,20 @@ class AppTile:
         kind, _, app_id = self.tile_id.partition("@")
         return (app_id or None) if kind == "d/webapp" else None
 
+    @property
+    def input_id(self) -> str | None:
+        """The input of a home-screen input tile (``HDMI1``), else None.
+
+        A Frame 2023 (22_PONTUSM_FTV) lists its HDMI inputs as tiles,
+        ``s/source.layer.hdmi@HDMI1/1`` or ``s/source.layer.hdmi@HDMI2``, the
+        number after ``/`` present on some only, while get.extsources answers
+        an empty list (#413).
+        """
+        kind, _, rest = self.tile_id.partition("@")
+        if not kind.startswith("s/source.layer.") or not rest:
+            return None
+        return rest.partition("/")[0] or None
+
 
 def parse_app_tiles(response: Any) -> tuple[AppTile, ...] | None:
     """Parse a get.apptiles response."""
@@ -831,6 +845,23 @@ class SamsungMobileBFF:
             return base64.b64decode(encoded, validate=False)
         except (ValueError, TypeError):
             return None
+
+    def find_source_tile(self, *names: str) -> AppTile | None:
+        """The input tile whose input (``HDMI1``) or title matches one of names.
+
+        The fallback when get.extsources has no match: launch.app on the tile
+        switched a Frame 2023 to that input at once (#413). Only input tiles
+        are considered, so an app tile titled like a source is never opened.
+        """
+        wanted = [n.casefold() for n in names if n]
+        tiles = [tile for tile in self.apps if tile.input_id]
+        for tile in tiles:
+            if tile.input_id.casefold() in wanted:
+                return tile
+        for tile in tiles:
+            if tile.title.casefold() in wanted:
+                return tile
+        return None
 
     def find_app(self, app_id: str) -> AppTile | None:
         """The home-screen tile of a Tizen app id."""
