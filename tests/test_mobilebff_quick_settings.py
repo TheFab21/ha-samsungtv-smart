@@ -589,3 +589,113 @@ def test_select_writes_only_when_what_it_shows_changes():
     )
     entity._changed()
     assert writes == ["Standard", "Froide"]
+
+
+# --- inputs as home-screen tiles (#413) ---------------------------------------
+#
+# A Frame 2023 (GQ55LS03BGUXZG, 22_PONTUSM_FTV) answers get.extsources with an
+# empty list and ignores KEY_HDMIx, but lists its HDMI inputs as tiles, and
+# launch.app on a tile switched the input on screen at once. Only HDMI 1 had a
+# "/1" after its input id.
+
+FRAME_2023_TILES = [
+    {"appId": "d/webapp@3201512006963", "title": "Plex"},
+    {"appId": "s/source.layer.hdmi@HDMI1/1", "title": "Apple TV"},
+    {"appId": "s/source.layer.hdmi@HDMI2", "title": "Amazon Fire TV stick"},
+    {"appId": "s/source.layer.hdmi@HDMI4", "title": "SD"},
+    {"appId": "d/webapp@3202102023078", "title": "GeForce NOW"},
+]
+
+
+def _frame_2023():
+    client = _client()
+    client._handle(_msg("get.extsources", []))
+    client._handle(_msg("get.apptiles", FRAME_2023_TILES))
+    return client
+
+
+def test_an_input_tile_names_its_input_with_or_without_a_suffix():
+    tiles = {t.title: t for t in bff.parse_app_tiles(FRAME_2023_TILES)}
+    assert tiles["Apple TV"].input_id == "HDMI1"
+    assert tiles["Amazon Fire TV stick"].input_id == "HDMI2"
+    assert tiles["SD"].input_id == "HDMI4"
+    # App tiles are not inputs, and input tiles are not apps.
+    assert tiles["Plex"].input_id is None
+    assert tiles["Apple TV"].app_id is None
+    assert bff.AppTile("s/livetv@TVPLUS", "Samsung TV Plus").input_id is None
+
+
+def test_the_input_tile_is_found_by_input_then_by_title():
+    client = _frame_2023()
+    assert client.find_source("HDMI1", "Apple TV") is None  # the empty list
+    assert client.find_source_tile("HDMI1", "x").tile_id == (
+        "s/source.layer.hdmi@HDMI1/1"
+    )
+    assert client.find_source_tile("", "SD").tile_id == "s/source.layer.hdmi@HDMI4"
+    assert client.find_source_tile("HDMI3", "Nothing") is None
+
+
+def test_an_app_tile_titled_like_a_source_is_never_opened_as_an_input():
+    client = _frame_2023()
+    assert client.find_source_tile("", "Plex") is None
+
+
+def test_media_player_falls_back_to_the_input_tile():
+    client = _frame_2023()
+    launched_sources, launched_apps = [], []
+
+    async def launch_source(source_id):
+        launched_sources.append(source_id)
+        return True
+
+    async def launch_app(tile_id):
+        launched_apps.append(tile_id)
+        return True
+
+    client.async_launch_source = launch_source
+    client.async_launch_app = launch_app
+    device = _device(client)
+    assert asyncio.run(device._async_local_source("Apple TV", "KEY_HDMI1")) is True
+    assert launched_apps == ["s/source.layer.hdmi@HDMI1/1"]
+    assert launched_sources == []
+
+
+def test_media_player_prefers_the_input_list_when_it_has_the_input():
+    client = _client()
+    client._handle(_msg("get.extsources", SOURCES))
+    client._handle(
+        _msg("get.apptiles", [{"appId": "s/source.layer.hdmi@HDMI3", "title": "x"}])
+    )
+    launched_sources, launched_apps = [], []
+
+    async def launch_source(source_id):
+        launched_sources.append(source_id)
+        return True
+
+    async def launch_app(tile_id):
+        launched_apps.append(tile_id)
+        return True
+
+    client.async_launch_source = launch_source
+    client.async_launch_app = launch_app
+    device = _device(client)
+    assert asyncio.run(device._async_local_source("CINEMA 60", "ST_HDMI3")) is True
+    assert launched_sources == ["s/source.layer.hdmi@HDMI3"]
+    assert launched_apps == []
+
+
+def test_media_player_falls_back_to_keys_when_no_tile_matches():
+    client = _frame_2023()
+    device = _device(client)
+    assert asyncio.run(device._async_local_source("Xbox", "KEY_HDMI3")) is False
+
+
+def test_a_refused_tile_launch_falls_back_to_keys():
+    client = _frame_2023()
+
+    async def refuse(tile_id):
+        return False
+
+    client.async_launch_app = refuse
+    device = _device(client)
+    assert asyncio.run(device._async_local_source("Apple TV", "KEY_HDMI1")) is False
