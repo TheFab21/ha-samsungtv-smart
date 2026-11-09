@@ -967,17 +967,17 @@ These services require a Samsung **Frame TV** with Art Mode. They are called on 
 | `samsungtv_smart.art_delete` | Delete a user-uploaded artwork (MY-* IDs only) |
 | `samsungtv_smart.art_get_thumbnail` | Download a single artwork thumbnail |
 | `samsungtv_smart.art_get_thumbnails_batch` | Batch-download thumbnails for multiple artworks |
-| `samsungtv_smart.art_set_brightness` | Set Art Mode brightness (0–100, mapped to TV scale 1–10) |
+| `samsungtv_smart.art_set_brightness` | Set Art Mode brightness (0–100, mapped to TV scale 1–10). Powers the TV on into Art Mode first, unless `wake: false` |
 | `samsungtv_smart.art_get_brightness` | Get current Art Mode brightness |
-| `samsungtv_smart.art_change_matte` | Change the matte/frame style of an artwork |
+| `samsungtv_smart.art_change_matte` | Change the matte/frame style of an artwork. Powers the TV on into Art Mode first, unless `wake: false` |
 | `samsungtv_smart.art_set_photo_filter` | Apply a photo filter to an artwork |
 | `samsungtv_smart.art_get_photo_filter_list` | List available photo filters |
 | `samsungtv_smart.art_get_matte_list` | List available matte styles |
 | `samsungtv_smart.art_set_favourite` | Add/remove artwork from favourites |
 | `samsungtv_smart.art_get_device_info` | Return the art app's capability flags, the panel orientation and the Art Mode picture type |
 | `samsungtv_smart.art_set_picture_mode` | Set the Art Mode picture type (raw TV value; read the current one first with `art_get_device_info`) |
-| `samsungtv_smart.art_set_slideshow` | Configure slideshow (duration or `off`, shuffle, category — a My Collection category or an Art Store collection's full id). Reports an error when the TV doesn't acknowledge, and returns the status read back afterwards. Alias of `art_set_auto_rotation` — auto-routed to whichever API the TV speaks |
-| `samsungtv_smart.art_set_auto_rotation` | Configure auto-rotation (duration, shuffle, category). Alias of `art_set_slideshow` — works on older Frames that don't support the slideshow API |
+| `samsungtv_smart.art_set_slideshow` | Configure slideshow (duration or `off`, shuffle, category — a My Collection category or an Art Store collection's full id). Reports an error when the TV doesn't acknowledge, and returns the status read back afterwards. Alias of `art_set_auto_rotation` — auto-routed to whichever API the TV speaks. Powers the TV on into Art Mode first, unless `wake: false` |
+| `samsungtv_smart.art_set_auto_rotation` | Configure auto-rotation (duration, shuffle, category). Alias of `art_set_slideshow` — works on older Frames that don't support the slideshow API. Powers the TV on into Art Mode first, unless `wake: false` |
 | `samsungtv_smart.art_restart_app` | Stop and relaunch the TV's built-in Art Mode app. Last resort for a Frame whose art app has stopped answering — see below |
 
 #### Service Examples
@@ -1126,7 +1126,7 @@ by the config-entry ID (new in v7 — see the v7 changelog for migration notes):
 ```
 config/www/frame_art/{entry_id}/
 ├── current.jpg  ← currently displayed artwork
-├── personal/    ← user-uploaded photos (MY-F*)
+├── personal/    ← user-uploaded photos (MY_F*)
 ├── store/       ← Samsung Art Store (SAM-*)
 └── other/       ← everything else
 ```
