@@ -678,7 +678,7 @@ In addition to standard media player attributes, the following are available:
   to fit uploaded images to the screen
 - `art_mode_status` — `on` or `off` on Frame TVs; **absent** when the TV is in
   standby. See [Detecting Art Mode vs. watching TV](#detecting-art-mode-vs-watching-tv)
-- `frame_art_last_result` — outcome of the last Frame Art service call
+- `frame_art_last_result` — outcome of the last Frame Art service call (live only: not written to the recorder, an artwork list is far larger than its 16 KiB attribute limit)
 
 ### Reusing local Art Mode status
 
