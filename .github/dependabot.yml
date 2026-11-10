@@ -1,0 +1,24 @@
+# Dependabot keeps the CI/dev pins (requirements*.txt) and the workflow
+# actions current, and groups the PRs so security bumps arrive together
+# rather than one noisy PR per advisory. The integration ships the
+# dependencies in manifest.json; these files are the test/lint toolchain.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      pip:
+        patterns:
+          - "*"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
