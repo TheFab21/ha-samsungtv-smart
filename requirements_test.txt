@@ -1,20 +1,15 @@
 # Strictly for tests
-pytest==8.3.5
+# pytest is held at what pytest-homeassistant-custom-component pins (9.0.0).
+# CVE-2025-71176 (predictable /tmp dir on UNIX) is fixed in 9.0.3, but the
+# helper pins pytest exactly, so that one Dependabot alert stays open until a
+# helper release pins >= 9.0.3.
+pytest==9.0.0
 # The Tests workflow passes --timeout: pytest-timeout is not listed here
-# because pytest-homeassistant-custom-component already pins it (2.3.1), and
-# asking for any other version is an unsolvable conflict.
-#
-# aiodns, which homeassistant 2025.6.3 requires, is 3.5.0 here and calls
-# pycares.ares_query_a_result at import time — removed in pycares 5. Nothing
-# bounds pycares, so pip takes 5.x and `import homeassistant` dies before a
-# single test is collected:
-#   AttributeError: module 'pycares' has no attribute 'ares_query_a_result'
-# Drop this bound once a homeassistant version whose aiodns supports pycares 5
-# is pinned above.
-pycares<5
+# because pytest-homeassistant-custom-component already pins it, and asking
+# for any other version is an unsolvable conflict.
 #pytest-cov==2.9.0
 #pytest-homeassistant
-pytest-homeassistant-custom-component==0.13.254
+pytest-homeassistant-custom-component==0.13.316
 # From our manifest.json for our custom component
 websocket-client!=1.4.0,>=0.58.0
 wakeonlan>=2.0.0
