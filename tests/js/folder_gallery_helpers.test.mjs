@@ -23,7 +23,7 @@ const region = src.match(
 assert.ok(region, 'the <fgc-pure-helpers> region must exist in the card');
 
 const factory = new Function(
-  `${region[1]}\nreturn { fgcBasename, fgcRelPath, fgcSubfolder, fgcGroupBySubfolder, fgcEscapeHtml, fgcResolveDefaultFolderKey };`
+  `${region[1]}\nreturn { fgcBasename, fgcRelPath, fgcSubfolder, fgcGroupBySubfolder, fgcEscapeHtml, fgcResolveDefaultFolderKey, fgcLightboxButtons };`
 );
 const {
   fgcBasename,
@@ -32,6 +32,7 @@ const {
   fgcGroupBySubfolder,
   fgcEscapeHtml,
   fgcResolveDefaultFolderKey,
+  fgcLightboxButtons,
 } = factory();
 
 // fgcEscapeHtml: folder labels go into <option> text unescaped otherwise.
@@ -110,5 +111,22 @@ const listSets = [
   { key: 'Personal-1', label: 'Personal', images: [] },
 ];
 assert.equal(fgcResolveDefaultFolderKey(listSets, 'Personal'), 'Personal-1');
+
+// fgcLightboxButtons: which lightbox buttons show for a gallery_type + content id.
+// Regression guard (#415/#417 follow-up): auto mode must still offer Unfavourite
+// on SAM- works, so a multi-folder gallery that mixes a favourites folder with
+// other SAM- folders keeps the button per image.
+const B = (gt, cid) => fgcLightboxButtons(gt, cid);
+// auto (default): SAM- -> Select + Unfavourite; MY- -> Select + Delete; other -> Upload.
+assert.deepEqual(B('auto', 'SAM-F0001'), { select: true, unfavourite: true, upload: false, delete: false });
+assert.deepEqual(B(null, 'SAM_12345'), { select: true, unfavourite: true, upload: false, delete: false });
+assert.deepEqual(B('auto', 'MY-0007'), { select: true, unfavourite: false, upload: false, delete: true });
+assert.deepEqual(B('auto', 'local.jpg'), { select: false, unfavourite: false, upload: true, delete: false });
+assert.deepEqual(B('auto', ''), { select: false, unfavourite: false, upload: true, delete: false });
+// forced sets ignore the content id.
+assert.deepEqual(B('favorites', 'MY-1'), { select: true, unfavourite: true, upload: false, delete: false });
+assert.deepEqual(B('favourites', 'local.jpg'), { select: true, unfavourite: true, upload: false, delete: false });
+assert.deepEqual(B('personal', 'SAM-1'), { select: true, unfavourite: false, upload: false, delete: true });
+assert.deepEqual(B('upload', 'SAM-1'), { select: false, unfavourite: false, upload: true, delete: false });
 
 console.log('folder_gallery_helpers: all assertions passed');

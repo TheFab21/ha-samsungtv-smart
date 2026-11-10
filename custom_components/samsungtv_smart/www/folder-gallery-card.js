@@ -483,6 +483,31 @@ function fgcResolveDefaultFolderKey(sets, wanted) {
   for (const s of sets) if (norm(String(s.key).split('/').pop()) === w) return s.key;
   return null;
 }
+function fgcLightboxButtons(galleryType, contentId) {
+  const gt = String(galleryType || 'auto').toLowerCase();
+  if (gt === 'personal') {
+    return { select: true, unfavourite: false, upload: false, delete: true };
+  }
+  if (gt === 'favorites' || gt === 'favourites') {
+    return { select: true, unfavourite: true, upload: false, delete: false };
+  }
+  if (gt === 'upload') {
+    return { select: false, unfavourite: false, upload: true, delete: false };
+  }
+  // auto: infer from the content id. SAM- is any TV-side work (a Store or
+  // Purchased piece as well as a favourite), MY- is a personal upload, anything
+  // else is a local/other image.
+  const upper = String(contentId || '').toUpperCase();
+  const isSam = upper.startsWith('SAM-') || upper.startsWith('SAM_');
+  const isMy = upper.startsWith('MY-') || upper.startsWith('MY_');
+  const isOther = !isSam && !isMy;
+  // Unfavourite rides on every SAM- work. A multi-folder gallery mixes a
+  // favourites folder with other SAM- folders in one card and relies on this
+  // per-image detection, so the button must stay in auto mode. On a SAM- work
+  // that is in no favourites folder it is a no-op, and the service reports that
+  // honestly (#401); set gallery_type to force a fixed set per card instead.
+  return { select: isSam || isMy, unfavourite: isSam, upload: isOther, delete: isMy };
+}
 // </fgc-pure-helpers>
 
 class FolderGalleryCard extends HTMLElement {
@@ -1316,45 +1341,17 @@ class FolderGalleryCard extends HTMLElement {
     lightbox.classList.add('open');
     this._liftOverlay();
 
-    // Which action buttons to show. When `gallery_type` is set, it forces the
-    // button set for the whole gallery, so e.g. an upload folder always offers
-    // Upload even if a filename happens to look like a content id. Otherwise
-    // fall back to per-image detection from the content_id prefix.
-    let showSelect;
-    let showUnfavourite;
-    let showUpload;
-    let showDelete;
-
-    const gt = (this._config.gallery_type || 'auto').toLowerCase();
-    if (gt === 'personal') {
-      showSelect = true;  showUnfavourite = false; showUpload = false; showDelete = true;
-    } else if (gt === 'favorites' || gt === 'favourites') {
-      showSelect = true;  showUnfavourite = true;  showUpload = false; showDelete = false;
-    } else if (gt === 'upload') {
-      showSelect = false; showUnfavourite = false; showUpload = true;  showDelete = false;
-    } else {
-      // auto: infer from the content id
-      const contentId = imageData.content_id || imageData.name || '';
-      const upper = contentId.toUpperCase();
-      const isSam = upper.startsWith('SAM-') || upper.startsWith('SAM_');
-      const isMy = upper.startsWith('MY-') || upper.startsWith('MY_');
-      const isOther = !isSam && !isMy;
-      showSelect = isSam || isMy;
-      // A SAM- id is any TV-side work — a Store or Purchased piece as well as a
-      // favourite — so "Unfavourite" on every SAM- work offered it on pieces
-      // that are in no favourites folder, where it is a silent no-op (#401).
-      // Auto mode cannot tell a favourite apart from the content id, so it does
-      // not offer Unfavourite; use `gallery_type: favorites` for that button,
-      // where every listed work is known to be a favourite.
-      showUnfavourite = false;
-      showUpload = isOther;
-      showDelete = isMy;
-    }
-
-    if (actionBtn) actionBtn.style.display = showSelect ? 'inline-block' : 'none';
-    if (unfavouriteBtn) unfavouriteBtn.style.display = showUnfavourite ? 'inline-block' : 'none';
-    if (uploadBtn) uploadBtn.style.display = showUpload ? 'inline-block' : 'none';
-    if (deleteBtn) deleteBtn.style.display = showDelete ? 'inline-block' : 'none';
+    // Which action buttons to show: gallery_type forces a fixed set for the
+    // whole card, otherwise the set is inferred per image from the content id.
+    // See fgcLightboxButtons (pure, unit-tested).
+    const btns = fgcLightboxButtons(
+      this._config.gallery_type,
+      imageData.content_id || imageData.name || ''
+    );
+    if (actionBtn) actionBtn.style.display = btns.select ? 'inline-block' : 'none';
+    if (unfavouriteBtn) unfavouriteBtn.style.display = btns.unfavourite ? 'inline-block' : 'none';
+    if (uploadBtn) uploadBtn.style.display = btns.upload ? 'inline-block' : 'none';
+    if (deleteBtn) deleteBtn.style.display = btns.delete ? 'inline-block' : 'none';
   }
 
   // The configured actions, in the order the lightbox looks at them: the legacy
