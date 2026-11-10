@@ -13,6 +13,15 @@ updates:
       pip:
         patterns:
           - "*"
+    # homeassistant, its test helper (pytest-homeassistant-custom-component)
+    # and pytest are a coupled set: the helper pins homeassistant and pytest to
+    # exact versions, and the homeassistant line past 2026.2.3 needs Python
+    # 3.14 while CI runs 3.13. Dependabot bumps each independently, which only
+    # yields unresolvable PRs, so we bump these three together by hand.
+    ignore:
+      - dependency-name: "homeassistant"
+      - dependency-name: "pytest"
+      - dependency-name: "pytest-homeassistant-custom-component"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
