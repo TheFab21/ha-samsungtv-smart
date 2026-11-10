@@ -17,6 +17,8 @@ with an explicit option, and each one is undone by the script:
   --toggle-setting LAYER   the same for any quick setting (colortone, ...)
   --probe-toggle LAYER     try every payload shape for a toggle (aitech) and
                            report which one the TV applies
+  --confirm-ok             with --probe-toggle: press OK on the TV when a payload
+                           waits for its on-screen confirmation (run it in front)
   --switch-source NAME     launch.extsource: to that input, then back
   --apps                   get.apptiles / recent / recommended (read-only)
   --icons                  fetch a few app/input icons, two ways (read-only)
@@ -171,6 +173,19 @@ def _integration_credentials(storage: Path, host: str) -> tuple[str | None, str]
     return None, f"{WS_PREFIX} probe"
 
 
+def _ip_control_credentials(storage: Path, host: str) -> tuple[str | None, int]:
+    """Return (IP Control token, port) of the samsungtv_smart entry for host."""
+    try:
+        entries = json.loads(storage.read_text())["data"]["entries"]
+    except (OSError, ValueError, KeyError):
+        return None, 1516
+    for entry in entries:
+        data = entry.get("data", {})
+        if entry.get("domain") == "samsungtv_smart" and data.get("host") == host:
+            return data.get("ip_control_token"), data.get("ip_control_port") or 1516
+    return None, 1516
+
+
 def _decode(value):
     """Turn JSON carried as a string (at any depth) into objects."""
     if isinstance(value, str):
@@ -245,10 +260,20 @@ class Probe:
         # Latest systeminfo int answer (it echoes no key, so the keyed sweep
         # reads this right after sending one enum to attribute the value).
         self._systeminfo_last = None
+        # Set by main(): the integration's remote-control token and client
+        # name, and its IP Control token and port (--confirm-ok presses OK).
+        self.session = None
+        self.name = f"{WS_PREFIX} probe"
+        self.token: str | None = None
+        self.ip_token: str | None = None
+        self.ip_port = 1516
+
+    def _elapsed(self) -> float:
+        return round(time.monotonic() - self._t0, 2)
 
     def _record(self, direction: str, payload) -> None:
         item = {
-            "t": round(time.monotonic() - self._t0, 2),
+            "t": self._elapsed(),
             "dir": direction,
             "msg": _decode(payload),
         }
@@ -397,15 +422,19 @@ class Probe:
         await self._set_element(ws, original)
         await asyncio.sleep(8)
 
-    async def probe_toggle(self, ws, name: str) -> None:
+    async def probe_toggle(self, ws, name: str, confirm_ok: bool = False) -> None:
         """Try each plausible set.settings.data payload for a toggle layer.
 
         AI Mode (``s/setting.layer.aitech``) answers ``ok`` and does not apply
-        it (#404): both of its elements carry the CURRENT state as ``subTitle``
-        and ``current_element_index`` is a constant, so what the TV wants for a
-        toggle is unknown. Send each candidate, re-read the layer and report
-        whether the state word moved. Writes to the TV; it tries to put the
-        setting back as soon as one variant works.
+        it (#404). On a 2026 Frame Pro the reason turned out to be an on-screen
+        dialog: a change that raises consumption (AI Mode -> On, Energy Saving
+        Solution -> Off) waits for "Select OK to confirm", whatever is sent.
+        Send each candidate, re-read the layer and report whether its state
+        (the words AND current_element_index) moved. With ``confirm_ok`` a
+        variant that did not apply is followed by one OK, first on the
+        remote-control channel, then over IP Control, to find out whether
+        Home Assistant can confirm that dialog itself. Writes to the TV, and
+        presses OK on it with ``confirm_ok``: run it in front of the TV.
         """
         layer_id = f"s/setting.layer.{name}"
 
@@ -415,6 +444,10 @@ class Probe:
                 [e.get("subTitle") for e in els],
                 (lay or {}).get("current_element_index"),
             )
+
+        async def read_state():
+            await self._fresh_settings(ws)
+            return state_of(self._layer(layer_id))
 
         await self._fresh_settings(ws)
         layer = self._layer(layer_id)
@@ -433,20 +466,29 @@ class Probe:
                 f"actionType={element.get('actionType')!r}"
             )
 
-        # The target is the element whose id suffix is NOT the state word the
-        # TV is reporting; the other one is what it calls current.
-        shared = str(
-            next((e.get("subTitle") for e in elements if e.get("subTitle")), "")
-        ).strip().lower()
-        target = next(
-            (
-                e
-                for e in elements
-                if e["id"].rpartition("@")[2].strip().lower() != shared
-            ),
-            elements[0],
-        )
-        other = next((e for e in elements if e is not target), elements[-1])
+        # Which element is current. Shared words (AI Mode: "Off" on both): the
+        # one whose id suffix is that word. Fixed words (energy saving: "Off",
+        # "On"): current_element_index, since the words never move.
+        words = {str(e.get("subTitle") or "").strip().lower() for e in elements}
+        current = None
+        if len(words) == 1:
+            word = next(iter(words))
+            current = next(
+                (
+                    e
+                    for e in elements
+                    if e["id"].rpartition("@")[2].strip().lower() == word
+                ),
+                None,
+            )
+        else:
+            try:
+                current = elements[int(layer.get("current_element_index"))]
+            except (TypeError, ValueError, IndexError):
+                current = None
+        current = current or elements[-1]
+        target = next((e for e in elements if e is not current), elements[0])
+        other = current
         suffix = target["id"].rpartition("@")[2]
         print(f"   -> trying to set {suffix!r} (element {target.get('id')})")
 
@@ -493,36 +535,184 @@ class Probe:
             ),
         ]
 
+        # One OK per dialog, and one try per channel: a delivered Enter that
+        # did not apply did something else (dismissed the dialog, pressed a
+        # focused tile), so a second one on the other channel would act blind.
+        untried = ["remote", "ipcontrol"]
+
+        async def confirm(label):
+            """Press OK once on the next usable channel; the channel if it applied."""
+            while untried:
+                via = untried.pop(0)
+                print(f"   .. no change: pressing OK on the TV via {via}")
+                if not await self.press_ok(via):
+                    continue
+                await asyncio.sleep(3)
+                now = await read_state()
+                print(
+                    f"   .. after OK via {via}: subtitles {now[0]}, "
+                    f"current_element_index {now[1]!r}"
+                )
+                if now != before:
+                    print(f"   -> APPLIED after OK via {via} ({label})")
+                    return via
+                print(
+                    f"   ?? OK via {via} did not apply it. What did it do on the "
+                    "TV (nothing, closed the dialog, something else)? Please say "
+                    "so in the report."
+                )
+                return None
+            return None
+
+        ok_via = None
         for label, params in variants:
             print(f"\n-- variant: {label}")
             print(f"   sending {params}")
             await self._send(ws, "set.settings.data", params)
             await asyncio.sleep(3)
-            await self._fresh_settings(ws)
-            after = state_of(self._layer(layer_id))
+            after = await read_state()
             print(
-                f"   now subtitles {after[0]}, "
-                f"current_element_index {after[1]!r}"
+                f"   now subtitles {after[0]}, " f"current_element_index {after[1]!r}"
             )
-            if after[0] == before[0]:
+            # Compare the index too: a toggle with fixed words on its elements
+            # (energy saving: "Off", "On") only moves current_element_index,
+            # and was reported unmoved - and left changed - on a 2026 Frame
+            # Pro (#404).
+            if after == before and confirm_ok:
+                ok_via = await confirm(label)
+                if ok_via is None:
+                    print("   -> no change")
+                    continue
+            elif after == before:
                 print("   -> no change")
                 continue
-            print("   -> APPLIED. This is the payload the TV takes.")
-            back = dict(params)
-            back["id"] = other.get("id")
-            if params.get("subTitle") == suffix:
-                back["subTitle"] = other["id"].rpartition("@")[2]
+            else:
+                print("   -> APPLIED. This is the payload the TV takes.")
+
+            # Put it back by sending the element that was current, with the
+            # subTitle the TV reports on it NOW: the echo the TV accepts (it is
+            # how AI Mode -> Off applied).
+            layer_now = self._layer(layer_id) or {}
+            now_elements = layer_now.get("elements") or []
+            reported = next(
+                (e for e in now_elements if e.get("id") == other.get("id")), other
+            )
+            back = shape(other, reported.get("subTitle"))
             print(f"   putting it back with {back}")
             await self._send(ws, "set.settings.data", back)
             await asyncio.sleep(3)
-            await self._fresh_settings(ws)
-            final = state_of(self._layer(layer_id))
-            print(f"   restored: subtitles {final[0]}")
-            if final[0] != before[0]:
-                print("   ! could not put it back; use the TV's own menu")
+            final = await read_state()
+            if final != before and ok_via:
+                print(f"   .. not back yet: pressing OK via {ok_via}")
+                await self.press_ok(ok_via)
+                await asyncio.sleep(3)
+                final = await read_state()
+            print(
+                f"   restored: subtitles {final[0]}, "
+                f"current_element_index {final[1]!r}"
+            )
+            if final != before:
+                print(
+                    '   ! not put back yet. If the TV shows "may increase power '
+                    'consumption", press OK on the remote; otherwise use the '
+                    "TV's own menu"
+                )
+            if ok_via:
+                print(
+                    "   ?? Look at the TV now: is the quick-settings panel still "
+                    "open over the app? Please say so in the report."
+                )
             return
 
-        print("\n! No variant moved the setting; the TV may use another request")
+        print(
+            '\n! No variant moved the setting. If the TV shows "may increase '
+            'power consumption", the request was right: it waits for OK on the '
+            "remote (#404). Otherwise the TV may use another request"
+        )
+
+    async def press_ok(self, via: str) -> bool:
+        """Press OK (Enter) once on the TV; False when the channel is unusable.
+
+        ``remote``: KEY_ENTER on the remote-control channel with the
+        integration's token, as the integration sends keys. ``ipcontrol``:
+        remoteKeyControl ``enter`` over IP Control (port 1516 or 1515) with the
+        entry's IP Control token.
+        """
+        if via == "remote":
+            if not (self.session and self.token):
+                print("   ! no token for the remote-control channel; skipping")
+                return False
+            url = (
+                f"wss://{self.host}:8002/api/v2/channels/samsung.remote.control"
+                f"?name={_b64(self.name)}&token={self.token}"
+            )
+            try:
+                remote = await asyncio.wait_for(
+                    self.session.ws_connect(url, ssl=_ssl_context()), timeout=10
+                )
+            except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as ex:
+                print(f"   ! remote channel connection failed: {ex!r}")
+                return False
+            try:
+                msg = await remote.receive(timeout=10)
+                event = (
+                    (_decode(msg.data) or {}).get("event")
+                    if msg.type == aiohttp.WSMsgType.TEXT
+                    else None
+                )
+                if event != "ms.channel.connect":
+                    print(f"   ! remote channel did not connect: {msg.type} {event}")
+                    return False
+                key = {
+                    "method": "ms.remote.control",
+                    "params": {
+                        "Cmd": "Click",
+                        "DataOfCmd": "KEY_ENTER",
+                        "Option": "false",
+                        "TypeOfRemote": "SendRemoteKey",
+                    },
+                }
+                await remote.send_str(json.dumps(key))
+                self.records.append({"t": self._elapsed(), "remote_key": "KEY_ENTER"})
+                await asyncio.sleep(0.5)
+                return True
+            finally:
+                await remote.close()
+
+        if not self.ip_token:
+            print("   ! no IP Control token in the entry; skipping")
+            return False
+        body = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "remoteKeyControl",
+            "params": {"AccessToken": self.ip_token, "remoteKey": "enter"},
+        }
+        text = None
+        for weak_dh in (False, True):
+            ctx = _ssl_context()
+            if weak_dh:
+                # Older sets negotiate a DH group OpenSSL rejects by default.
+                ctx.set_ciphers("DEFAULT@SECLEVEL=0")
+            try:
+                async with self.session.post(
+                    f"https://{self.host}:{self.ip_port}/",
+                    json=body,
+                    ssl=ctx,
+                    timeout=aiohttp.ClientTimeout(total=8),
+                ) as resp:
+                    text = await resp.text()
+                break
+            except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as ex:
+                if not weak_dh and "dh key too small" in str(ex).lower():
+                    continue
+                print(f"   ! IP Control remoteKeyControl failed: {ex!r}")
+                return False
+        print(f"   .. IP Control remoteKeyControl enter -> {text[:200]}")
+        self.records.append(
+            {"t": self._elapsed(), "ipcontrol": body["method"], "answer": text}
+        )
+        return '"error"' not in text and '"code"' not in text
 
     async def switch_source(self, ws, target: str) -> None:
         """Launch another input, then back.
@@ -1033,7 +1223,7 @@ class Probe:
             for name in actions.toggle_setting or ():
                 await self.toggle_setting(ws, name)
             for name in actions.probe_toggle or ():
-                await self.probe_toggle(ws, name)
+                await self.probe_toggle(ws, name, actions.confirm_ok)
             if actions.switch_source:
                 await self.switch_source(ws, actions.switch_source)
             if actions.apps or actions.launch_app or actions.icons:
@@ -1119,6 +1309,14 @@ async def main() -> int:
         help="set.settings.data: try each plausible payload for the toggle "
         "quick setting s/setting.layer.LAYER (aitech, energysavingsolution) "
         "and report which one the TV actually applies (repeatable)",
+    )
+    writes.add_argument(
+        "--confirm-ok",
+        action="store_true",
+        help="with --probe-toggle: when a payload does not apply, press OK once "
+        "on the TV (remote-control channel, then IP Control) to see whether that "
+        'confirms its "may increase power consumption" dialog. Presses a key '
+        "on the TV: run it in front of the TV",
     )
     writes.add_argument(
         "--switch-source",
@@ -1208,6 +1406,10 @@ async def main() -> int:
             ws = await probe.connect(session, name, token)
         if ws is not None:
             args.session, args.name, args.token = session, name, token
+            probe.session, probe.name, probe.token = session, name, token
+            probe.ip_token, probe.ip_port = _ip_control_credentials(
+                args.storage, args.host
+            )
             await probe.run(ws, args)
     probe.save()
     return 0 if ws is not None else 1
