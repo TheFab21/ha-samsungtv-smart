@@ -2801,6 +2801,20 @@ QUICK_SETTING_LAYERS = {
 }
 
 
+# Quick-setting changes a 2026 Frame Pro (26_RSM_FTV) parks behind an on-screen
+# "Changing this setting to <X> may increase power consumption. Select OK to
+# confirm." dialog (#404): set.settings.data answers "ok", then nothing is
+# reported until someone presses OK on the remote, whatever payload is sent.
+# The changes the other way (AI Mode Off, Energy Saving Solution On) apply at
+# once. Keyed by layer id and the target element's id suffix.
+QS_CONFIRM_ON_TV = frozenset(
+    {
+        ("s/setting.layer.aitech", "on"),
+        ("s/setting.layer.energysavingsolution", "off"),
+    }
+)
+
+
 def quick_setting_options(layer: SettingLayer) -> list[str]:
     """Option labels, made unique (a select cannot offer one label twice)."""
     options: list[str] = []
@@ -2909,6 +2923,17 @@ class SamsungTVQuickSettingSelect(SelectEntity):
         if layer.elements[index].dim:
             raise HomeAssistantError(f"The TV has '{option}' greyed out right now.")
         if not await self._mobilebff.async_set_setting(self._layer_id, index):
+            target = layer.elements[index].element_id.rpartition("@")[2]
+            if (self._layer_id, target.casefold()) in QS_CONFIRM_ON_TV:
+                # Not ignored: waiting for OK on the TV. The entity follows the
+                # TV's own report, so it updates as soon as OK is pressed.
+                raise HomeAssistantError(
+                    f"The TV is asking for confirmation on its screen before "
+                    f"applying '{option}' ("
+                    f"{layer.elements[index].title or self._layer_id}: "
+                    '"may increase power consumption"). Press OK on the '
+                    "remote; it applies at once."
+                )
             raise HomeAssistantError(
                 f"The TV did not apply '{option}' "
                 f"({layer.elements[index].title or self._layer_id})."

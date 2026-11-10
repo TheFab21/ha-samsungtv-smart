@@ -504,7 +504,11 @@ class Probe:
                 f"   now subtitles {after[0]}, "
                 f"current_element_index {after[1]!r}"
             )
-            if after[0] == before[0]:
+            # Compare the index too: a toggle with fixed words on its elements
+            # (energy saving: "Off", "On") only moves current_element_index,
+            # and was reported unmoved - and left changed - on a 2026 Frame
+            # Pro (#404).
+            if after == before:
                 print("   -> no change")
                 continue
             print("   -> APPLIED. This is the payload the TV takes.")
@@ -517,12 +521,23 @@ class Probe:
             await asyncio.sleep(3)
             await self._fresh_settings(ws)
             final = state_of(self._layer(layer_id))
-            print(f"   restored: subtitles {final[0]}")
-            if final[0] != before[0]:
-                print("   ! could not put it back; use the TV's own menu")
+            print(
+                f"   restored: subtitles {final[0]}, "
+                f"current_element_index {final[1]!r}"
+            )
+            if final != before:
+                print(
+                    "   ! not put back yet. If the TV shows \"may increase power "
+                    "consumption\", press OK on the remote; otherwise use the "
+                    "TV's own menu"
+                )
             return
 
-        print("\n! No variant moved the setting; the TV may use another request")
+        print(
+            "\n! No variant moved the setting. If the TV shows \"may increase "
+            "power consumption\", the request was right: it waits for OK on the "
+            "remote (#404). Otherwise the TV may use another request"
+        )
 
     async def switch_source(self, ws, target: str) -> None:
         """Launch another input, then back.

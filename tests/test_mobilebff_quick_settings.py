@@ -699,3 +699,108 @@ def test_a_refused_tile_launch_falls_back_to_keys():
     client.async_launch_app = refuse
     device = _device(client)
     assert asyncio.run(device._async_local_source("Apple TV", "KEY_HDMI1")) is False
+
+
+# --- power-raising changes wait for OK on the TV (#404) ------------------------
+#
+# 2026 Frame Pro: set.settings.data answered "ok" for AI Mode -> On and Energy
+# Saving Solution -> Off, the TV showed "Changing this setting to <X> may
+# increase power consumption. Select OK to confirm." and reported nothing until
+# OK was pressed on the remote. AI Mode -> Off applied at once with 9.0.9's
+# wire payload, and so did Energy Saving Solution -> On.
+
+ENERGY = "s/setting.layer.energysavingsolution"
+
+
+def _energy_layer(current):
+    return {
+        "id": ENERGY,
+        "current_element_index": str(current),
+        "elements": [
+            {
+                "id": f"{ENERGY}@Off",
+                "title": "Energy Saving Solution",
+                "subTitle": "Off",
+                "actionType": "toggle",
+                "dim": "false",
+            },
+            {
+                "id": f"{ENERGY}@On",
+                "title": "Energy Saving Solution",
+                "subTitle": "On",
+                "actionType": "toggle",
+                "dim": "false",
+            },
+        ],
+    }
+
+
+def _unconfirmed(client):
+    async def not_reported(layer_id, index):
+        return False
+
+    client.async_set_setting = not_reported
+
+
+def test_ai_mode_on_asks_to_confirm_on_the_tv():
+    client = _client()
+    client._handle(_msg("get.settings.data", [_toggle_layer("Off", "Off")]))
+    entity = _qs_select(client, "s/setting.layer.aitech")
+    _unconfirmed(client)
+    with pytest.raises(HomeAssistantError) as caught:
+        asyncio.run(entity.async_select_option("On"))
+    assert "confirmation on its screen" in str(caught.value)
+    assert "Press OK on the remote" in str(caught.value)
+
+
+def test_energy_saving_off_asks_to_confirm_on_the_tv():
+    client = _client()
+    client._handle(_msg("get.settings.data", [_energy_layer(1)]))
+    entity = _qs_select(client, ENERGY)
+    _unconfirmed(client)
+    with pytest.raises(HomeAssistantError) as caught:
+        asyncio.run(entity.async_select_option("Off"))
+    assert "Press OK on the remote" in str(caught.value)
+
+
+def test_a_change_that_lowers_consumption_keeps_the_plain_error():
+    # AI Mode -> Off and Energy Saving -> On apply at once; when they do not,
+    # nothing is waiting on the screen.
+    client = _client()
+    client._handle(_msg("get.settings.data", [_toggle_layer("On", "On")]))
+    entity = _qs_select(client, "s/setting.layer.aitech")
+    _unconfirmed(client)
+    with pytest.raises(HomeAssistantError) as caught:
+        asyncio.run(entity.async_select_option("Off"))
+    assert str(caught.value).startswith("The TV did not apply 'Off'")
+
+    client = _client()
+    client._handle(_msg("get.settings.data", [_energy_layer(0)]))
+    entity = _qs_select(client, ENERGY)
+    _unconfirmed(client)
+    with pytest.raises(HomeAssistantError) as caught:
+        asyncio.run(entity.async_select_option("On"))
+    assert str(caught.value).startswith("The TV did not apply 'On'")
+
+
+def test_other_settings_keep_the_plain_error():
+    client = _client()
+    client._handle(_msg("get.settings.data", [_layer(COLORTONE, COLORTONE_OPTIONS, 1)]))
+    entity = _qs_select(client)
+    _unconfirmed(client)
+    with pytest.raises(HomeAssistantError) as caught:
+        asyncio.run(entity.async_select_option("Chaude 1"))
+    assert "Press OK" not in str(caught.value)
+
+
+def test_the_probe_compares_the_index_as_well_as_the_words():
+    # Energy saving's elements carry fixed words; only current_element_index
+    # moved, and --probe-toggle reported "no change" and left it changed.
+    from pathlib import Path
+
+    probe = (Path(__file__).parents[1] / "scripts" / "probe_mobilebff.py").read_text()
+    block = probe[probe.index("    async def probe_toggle") :]
+    block = block[: block.index("\n    async def ", 1)]
+    assert "if after == before:" in block
+    assert "if final != before:" in block
+    assert "if after[0] == before[0]:" not in block
