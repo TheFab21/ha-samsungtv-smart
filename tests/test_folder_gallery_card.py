@@ -18,6 +18,7 @@ JS_OVERLAY_TEST = ROOT / "tests" / "js" / "folder_gallery_overlay.test.mjs"
 JS_RESPONSE_TEST = (
     ROOT / "tests" / "js" / "folder_gallery_service_response.test.mjs"
 )
+JS_GESTURES_TEST = ROOT / "tests" / "js" / "folder_gallery_gestures.test.mjs"
 
 
 def test_the_card_is_bundled_with_the_integration():
@@ -95,3 +96,17 @@ def test_the_card_reads_the_response_by_entity_id():
     assert "response[entityId]" in src
     # The flat read that silently swallowed every error must not come back.
     assert "result.response.error" not in src
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+def test_the_lightbox_finds_its_tv_and_any_gesture_can_open_it():
+    # #416: with "tap: lightbox, double_tap: perform_action" and no `action:`
+    # key, Delete had no target and Select did nothing; double_tap: lightbox
+    # did nothing (tests/js/folder_gallery_gestures.test.mjs).
+    result = subprocess.run(
+        ["node", str(JS_GESTURES_TEST)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout

@@ -112,7 +112,7 @@ layout and will leave your gallery empty — the real files live under the
 ### Step 2: Download Thumbnails
 
 ```yaml
-service: samsungtv_smart.art_get_thumbnails_batch
+action: samsungtv_smart.art_get_thumbnails_batch
 target:
   entity_id: media_player.samsung_frame
 data:
@@ -203,7 +203,7 @@ image_height: 160px
 aspect_ratio: "1"
 tap_action: lightbox
 action:
-  service: samsungtv_smart.art_select_image
+  perform_action: samsungtv_smart.art_select_image
   target:
     entity_id: media_player.samsung_frame
   data:
@@ -228,9 +228,9 @@ action:
 > - **`folder:` with no sensor and no `image_list` → empty gallery.** On its own
 >   it can't list any files.
 >
-> The action also accepts the modern syntax — `perform_action:` instead of
-> `service:`, or an object-form `tap_action:` — in addition to the legacy
-> `action: { service: ... }` shown above.
+> The examples use `perform_action:`, Home Assistant's current name. The older
+> `service:` key is still accepted, and so is an object-form `tap_action:`
+> carrying the action itself.
 
 ### Editing in the UI (visual editor)
 
@@ -383,6 +383,33 @@ hold_action:                  # long press → display the artwork on the TV
 > When `double_tap_action` is set, a single tap is held back briefly (~250 ms)
 > to tell the two apart, so `tap_action` fires a touch later than usual.
 
+The preview's buttons (**Display on TV**, **Delete**, **Unfavourite**) act on
+the TV named in any of the card's actions, or in `frame_tv_entity`, so this
+layout needs no separate `action:` block.
+
+### Example: tap = display on TV, double-tap = preview
+
+Handy when others in the household just pick an artwork: a tap shows it on the
+TV straight away, and the preview (with Delete) is one gesture further away.
+`lightbox` works for `double_tap_action` and `hold_action` as well as for
+`tap_action`.
+
+```yaml
+type: custom:folder-gallery-card
+title: Gallery Personal
+folder_sensor: sensor.samsung_hacs_personal
+columns: 3
+aspect_ratio: "16/9"
+tap_action:                   # single tap → display the artwork on the TV
+  action: perform-action
+  perform_action: samsungtv_smart.art_select_image
+  target:
+    entity_id: media_player.samsung_hacs
+  data:
+    content_id: "{{content_id}}"
+double_tap_action: lightbox   # double tap → open the preview
+```
+
 ### Template Variables
 
 Use these in your action data:
@@ -411,7 +438,7 @@ gap: 10px
 border_radius: 12px
 tap_action: lightbox
 action:
-  service: samsungtv_smart.art_select_image
+  perform_action: samsungtv_smart.art_select_image
   target:
     entity_id: media_player.samsung_frame
   data:
@@ -441,7 +468,7 @@ columns: 3
 aspect_ratio: "4/3"
 tap_action: lightbox
 action:
-  service: samsungtv_smart.art_select_image
+  perform_action: samsungtv_smart.art_select_image
   target:
     entity_id: media_player.samsung_frame
   data:
@@ -459,7 +486,7 @@ columns: 5
 aspect_ratio: "1"
 tap_action: action
 action:
-  service: samsungtv_smart.art_select_image
+  perform_action: samsungtv_smart.art_select_image
   target:
     entity_id: media_player.samsung_frame
   data:
@@ -550,7 +577,7 @@ columns: 4
 aspect_ratio: "1"
 tap_action: lightbox
 action:
-  service: samsungtv_smart.art_upload
+  perform_action: samsungtv_smart.art_upload
   target:
     entity_id: media_player.samsung_frame
   data:
@@ -658,7 +685,7 @@ for folder in folders:
     cards += f"  aspect_ratio: \"1\"\n"
     cards += f"  tap_action: lightbox\n"
     cards += f"  action:\n"
-    cards += f"    service: samsungtv_smart.art_upload\n"
+    cards += f"    perform_action: samsungtv_smart.art_upload\n"
     cards += f"    target:\n"
     cards += f"      entity_id: {TV_ENTITY}\n"
     cards += f"    data:\n"
@@ -906,7 +933,7 @@ cards:
     aspect_ratio: "1"
     tap_action: lightbox
     action:
-      service: samsungtv_smart.art_select_image
+      perform_action: samsungtv_smart.art_select_image
       target:
         entity_id: media_player.samsung_frame
       data:
@@ -920,7 +947,7 @@ cards:
     aspect_ratio: "1"
     tap_action: lightbox
     action:
-      service: samsungtv_smart.art_select_image
+      perform_action: samsungtv_smart.art_select_image
       target:
         entity_id: media_player.samsung_frame
       data:
@@ -939,8 +966,8 @@ cards:
         name: Sync Thumbnails
         icon: mdi:sync
         tap_action:
-          action: call-service
-          service: samsungtv_smart.art_get_thumbnails_batch
+          action: perform-action
+          perform_action: samsungtv_smart.art_get_thumbnails_batch
           target:
             entity_id: media_player.samsung_frame
           data:
@@ -951,8 +978,8 @@ cards:
         name: Art Mode
         icon: mdi:image-frame
         tap_action:
-          action: call-service
-          service: switch.toggle
+          action: perform-action
+          perform_action: switch.toggle
           target:
             entity_id: switch.samsung_frame_frame_art_mode
   
@@ -965,7 +992,7 @@ cards:
     aspect_ratio: "1"
     tap_action: lightbox
     action:
-      service: samsungtv_smart.art_select_image
+      perform_action: samsungtv_smart.art_select_image
       target:
         entity_id: media_player.samsung_frame
       data:
@@ -987,7 +1014,7 @@ cards:
 
 ```yaml
 # 1. Download thumbnails
-service: samsungtv_smart.art_get_thumbnails_batch
+action: samsungtv_smart.art_get_thumbnails_batch
 target:
   entity_id: media_player.samsung_frame
 data:
@@ -1048,12 +1075,12 @@ ls /config/www/media/Monet/
 
 ```yaml
 # Enable Art Mode first
-service: switch.turn_on
+action: switch.turn_on
 target:
   entity_id: switch.samsung_frame_frame_art_mode
 
 # Test with Developer Tools > Services
-service: samsungtv_smart.art_select_image
+action: samsungtv_smart.art_select_image
 target:
   entity_id: media_player.samsung_frame
 data:
