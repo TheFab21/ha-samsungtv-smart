@@ -341,7 +341,7 @@ falls back to **All**.
 | `border_radius` | string | `8px` | Image border radius |
 | `show_filename` | boolean | `true` | Show filename on hover |
 | `filter` | string | `*` | File filter pattern |
-| `gallery_type` | string | *(auto)* | Forces which action buttons the fullscreen preview shows for the whole gallery: `personal` (Select + Delete), `favorites` (Select + Unfavourite), `upload` (Upload). Omit / `auto` = detect per image from the content-id prefix. |
+| `gallery_type` | string | *(auto)* | Forces which action buttons the fullscreen preview shows for the whole gallery: `personal` (Select + Delete), `favorites` (Select + Unfavourite), `upload` (Upload). Omit / `auto` = detect per image from the content-id prefix: `SAM-` TV works show Select + Unfavourite, `MY-` uploads show Select + Delete, other files show Upload. Use `auto` for a multi-folder card that mixes these; set a value only to force one set everywhere. |
 | `server_thumbnails` | boolean | `true` | Serve small server-resized thumbnails for the grid instead of the full originals (recommended for folders of large photos). The full-resolution image is still used for the lightbox and actions. Set `false` to load originals. |
 | `thumbnail_width` | number | `400` | Width (px) of the server-generated thumbnails. Raise for sharper tiles, lower for even less bandwidth. |
 | `tap_action` | string/object | - | Action on single tap (e.g. `lightbox`, or a service/perform-action object) |
