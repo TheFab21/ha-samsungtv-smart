@@ -44,6 +44,7 @@ class _ArtApi:
 
     async def select_image(self, content_id, category_id, show):
         self.selected.append(content_id)
+        return True  # the TV answered; an unanswered select is now an error
 
 
 class _Device:

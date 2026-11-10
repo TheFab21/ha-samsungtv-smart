@@ -597,7 +597,10 @@ async def async_setup_entry(
     )
     platform.async_register_entity_service(
         SERVICE_ART_SET_BRIGHTNESS,
-        {vol.Required(ATTR_BRIGHTNESS): vol.All(vol.Coerce(int), vol.Range(0, 100))},
+        {
+            vol.Required(ATTR_BRIGHTNESS): vol.All(vol.Coerce(int), vol.Range(0, 100)),
+            vol.Optional(ATTR_WAKE, default=True): cv.boolean,
+        },
         "async_art_set_brightness",
         supports_response=SupportsResponse.OPTIONAL,
     )
@@ -612,7 +615,8 @@ async def async_setup_entry(
         {
             vol.Required(ATTR_COLOR_TEMPERATURE): vol.All(
                 vol.Coerce(int), vol.Range(-5, 5)
-            )
+            ),
+            vol.Optional(ATTR_WAKE, default=True): cv.boolean,
         },
         "async_art_set_color_temperature",
         supports_response=SupportsResponse.OPTIONAL,
@@ -628,6 +632,7 @@ async def async_setup_entry(
         {
             vol.Required(ATTR_CONTENT_ID): cv.string,
             vol.Required(ATTR_MATTE_ID): cv.string,
+            vol.Optional(ATTR_WAKE, default=True): cv.boolean,
         },
         "async_art_change_matte",
         supports_response=SupportsResponse.OPTIONAL,
@@ -697,6 +702,7 @@ async def async_setup_entry(
             vol.Optional(ATTR_SHUFFLE, default=True): cv.boolean,
             vol.Optional(ATTR_CATEGORY_ID, default=2): _SLIDESHOW_CATEGORY,
             vol.Optional(ATTR_SUB_CATEGORY_ID): cv.string,
+            vol.Optional(ATTR_WAKE, default=True): cv.boolean,
         },
         "async_art_set_slideshow",
         supports_response=SupportsResponse.OPTIONAL,
@@ -710,6 +716,7 @@ async def async_setup_entry(
             vol.Optional(ATTR_SHUFFLE, default=True): cv.boolean,
             vol.Optional(ATTR_CATEGORY_ID, default=2): _SLIDESHOW_CATEGORY,
             vol.Optional(ATTR_SUB_CATEGORY_ID): cv.string,
+            vol.Optional(ATTR_WAKE, default=True): cv.boolean,
         },
         "async_art_set_auto_rotation",
         supports_response=SupportsResponse.OPTIONAL,
@@ -6566,8 +6573,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         # Select the artwork
         try:
-            await self._art_api.select_image(content_id, category_id, show)
-
+            if not await self._art_api.select_image(content_id, category_id, show):
+                # False when the TV never answered: a silent channel, or an
+                # artwork it stored but cannot display — a portrait upload
+                # taller than a landscape panel got no answer at all (#389).
+                # Don't claim success (#401).
+                return {"error": "no answer from the TV", "content_id": content_id}
             return {"success": True, "content_id": content_id}
         except Exception as ex:
             self._log.error("Error selecting artwork: %s", ex)
@@ -7358,14 +7369,25 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._store_art_result(result)
             return result
 
-    async def async_art_set_brightness(self, brightness: int) -> dict:
+    async def async_art_set_brightness(
+        self, brightness: int, wake: bool = True
+    ) -> dict:
         """Set Art Mode brightness.
 
         Accepts brightness 0-100 from UI and converts to TV's 1-10 scale.
+        ``wake`` false leaves a TV that is not showing Art Mode alone, as in
+        ``async_art_select_image``.
         """
         if not await self._ensure_frame_tv_check():
             self._log.warning("Frame TV art mode is not supported on this device")
             return {"error": "Frame TV not supported"}
+
+        if not wake and self._art_mode_is_on() is not True:
+            self._log.debug(
+                "Frame Art: not setting the brightness — Art Mode is not on and "
+                "wake is off"
+            )
+            return {"skipped": True, "reason": "art_mode_off"}
 
         # Ensure TV is on and in Art Mode
         if not await self._ensure_art_mode_ready():
@@ -7393,7 +7415,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 brightness,
                 tv_brightness,
             )
-            await self._art_api.set_brightness(tv_brightness)
+            if not await self._art_api.set_brightness(tv_brightness):
+                # False when the TV never answered (a silent channel or its
+                # cooldown): don't claim success (#401).
+                return {"error": "no answer from the TV"}
             return {
                 "success": True,
                 "brightness_ui": brightness,
@@ -7424,14 +7449,24 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._log.error("Error getting brightness: %s", ex)
             return {"error": str(ex)}
 
-    async def async_art_set_color_temperature(self, color_temperature: int) -> dict:
+    async def async_art_set_color_temperature(
+        self, color_temperature: int, wake: bool = True
+    ) -> dict:
         """Set Art Mode color temperature.
 
         Accepts -5 to +5 (negative = warmer, 0 = neutral, positive = cooler).
+        ``wake`` false leaves a TV that is not showing Art Mode alone.
         """
         if not await self._ensure_frame_tv_check():
             self._log.warning("Frame TV art mode is not supported on this device")
             return {"error": "Frame TV not supported"}
+
+        if not wake and self._art_mode_is_on() is not True:
+            self._log.debug(
+                "Frame Art: not setting the colour temperature — Art Mode is "
+                "not on and wake is off"
+            )
+            return {"skipped": True, "reason": "art_mode_off"}
 
         # Ensure TV is on and in Art Mode
         if not await self._ensure_art_mode_ready():
@@ -7441,7 +7476,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._log.debug(
                 "Frame Art: Setting color temperature to %d", color_temperature
             )
-            await self._art_api.set_color_temperature(color_temperature)
+            if not await self._art_api.set_color_temperature(color_temperature):
+                # False when the TV never answered (a silent channel or its
+                # cooldown): don't claim success (#401).
+                return {"error": "no answer from the TV"}
             return {
                 "success": True,
                 "color_temperature": color_temperature,
@@ -7473,18 +7511,32 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self,
         content_id: str,
         matte_id: str,
+        wake: bool = True,
     ) -> dict:
-        """Change the matte/frame style for artwork."""
+        """Change the matte/frame style for artwork.
+
+        ``wake`` false leaves a TV that is not showing Art Mode alone.
+        """
         if not await self._ensure_frame_tv_check():
             self._log.warning("Frame TV art mode is not supported on this device")
             return {"error": "Frame TV not supported"}
+
+        if not wake and self._art_mode_is_on() is not True:
+            self._log.debug(
+                "Frame Art: not changing the matte — Art Mode is not on and "
+                "wake is off"
+            )
+            return {"skipped": True, "reason": "art_mode_off"}
 
         # Ensure TV is on and in Art Mode
         if not await self._ensure_art_mode_ready():
             return {"error": "Failed to turn on TV"}
 
         try:
-            await self._art_api.change_matte(content_id, matte_id)
+            if not await self._art_api.change_matte(content_id, matte_id):
+                # False when the TV never answered (a silent channel or its
+                # cooldown): don't claim success (#401).
+                return {"error": "no answer from the TV"}
             return {"success": True}
         except Exception as ex:
             self._log.error("Error changing matte: %s", ex)
@@ -7500,7 +7552,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._log.warning("Frame TV art mode is not supported on this device")
             return {"error": "Frame TV not supported"}
         try:
-            await self._art_api.set_photo_filter(content_id, filter_id)
+            if not await self._art_api.set_photo_filter(content_id, filter_id):
+                # False when the TV never answered (a silent channel or its
+                # cooldown): don't claim success (#401).
+                return {"error": "no answer from the TV"}
             return {"success": True}
         except Exception as ex:
             self._log.error("Error setting photo filter: %s", ex)
@@ -7724,6 +7779,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         shuffle: bool = True,
         category_id: int | str = 2,
         sub_category_id: str | None = None,
+        wake: bool = True,
     ) -> dict:
         """Configure slideshow settings.
 
@@ -7744,6 +7800,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         detected the TV listens to. The response carries the status the
         TV reports after the write, so a request the TV accepted but did
         not apply is visible to the caller.
+
+        ``wake`` false leaves a TV that is not showing Art Mode alone: the
+        request otherwise powers it on and writes artModeOn. An automation
+        that re-applied the slideshow after power-on did that to a 2025 Frame
+        showing an app, and the TV left the app.
         """
         if not await self._ensure_frame_tv_check():
             self._log.warning("Frame TV art mode is not supported on this device")
@@ -7758,6 +7819,13 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     "an integer number of minutes, or 'off'."
                 )
             }
+
+        if not wake and self._art_mode_is_on() is not True:
+            self._log.debug(
+                "Frame Art: not setting the slideshow — Art Mode is not on and "
+                "wake is off"
+            )
+            return {"skipped": True, "reason": "art_mode_off"}
 
         # Ensure TV is on and in Art Mode
         if not await self._ensure_art_mode_ready():
@@ -7802,6 +7870,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         shuffle: bool = True,
         category_id: int | str = 2,
         sub_category_id: str | None = None,
+        wake: bool = True,
     ) -> dict:
         """Configure auto rotation settings.
 
@@ -7812,7 +7881,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         (``slideshow_status`` or ``auto_rotation_status``).
         """
         return await self.async_art_set_slideshow(
-            duration, shuffle, category_id, sub_category_id
+            duration, shuffle, category_id, sub_category_id, wake
         )
 
     async def _async_switch_entity(self, power_on: bool):
