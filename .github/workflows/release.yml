@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout master"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: refs/heads/master
           fetch-depth: 1
@@ -52,7 +52,7 @@ jobs:
     if: ${{ always() && contains(fromJSON('["success", "skipped"]'), needs.update-manifest.result) }}
     steps:
       - name: "Checkout the release tag"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The tag, not a branch: the asset must be the code that was
           # released. Checking out a branch head shipped whatever had landed
@@ -73,6 +73,6 @@ jobs:
           cd "${{ github.workspace }}/custom_components/samsungtv_smart"
           zip samsungtv_smart.zip -r ./
       - name: "Upload the ZIP file to the release"
-        uses: softprops/action-gh-release@v2.0.8
+        uses: softprops/action-gh-release@v3.0.4
         with:
           files: ${{ github.workspace }}/custom_components/samsungtv_smart/samsungtv_smart.zip

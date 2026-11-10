@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout master"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: "refs/heads/master"
           # Full history and tags, so an already-published version is caught
@@ -104,7 +104,7 @@ jobs:
           zip samsungtv_smart.zip -r ./
 
       - name: "Create the release with the ZIP attached"
-        uses: softprops/action-gh-release@v2.0.8
+        uses: softprops/action-gh-release@v3.0.4
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
