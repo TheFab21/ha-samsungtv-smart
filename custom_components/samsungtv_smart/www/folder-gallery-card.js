@@ -17,7 +17,7 @@
  * columns: 4
  * image_height: 150px
  * action:
- *   service: media_player.play_media
+ *   perform_action: media_player.play_media
  *   target:
  *     entity_id: media_player.samsung_frame_tv
  *   data:
@@ -52,6 +52,7 @@ const TRANSLATIONS = {
     cancel: 'Cancel',
     action_executed: 'Action executed: {name}',
     error: 'Error: {msg}',
+    no_tv: 'No Frame TV entity: set frame_tv_entity on the card, or a target in one of its actions',
     g_nothing: 'Nothing',
     g_lightbox: 'Open preview (lightbox)',
     g_upload: 'Upload to TV',
@@ -111,6 +112,7 @@ const TRANSLATIONS = {
     cancel: 'Annuler',
     action_executed: 'Action exécutée : {name}',
     error: 'Erreur : {msg}',
+    no_tv: 'Aucune TV Frame : renseignez frame_tv_entity sur la carte, ou une cible dans l\'une de ses actions',
     g_nothing: 'Aucune',
     g_lightbox: 'Ouvrir l\'aperçu (lightbox)',
     g_upload: 'Envoyer sur la TV',
@@ -170,6 +172,7 @@ const TRANSLATIONS = {
     cancel: 'Cancelar',
     action_executed: 'Acción ejecutada: {name}',
     error: 'Error: {msg}',
+    no_tv: 'Ninguna TV Frame: indique frame_tv_entity en la tarjeta, o un destino en una de sus acciones',
     g_nothing: 'Nada',
     g_lightbox: 'Abrir vista previa (lightbox)',
     g_upload: 'Subir a la TV',
@@ -229,6 +232,7 @@ const TRANSLATIONS = {
     cancel: 'Annulla',
     action_executed: 'Azione eseguita: {name}',
     error: 'Errore: {msg}',
+    no_tv: 'Nessuna TV Frame: imposta frame_tv_entity nella scheda, o un target in una delle sue azioni',
     g_nothing: 'Niente',
     g_lightbox: 'Apri anteprima (lightbox)',
     g_upload: 'Carica sulla TV',
@@ -288,6 +292,7 @@ const TRANSLATIONS = {
     cancel: 'Cancelar',
     action_executed: 'Ação executada: {name}',
     error: 'Erro: {msg}',
+    no_tv: 'Nenhuma TV Frame: defina frame_tv_entity no cartão, ou um destino em uma das suas ações',
     g_nothing: 'Nada',
     g_lightbox: 'Abrir prévia (lightbox)',
     g_upload: 'Enviar para a TV',
@@ -347,6 +352,7 @@ const TRANSLATIONS = {
     cancel: 'Mégse',
     action_executed: 'Művelet végrehajtva: {name}',
     error: 'Hiba: {msg}',
+    no_tv: 'Nincs Frame TV: adja meg a frame_tv_entity értéket a kártyán, vagy egy célt valamelyik műveletében',
     g_nothing: 'Semmi',
     g_lightbox: 'Előnézet megnyitása (lightbox)',
     g_upload: 'Feltöltés a TV-re',
@@ -1226,7 +1232,7 @@ class FolderGalleryCard extends HTMLElement {
           }
           this._dtIndex = -1;
           this._dtTime = 0;
-          this.executeAction(this._images[index], this._config.double_tap_action);
+          this._runGesture(this._images[index], this._config.double_tap_action);
         } else {
           this._dtIndex = index;
           this._dtTime = now;
@@ -1264,7 +1270,7 @@ class FolderGalleryCard extends HTMLElement {
     if (actionBtn) {
       actionBtn.addEventListener('click', () => {
         if (this._selectedImage) {
-          this.executeAction(this._selectedImage);
+          this._runLightboxAction(this._selectedImage, 'select');
           this.closeLightbox();
         }
       });
@@ -1280,7 +1286,7 @@ class FolderGalleryCard extends HTMLElement {
     if (uploadBtn) {
       uploadBtn.addEventListener('click', () => {
         if (this._selectedImage) {
-          this.executeAction(this._selectedImage, this._config.action);
+          this._runLightboxAction(this._selectedImage, 'upload');
           this.closeLightbox();
         }
       });
@@ -1351,15 +1357,79 @@ class FolderGalleryCard extends HTMLElement {
     if (deleteBtn) deleteBtn.style.display = showDelete ? 'inline-block' : 'none';
   }
 
+  // The configured actions, in the order the lightbox looks at them: the legacy
+  // `action:` block first, then the gesture actions written in object form.
+  _configuredActions() {
+    const c = this._config;
+    return [c.action, c.tap_action, c.double_tap_action, c.hold_action].filter(
+      (a) => a && typeof a === 'object'
+    );
+  }
+
   _getEntityId() {
-    if (this._config.action && this._config.action.target && this._config.action.target.entity_id)
-      return this._config.action.target.entity_id;
-    if (this._config.action && this._config.action.data && this._config.action.data.entity_id)
-      return this._config.action.data.entity_id;
-    // Fallback to the dedicated Frame TV entity, so the lightbox buttons still
-    // resolve a target even when no `action` is configured (e.g. tap opens the
-    // lightbox and there is no separate tap action).
-    return this._config.frame_tv_entity || this._config.tv_entity || '';
+    // The TV the lightbox buttons act on. It used to come from `action:` only,
+    // so the documented "tap: lightbox / double_tap: perform_action" layout
+    // (no `action:` key) left Delete with target.entity_id '' ("expected 'all'
+    // or 'none'") and Select doing nothing (#416). A gesture action's target
+    // is just as good a source.
+    const entityOf = (a) =>
+      (a.target && a.target.entity_id) || (a.data && a.data.entity_id) || '';
+    const legacy = this._config.action;
+    if (legacy && typeof legacy === 'object' && entityOf(legacy)) return entityOf(legacy);
+    if (this._config.frame_tv_entity || this._config.tv_entity)
+      return this._config.frame_tv_entity || this._config.tv_entity;
+    for (const a of this._configuredActions()) {
+      const id = entityOf(a);
+      if (id) return id;
+    }
+    return '';
+  }
+
+  // Run the lightbox's Select (art_select_image) or Upload (art_upload) button.
+  // The legacy `action:` block keeps priority, so a gallery wired to some other
+  // service still runs it. Otherwise use the gesture action that calls the same
+  // service, and as a last resort the gallery type's standard call on the TV the
+  // card resolves - a lightbox reached by any gesture then works (#416).
+  _runLightboxAction(imageData, kind) {
+    if (this._config.action && typeof this._config.action === 'object') {
+      this.executeAction(imageData, this._config.action);
+      return;
+    }
+    const service = kind === 'upload' ? 'art_upload' : 'art_select_image';
+    const found = this._configuredActions().find((a) =>
+      (a.perform_action || a.service || '').endsWith(service)
+    );
+    if (found) {
+      this.executeAction(imageData, found);
+      return;
+    }
+    const entityId = this._getEntityId();
+    if (!entityId) {
+      this.showToast(this._t('error', { msg: this._t('no_tv') }), true);
+      return;
+    }
+    this.executeAction(imageData, {
+      perform_action: `samsungtv_smart.${service}`,
+      target: { entity_id: entityId },
+      data:
+        kind === 'upload'
+          ? { file_path: '{{file_path}}' }
+          : { content_id: '{{content_id}}' },
+    });
+  }
+
+  // A double tap or long press: an action object, or 'lightbox' to open the
+  // preview. 'lightbox' used to be read for tap_action only, so
+  // `double_tap_action: lightbox` did nothing at all (#416).
+  _runGesture(imageData, gesture) {
+    if (gesture === 'lightbox') {
+      this.openLightbox(imageData);
+    } else if (gesture === 'more-info' || (gesture && gesture.action === 'more-info')) {
+      if (this._config.entity)
+        this.fireEvent('hass-more-info', { entityId: this._config.entity });
+    } else if (gesture && typeof gesture === 'object' && gesture.action !== 'none') {
+      this.executeAction(imageData, gesture);
+    }
   }
 
   // Both services return {success} or {error} and declare SupportsResponse, so
@@ -1388,6 +1458,10 @@ class FolderGalleryCard extends HTMLElement {
   async _callUnfavourite(imageData) {
     if (!this._hass) return;
     const entityId = this._getEntityId();
+    if (!entityId) {
+      this.showToast(this._t('error', { msg: this._t('no_tv') }), true);
+      return;
+    }
     const contentId = imageData.content_id || imageData.name || '';
     try {
       const result = await this._hass.callService(
@@ -1407,6 +1481,10 @@ class FolderGalleryCard extends HTMLElement {
   async _callDelete(imageData) {
     if (!this._hass) return;
     const entityId = this._getEntityId();
+    if (!entityId) {
+      this.showToast(this._t('error', { msg: this._t('no_tv') }), true);
+      return;
+    }
     const contentId = imageData.content_id || imageData.name || '';
     try {
       const result = await this._hass.callService(
@@ -1505,7 +1583,7 @@ class FolderGalleryCard extends HTMLElement {
     const imageData = this._images[index];
     
     if (this._config.hold_action) {
-      this.executeAction(imageData, this._config.hold_action);
+      this._runGesture(imageData, this._config.hold_action);
     } else {
       this.openLightbox(imageData);
     }
@@ -1779,6 +1857,7 @@ class FolderGalleryCardEditor extends HTMLElement {
   _actionKind(action) {
     // Map a config action back to a gesture preset:
     // select | upload | delete | unfavourite | none.
+    if (action === 'lightbox') return 'lightbox';
     if (!action || typeof action !== 'object') return 'none';
     const svc = (action.service || action.perform_action || '').toLowerCase();
     if (svc.includes('art_select_image')) return 'select';
@@ -1812,7 +1891,8 @@ class FolderGalleryCardEditor extends HTMLElement {
   }
 
   // Gesture presets available for the current gallery_type. Each entry is
-  // { v: kind, l: label }. `lightbox` (preview) is offered for single tap only.
+  // { v: kind, l: label }. `lightbox` (preview) is offered for every gesture:
+  // tap to display, double tap to preview is a layout people want (#416).
   _gestureOptions(includeLightbox) {
     const gt = (this._config.gallery_type || 'auto').toLowerCase();
     const opts = [{ v: 'none', l: this._t('g_nothing') }];
@@ -1836,6 +1916,8 @@ class FolderGalleryCardEditor extends HTMLElement {
   // the card's setConfig can detect the missing entity and refuse to save.
   _buildAction(kind, tvEntity) {
     if (kind === 'none' || !kind) return null;
+    // The preview is a gesture of its own, not a service call (#416).
+    if (kind === 'lightbox') return 'lightbox';
     const target = tvEntity ? { entity_id: tvEntity } : undefined;
     switch (kind) {
       case 'select':
@@ -1982,7 +2064,7 @@ class FolderGalleryCardEditor extends HTMLElement {
       <div class="form-row">
         <label>${this._t('ed_double_tap')}</label>
         <select id="_dtap_kind">
-          ${this._gestureOptions(false)
+          ${this._gestureOptions(true)
             .map((o) => `<option value="${o.v}" ${sel(o.v, dtapKind)}>${o.l}</option>`)
             .join('')}
         </select>
@@ -1990,7 +2072,7 @@ class FolderGalleryCardEditor extends HTMLElement {
       <div class="form-row">
         <label>${this._t('ed_long_press')}</label>
         <select id="_hold_kind">
-          ${this._gestureOptions(false)
+          ${this._gestureOptions(true)
             .map((o) => `<option value="${o.v}" ${sel(o.v, holdKind)}>${o.l}</option>`)
             .join('')}
         </select>
@@ -2048,7 +2130,7 @@ class FolderGalleryCardEditor extends HTMLElement {
     // Only keep gesture kinds that are valid for the selected gallery type
     // (e.g. switching to "upload" drops a stale "select"/"delete" choice).
     const validTap = new Set(this._gestureOptions(true).map((o) => o.v));
-    const validGesture = new Set(this._gestureOptions(false).map((o) => o.v));
+    const validGesture = new Set(this._gestureOptions(true).map((o) => o.v));
     const clamp = (kind, valid) => (valid.has(kind) ? kind : 'none');
 
     // Single tap
