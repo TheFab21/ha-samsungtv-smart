@@ -11,7 +11,7 @@ pytest==9.0.0
 #pytest-homeassistant
 pytest-homeassistant-custom-component==0.13.316
 # From our manifest.json for our custom component
-websocket-client!=1.4.0,>=0.58.0
-wakeonlan>=2.0.0
-aiofiles>=0.8.0
+websocket-client!=1.4.0,>=1.9.2
+wakeonlan>=4.0.0
+aiofiles>=25.1.0
 casttube>=0.2.1
