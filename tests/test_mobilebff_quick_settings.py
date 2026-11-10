@@ -801,6 +801,128 @@ def test_the_probe_compares_the_index_as_well_as_the_words():
     probe = (Path(__file__).parents[1] / "scripts" / "probe_mobilebff.py").read_text()
     block = probe[probe.index("    async def probe_toggle") :]
     block = block[: block.index("\n    async def ", 1)]
-    assert "if after == before:" in block
-    assert "if final != before:" in block
+    assert "after == before" in block
+    assert "if final != before" in block
     assert "if after[0] == before[0]:" not in block
+
+
+def _load_probe():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / "scripts" / "probe_mobilebff.py"
+    spec = importlib.util.spec_from_file_location("probe_mobilebff_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class _GatedAiMode:
+    """AI Mode as the 2026 Frame Pro does it (#404): Off applies at once, On
+    waits for OK on the TV's "may increase power consumption" dialog."""
+
+    LAYER = "s/setting.layer.aitech"
+
+    def __init__(self, ok_channels):
+        self.word = "Off"
+        self.index = 0
+        self.dialog = False
+        self.ok_channels = ok_channels  # channel -> "applies" | "nothing" | None
+        self.presses = []
+
+    def layer(self):
+        return {
+            "id": self.LAYER,
+            "current_element_index": self.index,
+            "elements": [
+                {"id": f"{self.LAYER}@Off", "title": "AI Mode", "subTitle": self.word},
+                {"id": f"{self.LAYER}@On", "title": "AI Mode", "subTitle": self.word},
+            ],
+        }
+
+    def write(self, params):
+        if params.get("id") == f"{self.LAYER}@On" and self.word == "Off":
+            self.dialog = True
+        elif params.get("id") == f"{self.LAYER}@Off":
+            self.dialog = False
+            self.word, self.index = "Off", 0
+
+    def press(self, via):
+        behaviour = self.ok_channels.get(via)
+        if behaviour is None:
+            return False  # channel unusable (no token)
+        self.presses.append(via)
+        if behaviour == "applies" and self.dialog:
+            self.word, self.index = "On", 1
+        self.dialog = False
+        return True
+
+
+def _run_probe_toggle(tv, confirm_ok, capsys):
+    module = _load_probe()
+
+    class _FastAsyncio:
+        def __getattr__(self, name):
+            return getattr(asyncio, name)
+
+        @staticmethod
+        async def sleep(_seconds):
+            return None
+
+    module.asyncio = _FastAsyncio()
+    probe = module.Probe("192.0.2.1", 8002, 0, None)
+    sent = []
+
+    async def fresh(_ws):
+        probe.latest["get.settings.data"] = {"response": [tv.layer()]}
+
+    async def send(_ws, request_id, params=None):
+        sent.append((request_id, params))
+        if request_id == "set.settings.data":
+            tv.write(params)
+
+    async def press_ok(via):
+        return tv.press(via)
+
+    probe._fresh_settings = fresh
+    probe._send = send
+    probe.press_ok = press_ok
+    asyncio.run(probe.probe_toggle(None, "aitech", confirm_ok))
+    return sent, capsys.readouterr().out
+
+
+def test_probe_confirm_ok_reports_the_channel_that_validated_the_dialog(capsys):
+    tv = _GatedAiMode({"remote": "applies", "ipcontrol": "applies"})
+    sent, out = _run_probe_toggle(tv, True, capsys)
+    assert "APPLIED after OK via remote" in out
+    # One OK for the dialog; putting it back (Off) needs none.
+    assert tv.presses == ["remote"]
+    assert (tv.word, tv.index) == ("Off", 0)
+    assert "not put back yet" not in out
+    writes = [p for r, p in sent if r == "set.settings.data"]
+    assert writes[-1]["id"].endswith("@Off")
+
+
+def test_probe_confirm_ok_never_presses_twice_for_one_dialog(capsys):
+    # The remote channel's Enter does not validate it; IP Control's does. The
+    # second channel is tried on the NEXT write, never right after the first.
+    tv = _GatedAiMode({"remote": "nothing", "ipcontrol": "applies"})
+    _sent, out = _run_probe_toggle(tv, True, capsys)
+    assert tv.presses == ["remote", "ipcontrol"]
+    assert "OK via remote did not apply it" in out
+    assert "APPLIED after OK via ipcontrol" in out
+    assert (tv.word, tv.index) == ("Off", 0)
+
+
+def test_probe_skips_a_channel_it_cannot_use(capsys):
+    tv = _GatedAiMode({"remote": None, "ipcontrol": "applies"})
+    _sent, out = _run_probe_toggle(tv, True, capsys)
+    assert tv.presses == ["ipcontrol"]
+    assert "APPLIED after OK via ipcontrol" in out
+
+
+def test_probe_without_confirm_ok_presses_nothing(capsys):
+    tv = _GatedAiMode({"remote": "applies", "ipcontrol": "applies"})
+    _sent, out = _run_probe_toggle(tv, False, capsys)
+    assert tv.presses == []
+    assert "No variant moved the setting" in out
