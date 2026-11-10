@@ -794,6 +794,14 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
     _attr_device_class = MediaPlayerDeviceClass.TV
     _attr_name = None
+    # Keep the last Frame Art service result out of the recorder, as
+    # FrameArtSensor does for last_service_result. art_available stores the
+    # whole artwork list here (~230 bytes per item: 180 items is ~42 kB), past
+    # the recorder's 16 KiB per-state limit — and over that limit the recorder
+    # drops ALL of the entity's attributes for that state, not just this one,
+    # so source, app and sound mode vanished from history as well. The
+    # attribute stays live for templates and cards; it just isn't recorded.
+    _unrecorded_attributes = frozenset({"frame_art_last_result"})
     # Speaker output on which directVolumeControl was refused; see
     # _update_volume_info. None = no refusal on record.
     _ip_volume_refused_output: str | None = None
