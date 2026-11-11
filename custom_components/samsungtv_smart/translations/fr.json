@@ -165,7 +165,8 @@
           "sync_ent": "Entités synchronisées",
           "init": "Options de base",
           "adv_opt": "Options avancées",
-          "save_exit": "Enregistrer et quitter"
+          "save_exit": "Enregistrer et quitter",
+          "art_identify": "Identification des œuvres"
         }
       },
       "source_list": {
@@ -211,22 +212,43 @@
           "ip_control_poll_interval": "Intervalle IP Control (s)",
           "content_list_interval": "Intervalle de rafraîchissement de la liste d'œuvres (s)",
           "art_exit_source": "Source en sortant de l'Art Mode",
-          "report_art_mode_as_off": "Afficher le lecteur multimédia éteint en Art Mode"
+          "report_art_mode_as_off": "Afficher le lecteur multimédia éteint en Art Mode",
+          "external_audio_entity": "Entité d'état de la barre de son ou de l'ampli externe",
+          "rest_app_list": "Applications supplémentaires à détecter",
+          "rest_app_poll_interval": "Intervalle de rafraîchissement des applications supplémentaires (s)",
+          "art_on_non_frame": "Art Mode sur une TV non-Frame"
         },
         "data_description": {
           "art_exit_source": "Entrée ou application à afficher quand l'Art Mode est désactivé depuis Home Assistant (switch Art Mode ou art_set_artmode). Laisser vide pour garder le comportement du TV : il revient à la dernière source, souvent TV (Samsung TV Plus) sur une Frame. Non appliqué quand on quitte l'Art Mode avec la télécommande. Nécessite une source que le TV peut atteindre : une liste auto-découverte depuis SmartThings ne contient que des clés ST_, qui basculent sur la touche WebSocket équivalente (ST_HDMI3 → KEY_HDMI3) quand SmartThings est indisponible. Certains modèles ignorent les touches HDMI numérotées ; le journal le signale si le TV n'a pas changé d'entrée.",
-          "report_art_mode_as_off": "Facultatif : affiche le lecteur multimédia comme éteint pendant l’Art Mode, tout en conservant art_mode_status à « on ». Le visionnage normal reste signalé comme allumé. Le suivi de l’alimentation et les commandes d’Art Mode restent actifs. Désactivé par défaut."
+          "report_art_mode_as_off": "Facultatif : affiche le lecteur multimédia comme éteint pendant l’Art Mode, tout en conservant art_mode_status à « on ». Le visionnage normal reste signalé comme allumé. Le suivi de l’alimentation et les commandes d’Art Mode restent actifs. Désactivé par défaut.",
+          "external_audio_entity": "Facultatif : utilise un lecteur multimédia existant pour le volume et la sourdine réels lorsque la TV utilise des enceintes externes. Les commandes de la TV restent inchangées. Laissez vide pour utiliser les relevés de la TV. Aucune interrogation supplémentaire n'est ajoutée. Sélectionnez la barre de son ou l'ampli réel, pas un groupe ni une autre entité qui reflète cette TV.",
+          "rest_app_list": "Associez des noms d'affichage aux ID d'applications Tizen natives pour les applications absentes de la découverte automatique. Laissez vide pour désactiver les vérifications d'état REST supplémentaires.",
+          "rest_app_poll_interval": "Les applications ayant un relevé récent du suivi normal n'ont besoin d'aucune vérification supplémentaire. Les autres se rafraîchissent toutes les 30 secondes par défaut, avec jusqu'à 120 vérifications planifiées par application et par heure. Les résultats sont mis en cache entre deux rafraîchissements ; un changement de source ou un événement Art Mode peut rafraîchir plus tôt. Une liste d'applications vide n'ajoute aucune requête.",
+          "art_on_non_frame": "Facultatif : active l'Art Mode pour une TV qui se déclare non-Frame mais exécute l'application art, comme la Micro RGB R95H 2026. Le canal de l'application art est interrogé sur sa version et les entités Art Mode ne sont créées que s'il répond. Allumez la TV la première fois. Désactivé par défaut."
         }
       },
       "save_exit": {
         "title": "Enregistrer la configuration"
+      },
+      "art_identify": {
+        "title": "Identification des œuvres",
+        "description": "Identifiez l'œuvre affichée sur la TV Frame par recherche d'image inversée (Google Vision) confirmée par un LLM. Tous les champs sont facultatifs sauf l'interrupteur ; laissez une clé vide pour conserver celle précédemment enregistrée.",
+        "data": {
+          "art_identify_enable": "Activer l'identification des œuvres",
+          "art_vision_api_key": "Clé API Google Cloud Vision",
+          "art_llm_provider": "Fournisseur LLM",
+          "art_llm_api_key": "Clé API LLM (Anthropic, OpenAI ou Gemini)",
+          "art_llm_model": "Modèle LLM (vide = valeur par défaut du fournisseur)",
+          "art_identify_personal": "Identifier aussi les photos personnelles (généralement désactivé)"
+        }
       }
     },
     "error": {
       "invalid_tv_list": "Format invalide. Veuillez utiliser le format JSON valide.",
       "ip_control_pair_failed": "Échec de l'appairage. Vérifiez que le téléviseur est allumé en visionnage normal (pas en mode Art) et que IP Remote est activé, puis réessayez.",
       "ip_control_unreachable": "Impossible de joindre le téléviseur sur le port 1516 : rien n'écoute à cette adresse. L'état du téléviseur et le réglage IP Remote ne sont donc pas en cause. Ce modèle ne prend probablement pas en charge IP Control. Seules les entités rétroéclairage, tonalité des couleurs, calibration de l'image et redémarrage en dépendent.",
-      "ip_control_no_host": "Aucune adresse hôte n'est configurée pour ce téléviseur."
+      "ip_control_no_host": "Aucune adresse hôte n'est configurée pour ce téléviseur.",
+      "invalid_rest_app_list": "Saisissez des noms d'affichage et des ID d'application uniques, avec des lettres, chiffres, points, tirets bas ou traits d'union."
     }
   },
   "application_credentials": {
@@ -265,6 +287,54 @@
           "landscape": "Paysage",
           "portrait": "Portrait"
         }
+      },
+      "ip_input_source": {
+        "name": "Source d'entrée"
+      },
+      "ip_picture_mode": {
+        "name": "Mode d'image"
+      },
+      "ip_sound_mode": {
+        "name": "Mode son"
+      },
+      "ip_picture_size": {
+        "name": "Format de l'image"
+      },
+      "ip_mute": {
+        "name": "Sourdine"
+      },
+      "ip_volume": {
+        "name": "Volume"
+      },
+      "art_metadata": {
+        "name": "Métadonnées de l'œuvre"
+      },
+      "art_folder_personal": {
+        "name": "Photos personnelles"
+      },
+      "art_folder_store": {
+        "name": "Art Store"
+      },
+      "art_folder_other": {
+        "name": "Autres œuvres"
+      },
+      "frame_art": {
+        "name": "Frame Art"
+      },
+      "st_power": {
+        "name": "Puissance"
+      },
+      "st_energy": {
+        "name": "Énergie"
+      },
+      "st_energy_difference": {
+        "name": "Différence d'énergie"
+      },
+      "st_power_energy": {
+        "name": "Énergie de puissance"
+      },
+      "st_energy_saved": {
+        "name": "Énergie économisée"
       }
     },
     "switch": {
@@ -273,6 +343,21 @@
       },
       "art_mode": {
         "name": "Mode Art"
+      },
+      "ip_auto_hdr_remastering": {
+        "name": "Remastering HDR auto"
+      },
+      "ip_brightness_optimization": {
+        "name": "Optimisation de la luminosité"
+      },
+      "ip_motion_lighting": {
+        "name": "Éclairage selon le mouvement"
+      },
+      "ip_auto_power_saving": {
+        "name": "Économie d'énergie auto"
+      },
+      "ip_energy_saving_solution": {
+        "name": "Solution d'économie d'énergie (IP Control)"
       }
     },
     "select": {
@@ -371,6 +456,81 @@
       },
       "source": {
         "name": "Source"
+      },
+      "ip_auto_motion_plus": {
+        "name": "Auto Motion Plus",
+        "state": {
+          "off": "Désactivé",
+          "auto": "Auto",
+          "custom": "Personnalisé"
+        }
+      },
+      "ip_apply_picture_settings": {
+        "name": "Appliquer les réglages d'image",
+        "state": {
+          "current_source": "Source actuelle",
+          "all_sources": "Toutes les sources"
+        }
+      },
+      "ip_peak_brightness": {
+        "name": "Luminosité maximale",
+        "state": {
+          "off": "Désactivé",
+          "medium": "Moyen",
+          "high": "Élevé"
+        }
+      },
+      "ip_contrast_enhancer": {
+        "name": "Amélioration des contrastes (IP Control)",
+        "state": {
+          "off": "Désactivé",
+          "low": "Bas",
+          "high": "Élevé"
+        }
+      },
+      "ip_color_tone": {
+        "name": "Nuance de couleur (IP Control)"
+      },
+      "speaker_select": {
+        "name": "Sélection des enceintes"
+      },
+      "art_motion_sensitivity": {
+        "name": "Sensibilité au mouvement"
+      },
+      "art_brightness_sensor": {
+        "name": "Capteur de luminosité"
+      },
+      "st_picture_mode": {
+        "name": "Mode d'image"
+      }
+    },
+    "number": {
+      "ip_gamma_bt1886": {
+        "name": "Gamma (BT.1886)"
+      },
+      "ip_backlight": {
+        "name": "Rétroéclairage"
+      },
+      "ip_contrast": {
+        "name": "Contraste"
+      },
+      "ip_brightness": {
+        "name": "Luminosité"
+      },
+      "ip_sharpness": {
+        "name": "Netteté"
+      },
+      "ip_color": {
+        "name": "Couleur"
+      },
+      "ip_tint": {
+        "name": "Teinte"
+      },
+      "art_brightness": {
+        "name": "Luminosité de l'Art Mode"
+      },
+      "art_color_temperature": {
+        "name": "Température de couleur de l'Art Mode"
       }
     }
   }

@@ -63,16 +63,116 @@
           "intelligent": "AI-optimalisatie",
           "ai_customization": "AI-aanpassing"
         }
+      },
+      "qs_sound_mode": {
+        "name": "Geluidsmodus"
+      },
+      "qs_ai_mode": {
+        "name": "AI-modus"
+      },
+      "qs_energy_saving_solution": {
+        "name": "Energiebesparingsoplossing"
+      },
+      "qs_sleep_timer": {
+        "name": "Slaaptimer"
+      },
+      "qs_game_mode": {
+        "name": "Spelmodus"
+      },
+      "qs_picture_clarity": {
+        "name": "Beeldhelderheid"
+      },
+      "qs_contrast_enhancer": {
+        "name": "Contrastversterker"
+      },
+      "qs_color_tone": {
+        "name": "Kleurtoon"
+      },
+      "qs_color_space": {
+        "name": "Kleurruimte"
+      },
+      "qs_digital_audio_format": {
+        "name": "Digitaal audio-uitvoerformaat"
+      },
+      "source": {
+        "name": "Bron"
+      },
+      "ip_auto_motion_plus": {
+        "name": "Auto Motion Plus",
+        "state": {
+          "off": "Uit",
+          "auto": "Automatisch",
+          "custom": "Aangepast"
+        }
+      },
+      "ip_apply_picture_settings": {
+        "name": "Beeldinstellingen toepassen",
+        "state": {
+          "current_source": "Huidige bron",
+          "all_sources": "Alle bronnen"
+        }
+      },
+      "ip_peak_brightness": {
+        "name": "Piekhelderheid",
+        "state": {
+          "off": "Uit",
+          "medium": "Gemiddeld",
+          "high": "Hoog"
+        }
+      },
+      "ip_contrast_enhancer": {
+        "name": "Contrastversterker (IP Control)",
+        "state": {
+          "off": "Uit",
+          "low": "Laag",
+          "high": "Hoog"
+        }
+      },
+      "ip_color_tone": {
+        "name": "Kleurtoon (IP Control)"
+      },
+      "speaker_select": {
+        "name": "Luidsprekerselectie"
+      },
+      "art_motion_sensitivity": {
+        "name": "Bewegingsgevoeligheid"
+      },
+      "art_brightness_sensor": {
+        "name": "Helderheidssensor"
+      },
+      "st_picture_mode": {
+        "name": "Beeldmodus"
       }
     },
     "switch": {
       "art_mode": {
         "name": "Kunstmodus"
+      },
+      "power": {
+        "name": "Aan/uit"
+      },
+      "ip_auto_hdr_remastering": {
+        "name": "Automatische HDR-remastering"
+      },
+      "ip_brightness_optimization": {
+        "name": "Helderheidsoptimalisatie"
+      },
+      "ip_motion_lighting": {
+        "name": "Bewegingsverlichting"
+      },
+      "ip_auto_power_saving": {
+        "name": "Automatische energiebesparing"
+      },
+      "ip_energy_saving_solution": {
+        "name": "Energiebesparingsoplossing (IP Control)"
       }
     },
     "button": {
       "art_brightness_reset": {
         "name": "Helderheid resetten"
+      },
+      "reboot": {
+        "name": "Tv opnieuw opstarten"
       }
     },
     "sensor": {
@@ -82,7 +182,356 @@
           "landscape": "Liggend",
           "portrait": "Staand"
         }
+      },
+      "illuminance": {
+        "name": "Verlichtingssterkte"
+      },
+      "brightness_intensity": {
+        "name": "Helderheidsintensiteit"
+      },
+      "ip_input_source": {
+        "name": "Ingangsbron"
+      },
+      "ip_picture_mode": {
+        "name": "Beeldmodus"
+      },
+      "ip_sound_mode": {
+        "name": "Geluidsmodus"
+      },
+      "ip_picture_size": {
+        "name": "Beeldformaat"
+      },
+      "ip_mute": {
+        "name": "Dempen"
+      },
+      "ip_volume": {
+        "name": "Volume"
+      },
+      "art_metadata": {
+        "name": "Kunstwerkmetadata"
+      },
+      "art_folder_personal": {
+        "name": "Persoonlijke foto's"
+      },
+      "art_folder_store": {
+        "name": "Art Store"
+      },
+      "art_folder_other": {
+        "name": "Andere kunst"
+      },
+      "frame_art": {
+        "name": "Frame-kunst"
+      },
+      "st_power": {
+        "name": "Vermogen"
+      },
+      "st_energy": {
+        "name": "Energie"
+      },
+      "st_energy_difference": {
+        "name": "Energieverschil"
+      },
+      "st_power_energy": {
+        "name": "Vermogensenergie"
+      },
+      "st_energy_saved": {
+        "name": "Bespaarde energie"
       }
+    },
+    "number": {
+      "ip_gamma_bt1886": {
+        "name": "Gamma (BT.1886)"
+      },
+      "ip_backlight": {
+        "name": "Achtergrondverlichting"
+      },
+      "ip_contrast": {
+        "name": "Contrast"
+      },
+      "ip_brightness": {
+        "name": "Helderheid"
+      },
+      "ip_sharpness": {
+        "name": "Scherpte"
+      },
+      "ip_color": {
+        "name": "Kleur"
+      },
+      "ip_tint": {
+        "name": "Tint"
+      },
+      "art_brightness": {
+        "name": "Helderheid kunstmodus"
+      },
+      "art_color_temperature": {
+        "name": "Kleurtemperatuur kunstmodus"
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Samsung TV Smart – Authenticatie",
+        "description": "Kies hoe je je bij SmartThings authenticeert.\n\nOAuth-status: {oauth_status}",
+        "data": {
+          "auth_method": "Authenticatiemethode"
+        }
+      },
+      "pick_implementation": {
+        "title": "Aanmelden met Samsung",
+        "description": "Selecteer je SmartThings-account om te authenticeren."
+      },
+      "host": {
+        "title": "Tv configureren",
+        "description": "Voer het IP-adres van je Samsung-tv en een naam voor het apparaat in.",
+        "data": {
+          "host": "IP-adres van tv",
+          "name": "Apparaatnaam",
+          "use_ha_name_for_ws": "Home Assistant-locatienaam gebruiken voor WebSocket"
+        }
+      },
+      "manual": {
+        "title": "Handmatige configuratie",
+        "description": "Voer het IP-adres van je tv en je SmartThings-inloggegevens in.\n\nGa naar [SmartThings-tokens]({st_tokens_url}) om een persoonlijk toegangstoken te maken",
+        "data": {
+          "host": "IP-adres van tv",
+          "name": "Apparaatnaam",
+          "use_ha_name_for_ws": "Home Assistant-locatienaam gebruiken voor WebSocket",
+          "api_key": "Persoonlijk SmartThings-toegangstoken (PAT)",
+          "st_entry_unique_id": "Of SmartThings-integratietoken gebruiken"
+        }
+      },
+      "st_integration": {
+        "title": "SmartThings-integratie gebruiken",
+        "description": "Hergebruik de authenticatie van je bestaande SmartThings-integratie.",
+        "data": {
+          "st_entry": "SmartThings-integratie",
+          "host": "IP-adres van tv",
+          "name": "Apparaatnaam"
+        }
+      },
+      "stdevice": {
+        "title": "SmartThings-apparaat selecteren",
+        "description": "Meerdere Samsung-tv's gevonden. Selecteer je tv:",
+        "data": {
+          "st_devices": "Samsung-tv"
+        }
+      },
+      "stdeviceid": {
+        "title": "SmartThings-apparaat-id",
+        "description": "Geen tv automatisch gevonden. Voer de SmartThings-apparaat-id handmatig in.\n\nJe vindt deze in de SmartThings-app of het ontwikkelaarsportaal.",
+        "data": {
+          "device_id": "SmartThings-apparaat-id"
+        }
+      },
+      "reconfigure": {
+        "title": "Samsung TV opnieuw configureren",
+        "description": "Kies wat je voor deze tv wilt wijzigen.",
+        "menu_options": {
+          "reconfigure_connection": "Verbinding (IP-adres en poort)",
+          "reconfigure_auth": "Authenticatie (OAuth2 / PAT / SmartThings)",
+          "reconfigure_ip_control": "IP Control (betrouwbaar aan/uit en koppelen)",
+          "reconfigure_st_device": "SmartThings-apparaat (opnieuw koppelen na een reparatie)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Herauthenticatie vereist",
+        "description": "Je SmartThings-authenticatie is verlopen. Klik op Verzenden om je opnieuw aan te melden."
+      },
+      "reconfigure_connection": {
+        "title": "Verbinding",
+        "description": "Werk het IP-adres van de tv en de WebSocket-poort bij. Gebruik 8001, tenzij je tv alleen op de SSL-poort 8002 antwoordt.",
+        "data": {
+          "host": "IP-adres van tv",
+          "port": "Poort"
+        }
+      },
+      "reconfigure_auth": {
+        "title": "Authenticatie",
+        "description": "Kies hoe Home Assistant zich bij deze tv authenticeert. Selecteer voor OAuth2 gewoon de optie en verzend — de aanmeldstroom start automatisch (de onderstaande velden worden genegeerd). Plak voor PAT een persoonlijk SmartThings-toegangstoken. Kies voor de SmartThings-integratie een bestaande vermelding.",
+        "data": {
+          "auth_method": "Authenticatiemethode",
+          "api_key": "Persoonlijk SmartThings-toegangstoken (PAT)",
+          "st_entry_unique_id": "SmartThings-integratie"
+        }
+      },
+      "reconfigure_ip_control": {
+        "title": "IP Control",
+        "description": "IP Control zorgt voor betrouwbaar aan-/uitschakelen (zelfs vanuit de kunstmodus) zonder SmartThings. Huidige status: {status}.\n\nVink „Nu koppelen“ aan om de tv (opnieuw) te koppelen — deze moet AAN staan in de normale weergave met IP-afstandsbediening ingeschakeld. De onderstaande schakelaars verschijnen zodra er is gekoppeld.",
+        "data": {
+          "pair_now": "Nu koppelen",
+          "enable_ip_control": "IP Control inschakelen",
+          "ip_control_art_mode": "Kunstmodus omschakelen via IP Control"
+        }
+      },
+      "reconfigure_ip_pair": {
+        "title": "IP Control koppelen",
+        "description": "Koppelt de IP Control-interface van de tv.\n\nVoordat je doorgaat:\n1. De tv moet AAN staan en in de NORMALE weergave zijn — niet in de kunstmodus.\n2. Schakel de IP-afstandsbediening in: Instellingen → Alle instellingen → Verbinding → Netwerk → Expertinstellingen → IP-afstandsbediening inschakelen.\n\nAccepteer het autorisatieverzoek op de tv wanneer het verschijnt. Huidige status: {status}."
+      },
+      "reconfigure_st_device": {
+        "title": "SmartThings-apparaat",
+        "description": "Selecteer met welk SmartThings-apparaat deze tv overeenkomt.\n\nMomenteel: **{current}**\n\nEen tv die in de SmartThings-app is gerepareerd, gereset of verwijderd en opnieuw toegevoegd, krijgt een **nieuwe apparaat-id**, en de oude wordt geweigerd met *Forbidden*. Door deze hier opnieuw te selecteren blijven je entiteiten en geschiedenis behouden.",
+        "data": {
+          "st_devices": "SmartThings-apparaat",
+          "device_id": "SmartThings-apparaat-id"
+        }
+      }
+    },
+    "error": {
+      "invalid_host": "Kan geen verbinding maken met de tv. Controleer het IP-adres en zorg dat de tv aanstaat.",
+      "only_key_or_st": "Geef een persoonlijk toegangstoken op OF selecteer een SmartThings-integratie, niet beide.",
+      "st_api_key_fail": "Kan de API-sleutel niet ophalen uit de SmartThings-integratie.",
+      "wrong_api_key": "Het SmartThings-token is ongeldig. Controleer het en probeer het opnieuw.",
+      "st_device_not_found": "Geen Samsung-tv gevonden met deze SmartThings-apparaat-id.",
+      "st_device_used": "Dit SmartThings-apparaat is al geconfigureerd.",
+      "not_successful": "Kan geen verbinding maken met de tv. Zorg dat deze aanstaat en sta de verbinding toe wanneer daarom wordt gevraagd.",
+      "ip_control_pair_failed": "Koppelen van IP Control is mislukt. Zorg dat de tv AAN staat in de normale weergave (niet in de kunstmodus) en dat de IP-afstandsbediening is ingeschakeld in Instellingen, en probeer het opnieuw.",
+      "ip_control_unreachable": "Kan de tv niet bereiken op poort 1516. Daar luistert niets: noch de aan-/uitstatus van de tv noch de instelling van de IP-afstandsbediening is de oorzaak. Hoogstwaarschijnlijk heeft dit model geen IP Control-server — het is een Samsung-functie die bij veel tv's ontbreekt, vooral bij oudere. Al het andere in de integratie werkt zonder; alleen de entiteiten voor achtergrondverlichting, kleurtoon, beeldkalibratie en opnieuw opstarten hebben het nodig.",
+      "ip_control_no_host": "Er is geen tv-host geconfigureerd voor deze vermelding."
+    },
+    "abort": {
+      "already_configured": "Deze tv is al geconfigureerd.",
+      "unsupported_version": "Deze integratie vereist Home Assistant {req_ver} of nieuwer. Je gebruikt {run_ver}.",
+      "host_unique_id": "Opnieuw configureren niet mogelijk: de unieke id van de tv is gebaseerd op het hostadres.",
+      "oauth_failed": "OAuth-authenticatie mislukt. Probeer het opnieuw.",
+      "oauth_not_configured": "OAuth2 is niet geconfigureerd.\n\nVoeg SmartThings-inloggegevens toe in:\n**Instellingen → Apparaten & diensten → Inloggegevens van applicaties**",
+      "no_smartthings_integration": "Geen SmartThings-integratie gevonden. Stel eerst SmartThings in of gebruik een andere authenticatiemethode.",
+      "missing_scopes": "De verleende machtigingen zijn onvoldoende. Zorg dat je alle gevraagde machtigingen verleent.",
+      "reauth_account_mismatch": "Het voor herauthenticatie gebruikte account komt niet overeen met het oorspronkelijke account.",
+      "reauth_successful": "Herauthenticatie geslaagd.",
+      "reauth_failed": "Herauthenticatie mislukt.",
+      "reconfigure_successful": "Configuratie bijgewerkt.",
+      "ip_control_pair_successful": "IP Control succesvol gekoppeld. Het toegangstoken is opgeslagen.",
+      "st_device_updated": "SmartThings-apparaat bijgewerkt. De integratie wordt opnieuw geladen.",
+      "st_not_configured": "SmartThings is niet geconfigureerd voor deze tv.",
+      "st_device_missing": "Er is geen SmartThings-apparaat geselecteerd."
+    },
+    "create_entry": {
+      "default": "{name} succesvol geconfigureerd"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Samsung TV Smart-opties",
+        "data": {
+          "logo_option": "Logostijl",
+          "use_local_logo": "Lokale logocache gebruiken",
+          "app_load_method": "App-laadmethode",
+          "use_st_status_info": "SmartThings voor status gebruiken",
+          "use_st_channel_info": "SmartThings voor zenderinformatie gebruiken",
+          "show_channel_number": "Zendernummer tonen",
+          "power_on_method": "Inschakelmethode",
+          "show_adv_opt": "Geavanceerde opties tonen"
+        }
+      },
+      "menu": {
+        "title": "Configuratiemenu",
+        "menu_options": {
+          "source_list": "Bronnen configureren",
+          "app_list": "Applicaties configureren",
+          "channel_list": "Zenders configureren",
+          "sync_ent": "Gesynchroniseerde entiteiten",
+          "init": "Basisopties",
+          "adv_opt": "Geavanceerde opties",
+          "art_identify": "Kunstwerkidentificatie",
+          "save_exit": "Opslaan en afsluiten"
+        }
+      },
+      "source_list": {
+        "title": "Bronnen configureren",
+        "description": "Definieer aangepaste bronnen (naam-commando-paren).",
+        "data": {
+          "source_list": "Bronnenlijst"
+        }
+      },
+      "app_list": {
+        "title": "Applicaties configureren",
+        "description": "Definieer aangepaste applicaties (naam-app_id-paren).",
+        "data": {
+          "app_list": "Applicatielijst"
+        }
+      },
+      "channel_list": {
+        "title": "Zenders configureren",
+        "description": "Definieer favoriete zenders (naam-zendernummer-paren).",
+        "data": {
+          "channel_list": "Zenderlijst"
+        }
+      },
+      "sync_ent": {
+        "title": "Gesynchroniseerde entiteiten",
+        "description": "Selecteer entiteiten om te synchroniseren met de aan-/uitstatus van de tv.",
+        "data": {
+          "sync_turn_off": "Uitschakelen met tv",
+          "sync_turn_on": "Inschakelen met tv"
+        }
+      },
+      "adv_opt": {
+        "title": "Geavanceerde opties",
+        "data": {
+          "app_launch_method": "App-startmethode",
+          "wol_repeat": "Aantal Wake-on-LAN-herhalingen",
+          "ping_port": "Ping-poort (0 = automatisch)",
+          "ext_power_entity": "Externe aan/uit-entiteit",
+          "use_mute_check": "Dempingsstatus gebruiken voor aan/uit-detectie",
+          "dump_apps": "Debug: applicaties dumpen",
+          "toggle_art_mode": "Kunstmodus omschakelen bij inschakelen",
+          "st_poll_on_interval": "SmartThings-interval wanneer aan (s)",
+          "ip_control_poll_interval": "IP Control-interval (s)",
+          "content_list_interval": "Vernieuwingsinterval kunstinhoudslijst (s)",
+          "art_exit_source": "Bron na verlaten kunstmodus",
+          "external_audio_entity": "Statusentiteit van externe soundbar of receiver",
+          "rest_app_list": "Extra te detecteren apps",
+          "rest_app_poll_interval": "Vernieuwingsinterval voor extra apps (s)",
+          "report_art_mode_as_off": "Mediaspeler als uit melden in de kunstmodus",
+          "art_on_non_frame": "Frame-kunst op een niet-Frame-tv"
+        },
+        "data_description": {
+          "art_exit_source": "Ingang of app waarnaar wordt overgeschakeld wanneer de kunstmodus vanuit Home Assistant wordt uitgeschakeld (kunstmodusschakelaar of art_set_artmode). Laat leeg om het eigen gedrag van de tv te behouden: deze keert terug naar de laatste bron, bij een Frame vaak TV (Samsung TV Plus). Niet van toepassing wanneer de kunstmodus met de afstandsbediening wordt verlaten.",
+          "external_audio_entity": "Optioneel: gebruik een bestaande mediaspeler voor de werkelijke volume- en dempingsterugkoppeling terwijl de tv externe luidsprekers gebruikt. De bediening van de tv blijft ongewijzigd. Laat leeg om de waarden van de tv te gebruiken. Er wordt geen extra polling toegevoegd. Selecteer de werkelijke soundbar of receiver, niet een groep of een andere entiteit die deze tv weerspiegelt.",
+          "rest_app_list": "Koppel weergavenamen aan native Tizen-app-id's voor apps die ontbreken in de automatische detectie. Laat leeg om extra REST-statuscontroles uit te schakelen.",
+          "rest_app_poll_interval": "Apps met een recente waarde van de normale tracker hebben geen extra controles nodig. Andere apps worden standaard elke 30 seconden vernieuwd, met maximaal 120 geplande controles per app per uur. Resultaten worden tussen vernieuwingen in de cache bewaard; bronwijzigingen en kunstmodusgebeurtenissen kunnen eerder vernieuwen. Een lege app-lijst voegt geen verzoeken toe.",
+          "report_art_mode_as_off": "Optioneel: meld kunst als uit terwijl art_mode_status aan blijft. De normale weergave blijft aan; de fysieke aan-/uitregistratie en de bediening van de kunstmodus blijven werken. Standaard uitgeschakeld.",
+          "art_on_non_frame": "Optioneel: schakel de kunstmodus in voor een tv die zichzelf als niet-Frame meldt maar wel de kunst-app draait, zoals de Micro RGB R95H uit 2026. Het kunst-app-kanaal wordt om zijn versie gevraagd en de kunstmodusentiteiten worden pas aangemaakt wanneer het antwoordt. Zet de tv de eerste keer aan. Standaard uitgeschakeld."
+        }
+      },
+      "save_exit": {
+        "title": "Configuratie opslaan"
+      },
+      "art_identify": {
+        "title": "Kunstwerkidentificatie",
+        "description": "Identificeert het op de Frame-tv getoonde kunstwerk via een omgekeerde afbeeldingszoekopdracht (Google Vision), bevestigd door een LLM. Alle velden zijn optioneel behalve de schakelaar; laat een sleutel leeg om de eerder opgeslagen te behouden.",
+        "data": {
+          "art_identify_enable": "Kunstwerkidentificatie inschakelen",
+          "art_vision_api_key": "Google Cloud Vision API-sleutel",
+          "art_llm_provider": "LLM-provider",
+          "art_llm_api_key": "LLM API-sleutel (Anthropic, OpenAI of Gemini)",
+          "art_llm_model": "LLM-model (leeg = standaard van provider)",
+          "art_identify_personal": "Ook persoonlijke foto's identificeren (meestal uit)"
+        }
+      }
+    },
+    "error": {
+      "invalid_tv_list": "Ongeldig lijstformaat. Gebruik een geldig JSON-formaat.",
+      "ip_control_pair_failed": "Koppelen mislukt. Zorg dat de tv aanstaat en in de normale weergave is (niet in de kunstmodus) en dat de IP-afstandsbediening is ingeschakeld, en probeer het opnieuw.",
+      "ip_control_unreachable": "Kan de tv niet bereiken op poort 1516 — daar luistert niets. Dit model ondersteunt hoogstwaarschijnlijk geen IP Control; de status van de tv en de instelling van de IP-afstandsbediening zijn niet de oorzaak. Alleen de entiteiten voor achtergrondverlichting, kleurtoon, beeldkalibratie en opnieuw opstarten zijn ervan afhankelijk.",
+      "ip_control_no_host": "Er is geen hostadres geconfigureerd voor deze tv.",
+      "invalid_rest_app_list": "Voer unieke weergavenamen en native app-id's in met letters, cijfers, punten, underscores of koppeltekens."
+    }
+  },
+  "application_credentials": {
+    "description": "Om OAuth2-authenticatie met Samsung TV Smart te gebruiken, moet je SmartThings-ontwikkelaarsinloggegevens maken.\n\n**Installatie-instructies:**\n\n1. Ga naar het [SmartThings-ontwikkelaarsportaal]({smartthings_portal})\n2. Meld je aan met je Samsung-account\n3. Klik op **New Project** → Selecteer **Automation for the Home**\n4. Geef je project een naam (bijv. „Home Assistant TV“)\n5. Klik op **Register App** in de zijbalk\n6. Selecteer **OAuth2 / Credentials**\n7. Vul het formulier in:\n   - **App Name**: Home Assistant Samsung TV\n   - **Redirect URI**: `{callback_url}`\n   - **Scopes**: Selecteer `r:devices:*` en `x:devices:*`\n8. Klik op **Save** en kopieer je inloggegevens hieronder\n\n[SmartThings-OAuth-documentatie]({oauth_docs})"
+  },
+  "exceptions": {
+    "oauth2_implementation_unavailable": {
+      "message": "OAuth2-inloggegevens zijn niet geconfigureerd. Voeg SmartThings-inloggegevens toe in Instellingen → Apparaten & diensten → Inloggegevens van applicaties."
+    }
+  },
+  "issues": {
+    "oauth_auth_failed": {
+      "title": "SmartThings-authenticatie mislukt voor {device_name}",
+      "description": "Home Assistant kon het SmartThings-toegangstoken voor **{device_name}** niet vernieuwen. Het vernieuwingstoken is niet langer geldig — dit kan gebeuren wanneer het token wordt ingetrokken, verloopt of door SmartThings wordt geroteerd.\n\nOp SmartThings gebaseerde functies (aan-/uitstatus, beeldmodus, bronselectie) werken niet totdat je opnieuw verbinding maakt.\n\nGa om dit op te lossen naar **Instellingen → Apparaten & diensten → Samsung TV Smart**, selecteer de betreffende vermelding, kies **Opnieuw configureren** en meld je opnieuw aan met Samsung."
     }
   }
 }
