@@ -31,7 +31,7 @@ class ExceptionContractTest(unittest.TestCase):
     def test_minus_32002_raises_mode_locked_for_reads_too(self):
         block = _block(
             IPCONTROL,
-            "            if code == ERROR_SERVER:",
+            "            if code in SERVER_STATE_CODES:",
             "            if code == ERROR_METHOD_NOT_FOUND:",
         )
         # Both the picture-write branch and the fallback raise the same class;
