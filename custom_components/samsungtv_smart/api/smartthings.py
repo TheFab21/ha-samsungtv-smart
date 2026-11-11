@@ -1404,9 +1404,20 @@ class SmartThingsTV:
             if applied:
                 # Confirmed on the panel: remember this (capability, form) so
                 # later changes go straight through (persisted across restarts).
-                # Not when an earlier variant was accepted as well — it may be
-                # the one that applied, late.
-                if not sent_before:
+                # When an earlier variant of THIS call was also accepted, only
+                # memorize if the panel reported the mode on the very FIRST
+                # read (applied == PICTURE_MODE_VERIFY_INTERVAL): an immediate
+                # apply is attributable to this send, whereas a match that
+                # arrived only after further polling could be the earlier
+                # variant applying late (#116). An immediate apply after a
+                # verified-not-applied earlier variant is the signal that a
+                # panel consistently needs this form — e.g. an S90D under HDR
+                # content that ignores the display name and only actuates on
+                # the HDR mode id (#432). Should a flaky read ever memorize the
+                # wrong form, a later verified apply through the other form
+                # overwrites it, so the memory self-corrects within one change.
+                matched_on_first_read = applied == PICTURE_MODE_VERIFY_INTERVAL
+                if not sent_before or matched_on_first_read:
                     self._remember_picture_mode_capability(f"{capability}|{form}")
                 return True
             if applied is None:
@@ -1462,16 +1473,18 @@ class SmartThingsTV:
 
     async def _async_verify_picture_mode(
         self, mode: str, mode_id: str, seq: int | None = None
-    ) -> bool | None:
-        """Return whether the TV now reports the requested mode, None if unknown.
+    ) -> int | bool | None:
+        """Return the seconds waited when the TV first reported the mode.
 
         Reads the capability status every PICTURE_MODE_VERIFY_INTERVAL seconds
         after the refresh command, until it matches or
         PICTURE_MODE_VERIFY_TIMEOUT has passed: the cloud catches up with the
-        panel after a variable delay. Returns False only when the TV answered
-        and never reported the mode, None when no read succeeded or a newer
-        request (``seq``) took over — the caller must not treat that as "not
-        applied".
+        panel after a variable delay. On a match returns the elapsed seconds
+        (a positive int, == PICTURE_MODE_VERIFY_INTERVAL when the very first
+        read already matched) so the caller can tell an immediate apply from a
+        lagged one. Returns False only when the TV answered and never reported
+        the mode, None when no read succeeded or a newer request (``seq``) took
+        over — the caller must not treat that as "not applied".
         """
         if not self._device_id or not self._session:
             return None
@@ -1495,7 +1508,7 @@ class SmartThingsTV:
                 mode_id,
             )
             if self._picture_mode_matches(raw_mode, mode, mode_id):
-                return True
+                return waited
         return False if answered else None
 
     async def _async_read_picture_mode(self) -> str | None:
