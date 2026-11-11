@@ -542,6 +542,38 @@ art_restart_app:
           unit_of_measurement: seconds
           mode: box
 
+art_recover:
+  name: Recover the Art Mode channel
+  description: >-
+    Press KEY_POWER once to revive a Frame whose Art Mode channel has
+    wedged — the socket connects but ms.channel.ready never arrives and
+    every art request times out. On some 2020 Frames this is the only thing
+    that brings the art app back (art_restart_app does nothing there). Meant
+    for TVs with no IP Control paired, driven from your own automation.
+    WARNING: KEY_POWER TOGGLES Art Mode on a Frame — pressing it while the TV
+    is already in Art Mode turns the panel off. The service therefore refuses
+    when Art Mode is already on, and when the TV is off; it acts only on a
+    powered TV that is not currently in Art Mode. It presses once, waits, and
+    reports whether Art Mode came back.
+  target:
+    entity:
+      integration: samsungtv_smart
+  fields:
+    delay:
+      name: Delay
+      description: >-
+        Seconds to wait after the key press before reading back whether Art
+        Mode recovered.
+      required: false
+      default: 6
+      selector:
+        number:
+          min: 0
+          max: 30
+          step: 0.5
+          unit_of_measurement: seconds
+          mode: box
+
 art_set_favourite:
   name: Set Favourite Status
   description: Add or remove artwork from favourites.

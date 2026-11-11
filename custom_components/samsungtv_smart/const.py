@@ -367,6 +367,7 @@ SERVICE_ART_SET_AUTO_ROTATION = "art_set_auto_rotation"
 SERVICE_ART_GET_DEVICE_INFO = "art_get_device_info"
 SERVICE_ART_SET_PICTURE_MODE = "art_set_picture_mode"
 SERVICE_ART_RESTART_APP = "art_restart_app"
+SERVICE_ART_RECOVER = "art_recover"
 
 # Tizen app id of the built-in Art Mode app. The art API has no reset verb —
 # its only reset is reset_brightness — but Art Mode is an ordinary Tizen app,

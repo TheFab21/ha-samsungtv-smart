@@ -201,6 +201,7 @@ from .const import (
     SERVICE_ART_GET_THUMBNAIL,
     SERVICE_ART_GET_THUMBNAILS_BATCH,
     SERVICE_ART_IDENTIFY,
+    SERVICE_ART_RECOVER,
     SERVICE_ART_RESTART_APP,
     SERVICE_ART_SELECT_IMAGE,
     SERVICE_ART_SET_ARTMODE,
@@ -678,6 +679,16 @@ async def async_setup_entry(
             )
         },
         "async_art_restart_app",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    platform.async_register_entity_service(
+        SERVICE_ART_RECOVER,
+        {
+            vol.Optional(ATTR_DELAY, default=6.0): vol.All(
+                vol.Coerce(float), vol.Range(min=0, max=30)
+            )
+        },
+        "async_art_recover",
         supports_response=SupportsResponse.OPTIONAL,
     )
     platform.async_register_entity_service(
@@ -7697,6 +7708,85 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             result["error"] = str(ex)
             self._store_art_result(result)
             return result
+
+    async def async_art_recover(self, delay: float = 6.0) -> dict:
+        """Press KEY_POWER once to revive a wedged Art Mode channel (#12).
+
+        On some Frames the art app stops answering: the socket still connects
+        but ``ms.channel.ready`` never arrives and every art request times out.
+        No socket-level recovery revives a crashed app, and ``art_restart_app``
+        (``ms.application.stop``/``start``) does nothing on 2020 models — only a
+        short KEY_POWER, or opening the app by hand, brings it back. This is for
+        TVs that have no other way to reach Art Mode (no IP Control paired).
+
+        KEY_POWER *toggles* Art Mode on a Frame, so pressing it while the TV is
+        already in Art Mode turns the panel off. This therefore refuses when
+        Art Mode is confirmed on, and when the TV is off (where the press would
+        power it on instead): it is meant for "TV on, not in art, art channel
+        stuck". It presses once with a short cooldown, waits ``delay`` seconds,
+        then reports whether Art Mode came back.
+        """
+        result: dict[str, Any] = {"service": "art_recover", "delay": delay}
+        if not await self._ensure_frame_tv_check():
+            result["error"] = "Frame TV not supported"
+            self._store_art_result(result)
+            return result
+        if self.state != STATE_ON:
+            result["error"] = (
+                "The TV is off — turn it on first. This only unsticks a wedged "
+                "art channel on a powered TV; it will not power the TV on."
+            )
+            self._store_art_result(result)
+            return result
+        if self._art_mode_is_on() is True:
+            result["error"] = (
+                "The TV is already in Art Mode; a KEY_POWER would turn the "
+                "panel off, so it was not sent."
+            )
+            self._store_art_result(result)
+            return result
+        now = time.monotonic()
+        if now < getattr(self, "_art_recover_cooldown_until", 0.0):
+            result["error"] = (
+                "Art recover was used moments ago; wait a few seconds before "
+                "retrying so the TV can settle."
+            )
+            self._store_art_result(result)
+            return result
+        self._art_recover_cooldown_until = now + 15.0
+
+        sent = await self.async_send_command("KEY_POWER")
+        result["key_power_sent"] = bool(sent)
+        if not sent:
+            result["error"] = (
+                "KEY_POWER could not be sent — the TV's control channel is "
+                "down or dropped the command."
+            )
+            self._store_art_result(result)
+            return result
+
+        # Drop the stale art socket so the readback opens a fresh one to the
+        # revived app instead of waiting out the dead one's timeouts.
+        try:
+            await self._art_api.close()
+        except Exception as ex:  # noqa: BLE001 - reported, never fatal
+            self._log.debug("Could not close the art socket: %s", ex)
+            result["art_socket_close_failed"] = str(ex)
+
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+        recovered = self._art_mode_is_on() is True
+        result["art_mode_on"] = recovered
+        result["recovered"] = recovered
+        if not recovered:
+            result["note"] = (
+                "KEY_POWER was sent but Art Mode is not confirmed yet: give the "
+                "TV a few more seconds, or the stuck channel may not have been "
+                "the art app. Check the Frame Art sensor."
+            )
+        self._store_art_result(result)
+        return result
 
     async def async_art_set_favourite(
         self,
