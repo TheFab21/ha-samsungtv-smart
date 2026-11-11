@@ -94,14 +94,62 @@ async def test_a_mode_never_reported_still_falls_back_to_the_next_variant():
     ]
 
 
-async def test_a_second_variant_that_verifies_is_not_memorized():
-    # Five stale reads exhaust the first window; the match then lands in the
-    # second one. The first send may be the one that applied, late.
-    client = _client(["FILMMAKER MODE"] * 6 + ["Dynamique"])
+async def test_a_second_variant_that_verifies_late_is_not_memorized():
+    # The name form never actuates (its whole window reports the old mode);
+    # the id form's match then lands only on the SECOND read of its window.
+    # The first send may be the one that applied, late, so the winning form
+    # must not be memorized. (Reads are driven by send count, not a fixed
+    # queue, so this does not depend on how many reads a window happens to do.)
+    client = _client(["unused"])
     client._verified_picture_mode_capability = None
+    reads_after_id = 0
+
+    async def read():
+        nonlocal reads_after_id
+        if client._send_rest_command.await_count < 2:
+            return "FILMMAKER MODE"  # name form: panel never actuates
+        reads_after_id += 1
+        return "Dynamique" if reads_after_id >= 2 else "FILMMAKER MODE"
+
+    client._async_read_picture_mode = read
     assert await client.async_set_picture_mode("Dynamique") is True
     assert len(_sent(client)) == 2
     assert client._verified_picture_mode_capability is None
+
+
+async def test_a_second_variant_that_applies_on_the_first_read_is_memorized():
+    # #432 (S90D under HDR): the name form is accepted (COMPLETED) but the
+    # panel never actuates it — the whole first window reports the old mode —
+    # while the id form applies on the very first read. An immediate apply
+    # after a verified-not-applied earlier variant is attributable to this
+    # send, so the id form is memorized and later changes skip the 15s stall.
+    client = _client(["unused"])
+    client._verified_picture_mode_capability = None
+
+    async def read():
+        # name form (1 send) never actuates; id form (2 sends) applies at once
+        return (
+            "Dynamique"
+            if client._send_rest_command.await_count >= 2
+            else "FILMMAKER MODE"
+        )
+
+    client._async_read_picture_mode = read
+    assert await client.async_set_picture_mode("Dynamique") is True
+    assert _sent(client) == [
+        ("samsungvd.pictureMode", "Dynamique"),
+        ("samsungvd.pictureMode", "modeDynamic"),
+    ]
+    assert client._verified_picture_mode_capability == "samsungvd.pictureMode|id"
+
+
+async def test_the_memorized_form_is_tried_first_on_the_next_change():
+    # Once the id form is known to work, it must lead so a confirmed change
+    # costs one send, not a name-form stall followed by the id fallback.
+    client = _client(["modeDynamic"])
+    client._verified_picture_mode_capability = "samsungvd.pictureMode|id"
+    assert await client.async_set_picture_mode("Dynamique") is True
+    assert _sent(client) == [("samsungvd.pictureMode", "modeDynamic")]
 
 
 async def test_unreadable_status_is_unknown_not_a_refusal():
