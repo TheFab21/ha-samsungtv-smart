@@ -114,9 +114,38 @@ Cross-checked on the TV:
   `system_drv.ko`. The value is read by `sensord` from the driver and bridged to
   SmartThings via OCF — there is no vconf/mobilebff/IP-Control path to it.
 
-**Conclusion:** a local, SmartThings-free ambient-light reading is not available
-through any channel the integration uses. We can at most *detect* that a TV has a
-light sensor; we cannot read its value without SmartThings/OCF.
+Where it *does* live is now pinned exactly. `libmde-protocol-stthing.so`
+implements the light sensor as a **SmartThings thing / OCF resource**:
+`ThingProtocol::CLightSensorPropertyInfo` (source `CLightSensorPropertyInfo.cpp`)
+serves the resource type **`x.com.st.d.sensor.light`** with property
+**`brightness.lux`**, via `_GetBrightnessLux` (raw lux, logged as "optional") and
+`_GetBrigtnessLevel` (the 0-20 level that SmartThings shows, e.g. "level 4"). It
+is produced only through the SmartThings thing stack (`smartthings_payload_s`),
+so reading it even locally means speaking the TV's SmartThings/OCF protocol
+(which needs ST onboarding) — not something the integration's channels reach.
+
+**Conclusion:** a SmartThings-free ambient-light reading is not available through
+any channel the integration uses. We can at most *detect* that a TV has a light
+sensor; the value is the ST resource `x.com.st.d.sensor.light` / `brightness.lux`
+and comes only via SmartThings.
+
+## SmartThings thing model and the mobilebff backend
+
+- **`libmde-service-tvcontrol.so`** serves the mobilebff channel the integration
+  talks to (`/sec/tv/appdata/mobilebff`): `tvcontrol::MobileBFFProvider` /
+  `MobileBFFRPCPort`, with `getEdenData`, `GetMediaOutput` / `ChangeMediaOutput`,
+  `GetFirstScreenAppList`, `GetMultiviewModeList`, `appendMultiHdmiList`, etc. No
+  "confirm" / "may increase" string is in it, which confirms the #404
+  on-screen confirmation is a settings-UI gate, not a backend step.
+- **`libmde-protocol-stthing.so`** declares the OCF properties the TV exposes to
+  SmartThings. Highlights: `x.com.st.d.sensor.light`, `x.com.st.d.sensor.sound`,
+  `x.com.samsung.vd.sensor` (presence), `x.com.samsung.tv.paneltime` (the panel
+  on-hours, same value as `db/sysman/panel_display_time`), identity
+  (`sn`, `duid`, `productcode`, `swversion`, `swmodel`, `year`, `category`),
+  `input` / `channel` / `keyvalue` / `keystatus`, `artsupport` / `ambientsupport`
+  / `onsupport`, and the `x.com.samsung.vd.camera.*` set. There is **no simple
+  power/energy property** here (TV energy rides the SmartThings energy
+  capability / `db/smartthing/energy/*`, not a thing property).
 
 ## Side finding: reading vconf remotely over mobilebff
 
