@@ -66,6 +66,46 @@
           "st_devices": "Dispositivo SmartThings",
           "device_id": "ID do dispositivo SmartThings"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar Samsung TV",
+        "description": "Escolha o que alterar para esta TV.",
+        "menu_options": {
+          "reconfigure_connection": "Conexão (endereço IP e porta)",
+          "reconfigure_auth": "Autenticação (OAuth2 / PAT / SmartThings)",
+          "reconfigure_ip_control": "IP Control (ligar e emparelhar de forma confiável)",
+          "reconfigure_st_device": "Dispositivo SmartThings (revincular após um reparo)"
+        }
+      },
+      "reconfigure_connection": {
+        "title": "Conexão",
+        "description": "Atualize o endereço IP da TV e a porta WebSocket. Use 8001, a menos que sua TV responda apenas na porta SSL 8002.",
+        "data": {
+          "host": "Endereço IP da TV",
+          "port": "Porta"
+        }
+      },
+      "reconfigure_auth": {
+        "title": "Autenticação",
+        "description": "Escolha como o Home Assistant se autentica com esta TV. Para OAuth2, basta selecioná-lo e enviar: o fluxo de login inicia automaticamente (os campos abaixo são ignorados). Para PAT, cole um token de acesso pessoal do SmartThings. Para a Integração SmartThings, escolha uma entrada existente.",
+        "data": {
+          "auth_method": "Método de autenticação",
+          "api_key": "Token de acesso pessoal (PAT) do SmartThings",
+          "st_entry_unique_id": "Integração SmartThings"
+        }
+      },
+      "reconfigure_ip_control": {
+        "title": "IP Control",
+        "description": "O IP Control oferece ligar/desligar confiável (mesmo no Modo Arte) sem o SmartThings. Status atual: {status}.\n\nMarque «Emparelhar agora» para (re)emparelhar a TV — ela deve estar LIGADA na visualização normal com o controle IP habilitado. As opções abaixo aparecem após o emparelhamento.",
+        "data": {
+          "pair_now": "Emparelhar agora",
+          "enable_ip_control": "Habilitar IP Control",
+          "ip_control_art_mode": "Alternar o Modo Arte via IP Control"
+        }
+      },
+      "reconfigure_ip_pair": {
+        "title": "Emparelhar IP Control",
+        "description": "Emparelha a interface IP Control da TV.\n\nAntes de continuar:\n1. A TV deve estar LIGADA e em visualização NORMAL — não no Modo Arte.\n2. Habilite o controle IP: Configurações → Todas as configurações → Conexão → Rede → Configurações de especialista → Habilitar controle IP.\n\nAceite a solicitação de autorização na TV quando ela aparecer. Status atual: {status}."
       }
     },
     "error": {
@@ -75,7 +115,10 @@
       "wrong_api_key": "Token errado do SmartThings.",
       "st_device_not_found": "ID de TV SmartThings não encontrado.",
       "st_device_used": "ID de TV SmartThings já está em uso.",
-      "not_successful": "Não é possível criar uma conexão WebSocket com essa TV Samsung."
+      "not_successful": "Não é possível criar uma conexão WebSocket com essa TV Samsung.",
+      "ip_control_pair_failed": "Falha no emparelhamento do IP Control. Verifique se a TV está LIGADA na visualização normal (não no Modo Arte) e se o controle IP está habilitado nas Configurações, depois tente novamente.",
+      "ip_control_unreachable": "Não foi possível acessar a TV na porta 1516. Nada está escutando ali: nem o estado de energia da TV nem a configuração do controle IP são a causa. Provavelmente este modelo não tem servidor IP Control — é um recurso da Samsung ausente em muitas TVs, especialmente nas mais antigas. Todo o resto da integração funciona sem ele; apenas as entidades de luz de fundo, tom de cor, calibração de imagem e reinicialização precisam dele.",
+      "ip_control_no_host": "Nenhum host de TV está configurado para esta entrada."
     },
     "abort": {
       "already_configured": "Essa TV Samsung já está configurada.",
@@ -90,7 +133,9 @@
       "reauth_failed": "Re-authentication failed.",
       "st_device_updated": "Dispositivo SmartThings atualizado. A integração está recarregando.",
       "st_not_configured": "O SmartThings não está configurado para esta TV.",
-      "st_device_missing": "Nenhum dispositivo SmartThings selecionado."
+      "st_device_missing": "Nenhum dispositivo SmartThings selecionado.",
+      "reconfigure_successful": "Configuração atualizada.",
+      "ip_control_pair_successful": "IP Control emparelhado com sucesso. O token de acesso foi armazenado."
     },
     "create_entry": {
       "default": "Successfully configured {name}"
@@ -120,7 +165,8 @@
           "sync_ent": "Synchronized Entities",
           "init": "Basic Options",
           "adv_opt": "Advanced Options",
-          "save_exit": "Save and Exit"
+          "save_exit": "Save and Exit",
+          "art_identify": "Identificação de obras de arte"
         }
       },
       "source_list": {
@@ -165,21 +211,44 @@
           "st_poll_on_interval": "Intervalo SmartThings com TV ligada (s)",
           "content_list_interval": "Intervalo de atualização da lista de obras (s)",
           "ip_control_poll_interval": "Intervalo do IP Control (s)",
-          "art_exit_source": "Fonte ao sair do Art Mode"
+          "art_exit_source": "Fonte ao sair do Art Mode",
+          "external_audio_entity": "Entidade de status da soundbar ou receiver externo",
+          "rest_app_list": "Aplicativos adicionais a detectar",
+          "rest_app_poll_interval": "Intervalo de atualização de aplicativos adicionais (s)",
+          "report_art_mode_as_off": "Relatar o reprodutor de mídia como desligado no Modo Arte",
+          "art_on_non_frame": "Arte Frame em uma TV que não é Frame"
         },
         "data_description": {
-          "art_exit_source": "Entrada ou app a exibir quando o Art Mode é desativado pelo Home Assistant (switch Art Mode ou art_set_artmode). Deixe vazio para manter o comportamento da TV: ela volta à última fonte, muitas vezes TV (Samsung TV Plus) em uma Frame. Não é aplicado ao sair do Art Mode pelo controle remoto. Precisa de uma fonte que a TV consiga alcançar: uma lista detectada automaticamente pelo SmartThings contém apenas chaves ST_, que recorrem à tecla WebSocket equivalente (ST_HDMI3 -> KEY_HDMI3) quando o SmartThings está indisponível. Alguns modelos ignoram as teclas HDMI numeradas; o log avisa se a TV não mudou de entrada."
+          "art_exit_source": "Entrada ou app a exibir quando o Art Mode é desativado pelo Home Assistant (switch Art Mode ou art_set_artmode). Deixe vazio para manter o comportamento da TV: ela volta à última fonte, muitas vezes TV (Samsung TV Plus) em uma Frame. Não é aplicado ao sair do Art Mode pelo controle remoto. Precisa de uma fonte que a TV consiga alcançar: uma lista detectada automaticamente pelo SmartThings contém apenas chaves ST_, que recorrem à tecla WebSocket equivalente (ST_HDMI3 -> KEY_HDMI3) quando o SmartThings está indisponível. Alguns modelos ignoram as teclas HDMI numeradas; o log avisa se a TV não mudou de entrada.",
+          "external_audio_entity": "Opcional: use um reprodutor de mídia existente para obter o volume e o mudo reais enquanto a TV usa alto-falantes externos. Os controles da TV permanecem inalterados. Deixe vazio para usar as leituras da TV. Nenhuma sondagem adicional é adicionada. Selecione a soundbar ou o receiver reais, não um grupo nem outra entidade que espelha esta TV.",
+          "rest_app_list": "Mapeie nomes de exibição para IDs nativos de aplicativos Tizen para os que faltam na descoberta automática. Deixe vazio para desabilitar as verificações de status REST adicionais.",
+          "rest_app_poll_interval": "Aplicativos com uma leitura recente do rastreador normal não precisam de verificações extras. Os demais são atualizados a cada 30 segundos por padrão, com até 120 verificações agendadas por aplicativo por hora. Os resultados ficam em cache entre as atualizações; mudanças de fonte e eventos do Modo Arte podem atualizar antes. Uma lista de aplicativos vazia não adiciona requisições.",
+          "report_art_mode_as_off": "Opcional: relate a arte como desligada mantendo art_mode_status ligado. A visualização normal permanece ligada; o monitoramento de energia física e os controles do Modo Arte continuam. Desabilitado por padrão.",
+          "art_on_non_frame": "Opcional: habilite o Modo Arte para uma TV que se declara não Frame mas executa o aplicativo de arte, como o Micro RGB R95H de 2026. O canal do aplicativo de arte é consultado pela versão e as entidades do Modo Arte são criadas apenas quando ele responde. Mantenha a TV ligada na primeira vez. Desabilitado por padrão."
         }
       },
       "save_exit": {
         "title": "Save Configuration"
+      },
+      "art_identify": {
+        "title": "Identificação de obras de arte",
+        "description": "Identifica a obra de arte exibida na TV Frame por meio de busca reversa de imagens (Google Vision) confirmada por um LLM. Todos os campos são opcionais exceto a opção; deixe uma chave em branco para manter a salva anteriormente.",
+        "data": {
+          "art_identify_enable": "Habilitar a identificação de obras de arte",
+          "art_vision_api_key": "Chave de API do Google Cloud Vision",
+          "art_llm_provider": "Provedor de LLM",
+          "art_llm_api_key": "Chave de API do LLM (Anthropic, OpenAI ou Gemini)",
+          "art_llm_model": "Modelo de LLM (em branco = padrão do provedor)",
+          "art_identify_personal": "Também identificar fotos pessoais (geralmente desligado)"
+        }
       }
     },
     "error": {
       "invalid_tv_list": "Invalid list format. Please use valid JSON format.",
       "ip_control_no_host": "Nenhum endereço de host está configurado para esta TV.",
       "ip_control_pair_failed": "Falha no emparelhamento. Verifique se a TV está ligada e em visualização normal (não no modo Arte) e se o IP Remote está ativado, depois tente novamente.",
-      "ip_control_unreachable": "Não foi possível acessar a TV na porta 1516: nada está escutando nela. Portanto, nem o estado da TV nem a configuração IP Remote são a causa. É provável que este modelo não seja compatível com o IP Control. Apenas as entidades de luz de fundo, tom de cor, calibração de imagem e reinicialização dependem dele."
+      "ip_control_unreachable": "Não foi possível acessar a TV na porta 1516: nada está escutando nela. Portanto, nem o estado da TV nem a configuração IP Remote são a causa. É provável que este modelo não seja compatível com o IP Control. Apenas as entidades de luz de fundo, tom de cor, calibração de imagem e reinicialização dependem dele.",
+      "invalid_rest_app_list": "Insira nomes de exibição e IDs de aplicativo nativos únicos usando letras, dígitos, pontos, sublinhados ou hifens."
     }
   },
   "application_credentials": {
@@ -268,11 +337,108 @@
           "intelligent": "Otimização IA",
           "ai_customization": "Personalização IA"
         }
+      },
+      "qs_sound_mode": {
+        "name": "Modo de som"
+      },
+      "qs_ai_mode": {
+        "name": "Modo IA"
+      },
+      "qs_energy_saving_solution": {
+        "name": "Solução de economia de energia"
+      },
+      "qs_sleep_timer": {
+        "name": "Timer de desligamento"
+      },
+      "qs_game_mode": {
+        "name": "Modo Jogo"
+      },
+      "qs_picture_clarity": {
+        "name": "Clareza de imagem"
+      },
+      "qs_contrast_enhancer": {
+        "name": "Otimizador de contraste"
+      },
+      "qs_color_tone": {
+        "name": "Tom de cor"
+      },
+      "qs_color_space": {
+        "name": "Espaço de cor"
+      },
+      "qs_digital_audio_format": {
+        "name": "Formato de saída de áudio digital"
+      },
+      "source": {
+        "name": "Fonte"
+      },
+      "ip_auto_motion_plus": {
+        "name": "Auto Motion Plus",
+        "state": {
+          "off": "Desligado",
+          "auto": "Automático",
+          "custom": "Personalizado"
+        }
+      },
+      "ip_apply_picture_settings": {
+        "name": "Aplicar configurações de imagem",
+        "state": {
+          "current_source": "Fonte atual",
+          "all_sources": "Todas as fontes"
+        }
+      },
+      "ip_peak_brightness": {
+        "name": "Brilho de pico",
+        "state": {
+          "off": "Desligado",
+          "medium": "Médio",
+          "high": "Alto"
+        }
+      },
+      "ip_contrast_enhancer": {
+        "name": "Otimizador de contraste (IP Control)",
+        "state": {
+          "off": "Desligado",
+          "low": "Baixo",
+          "high": "Alto"
+        }
+      },
+      "ip_color_tone": {
+        "name": "Tom de cor (IP Control)"
+      },
+      "speaker_select": {
+        "name": "Seleção de alto-falante"
+      },
+      "art_motion_sensitivity": {
+        "name": "Sensibilidade ao movimento"
+      },
+      "art_brightness_sensor": {
+        "name": "Sensor de brilho"
+      },
+      "st_picture_mode": {
+        "name": "Modo de imagem"
       }
     },
     "switch": {
       "art_mode": {
         "name": "Modo Arte"
+      },
+      "power": {
+        "name": "Energia"
+      },
+      "ip_auto_hdr_remastering": {
+        "name": "Remasterização HDR automática"
+      },
+      "ip_brightness_optimization": {
+        "name": "Otimização de brilho"
+      },
+      "ip_motion_lighting": {
+        "name": "Iluminação por movimento"
+      },
+      "ip_auto_power_saving": {
+        "name": "Economia de energia automática"
+      },
+      "ip_energy_saving_solution": {
+        "name": "Solução de economia de energia (IP Control)"
       }
     },
     "sensor": {
@@ -282,6 +448,89 @@
           "landscape": "Paisagem",
           "portrait": "Retrato"
         }
+      },
+      "illuminance": {
+        "name": "Iluminância"
+      },
+      "brightness_intensity": {
+        "name": "Intensidade de brilho"
+      },
+      "ip_input_source": {
+        "name": "Fonte de entrada"
+      },
+      "ip_picture_mode": {
+        "name": "Modo de imagem"
+      },
+      "ip_sound_mode": {
+        "name": "Modo de som"
+      },
+      "ip_picture_size": {
+        "name": "Tamanho da imagem"
+      },
+      "ip_mute": {
+        "name": "Mudo"
+      },
+      "ip_volume": {
+        "name": "Volume"
+      },
+      "art_metadata": {
+        "name": "Metadados da arte"
+      },
+      "art_folder_personal": {
+        "name": "Fotos pessoais"
+      },
+      "art_folder_store": {
+        "name": "Art Store"
+      },
+      "art_folder_other": {
+        "name": "Outras artes"
+      },
+      "frame_art": {
+        "name": "Arte Frame"
+      },
+      "st_power": {
+        "name": "Potência"
+      },
+      "st_energy": {
+        "name": "Energia"
+      },
+      "st_energy_difference": {
+        "name": "Diferença de energia"
+      },
+      "st_power_energy": {
+        "name": "Energia de potência"
+      },
+      "st_energy_saved": {
+        "name": "Energia economizada"
+      }
+    },
+    "number": {
+      "ip_gamma_bt1886": {
+        "name": "Gama (BT.1886)"
+      },
+      "ip_backlight": {
+        "name": "Luz de fundo"
+      },
+      "ip_contrast": {
+        "name": "Contraste"
+      },
+      "ip_brightness": {
+        "name": "Brilho"
+      },
+      "ip_sharpness": {
+        "name": "Nitidez"
+      },
+      "ip_color": {
+        "name": "Cor"
+      },
+      "ip_tint": {
+        "name": "Matiz"
+      },
+      "art_brightness": {
+        "name": "Brilho do Modo Arte"
+      },
+      "art_color_temperature": {
+        "name": "Temperatura de cor do Modo Arte"
       }
     }
   }

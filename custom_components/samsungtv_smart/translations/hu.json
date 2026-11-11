@@ -66,6 +66,46 @@
           "st_devices": "SmartThings eszköz",
           "device_id": "SmartThings eszközazonosító"
         }
+      },
+      "reconfigure": {
+        "title": "Samsung TV újrakonfigurálása",
+        "description": "Válaszd ki, mit szeretnél módosítani ennél a tévénél.",
+        "menu_options": {
+          "reconfigure_connection": "Kapcsolat (IP-cím és port)",
+          "reconfigure_auth": "Hitelesítés (OAuth2 / PAT / SmartThings)",
+          "reconfigure_ip_control": "IP Control (megbízható ki-/bekapcsolás és párosítás)",
+          "reconfigure_st_device": "SmartThings eszköz (újraösszekapcsolás javítás után)"
+        }
+      },
+      "reconfigure_connection": {
+        "title": "Kapcsolat",
+        "description": "Frissítsd a tévé IP-címét és a WebSocket-portot. Használd a 8001-et, hacsak a tévé csak az SSL-porton (8002) válaszol.",
+        "data": {
+          "host": "A tévé IP-címe",
+          "port": "Port"
+        }
+      },
+      "reconfigure_auth": {
+        "title": "Hitelesítés",
+        "description": "Válaszd ki, hogyan hitelesíti magát a Home Assistant ennél a tévénél. OAuth2 esetén csak jelöld ki és küldd be — a bejelentkezési folyamat automatikusan elindul (az alábbi mezőket a rendszer figyelmen kívül hagyja). PAT esetén illeszd be a SmartThings személyes hozzáférési tokent. SmartThings-integráció esetén válassz egy meglévő bejegyzést.",
+        "data": {
+          "auth_method": "Hitelesítési módszer",
+          "api_key": "SmartThings személyes hozzáférési token (PAT)",
+          "st_entry_unique_id": "SmartThings-integráció"
+        }
+      },
+      "reconfigure_ip_control": {
+        "title": "IP Control",
+        "description": "Az IP Control megbízható ki-/bekapcsolást biztosít (még Art módból is) SmartThings nélkül. Jelenlegi állapot: {status}.\n\nJelöld be a „Párosítás most” lehetőséget a tévé (újra)párosításához — a tévének BEKAPCSOLVA kell lennie normál nézetben, engedélyezett IP-távvezérléssel. Az alábbi kapcsolók a párosítás után jelennek meg.",
+        "data": {
+          "pair_now": "Párosítás most",
+          "enable_ip_control": "IP Control engedélyezése",
+          "ip_control_art_mode": "Art mód váltása IP Controlon keresztül"
+        }
+      },
+      "reconfigure_ip_pair": {
+        "title": "IP Control párosítása",
+        "description": "Párosítja a tévé IP Control felületét.\n\nMielőtt folytatnád:\n1. A tévének BEKAPCSOLVA és NORMÁL nézetben kell lennie — nem Art módban.\n2. Engedélyezd az IP-távvezérlést: Beállítások → Összes beállítás → Kapcsolat → Hálózat → Speciális beállítások → IP-távvezérlés engedélyezése.\n\nFogadd el a tévén megjelenő engedélyezési kérést. Jelenlegi állapot: {status}."
       }
     },
     "error": {
@@ -75,7 +115,10 @@
       "wrong_api_key": "Hibás SmartThings token.",
       "st_device_not_found": "SmartThings TV eszközazonosító (deviceID) nem található.",
       "st_device_used": "SmartThings TV eszközazonosító (deviceID) már használatban van.",
-      "not_successful": "Nem sikerült létrehozni WebSocket kapcsolatot ezzel a Samsung TV készülékkel."
+      "not_successful": "Nem sikerült létrehozni WebSocket kapcsolatot ezzel a Samsung TV készülékkel.",
+      "ip_control_pair_failed": "Az IP Control párosítása nem sikerült. Győződj meg róla, hogy a tévé BE van kapcsolva normál nézetben (nem Art módban), és az IP-távvezérlés engedélyezve van a Beállításokban, majd próbáld újra.",
+      "ip_control_unreachable": "Nem sikerült elérni a tévét az 1516-os porton. Semmi sem figyel ott: nem a tévé bekapcsolási állapota és nem az IP-távvezérlés beállítása az ok. Valószínűleg ennek a modellnek nincs IP Control kiszolgálója — ez egy Samsung-funkció, amely sok tévéből hiányzik, különösen a régebbiekből. Az integráció minden más része működik nélküle; csak a háttérvilágítás, a színárnyalat, a képkalibrálás és az újraindítás entitásai igénylik.",
+      "ip_control_no_host": "Nincs tévéhoszt beállítva ehhez a bejegyzéshez."
     },
     "abort": {
       "already_configured": "Ez a Samsung TV már konfigurálva van.",
@@ -90,7 +133,9 @@
       "reauth_failed": "Re-authentication failed.",
       "st_device_updated": "SmartThings eszköz frissítve. Az integráció újratöltődik.",
       "st_not_configured": "A SmartThings nincs beállítva ehhez a tévéhez.",
-      "st_device_missing": "Nem lett SmartThings eszköz kiválasztva."
+      "st_device_missing": "Nem lett SmartThings eszköz kiválasztva.",
+      "reconfigure_successful": "A konfiguráció frissítve.",
+      "ip_control_pair_successful": "Az IP Control sikeresen párosítva. A hozzáférési token mentve."
     },
     "create_entry": {
       "default": "Successfully configured {name}"
@@ -120,7 +165,8 @@
           "sync_ent": "Szinkronizált entitások konfigurálása",
           "init": "Alapbeállítások",
           "adv_opt": "Haladó opciók",
-          "save_exit": "Opciók mentése és kilépés"
+          "save_exit": "Opciók mentése és kilépés",
+          "art_identify": "Műalkotás azonosítása"
         }
       },
       "source_list": {
@@ -165,21 +211,44 @@
           "st_poll_on_interval": "SmartThings időköz bekapcsolt TV-nél (mp)",
           "content_list_interval": "Műalkotáslista frissítési időköze (mp)",
           "ip_control_poll_interval": "IP Control időköz (mp)",
-          "art_exit_source": "Forrás az Art Mode elhagyásakor"
+          "art_exit_source": "Forrás az Art Mode elhagyásakor",
+          "external_audio_entity": "Külső hangprojektor vagy vevő állapotentitása",
+          "rest_app_list": "További észlelendő alkalmazások",
+          "rest_app_poll_interval": "További alkalmazások frissítési időköze (mp)",
+          "report_art_mode_as_off": "A médialejátszó kikapcsoltként jelentése Art módban",
+          "art_on_non_frame": "Frame Art nem Frame tévén"
         },
         "data_description": {
-          "art_exit_source": "Bemenet vagy alkalmazás, amelyre váltani kell, amikor az Art Mode-ot a Home Assistant kapcsolja ki (Art Mode kapcsoló vagy art_set_artmode). Hagyja üresen a TV saját viselkedéséhez: visszatér az utolsó forráshoz, Frame-en gyakran TV (Samsung TV Plus). Távirányítóval történő kilépéskor nem érvényes. Olyan forrás kell, amelyet a TV el tud érni: a SmartThings által automatikusan felderített lista csak ST_ kulcsokat tartalmaz, amelyek a megfelelő WebSocket gombra esnek vissza (ST_HDMI3 -> KEY_HDMI3), ha a SmartThings nem elérhető. Egyes modellek figyelmen kívül hagyják a számozott HDMI gombokat; ilyenkor a napló jelzi, hogy a TV nem váltott bemenetet."
+          "art_exit_source": "Bemenet vagy alkalmazás, amelyre váltani kell, amikor az Art Mode-ot a Home Assistant kapcsolja ki (Art Mode kapcsoló vagy art_set_artmode). Hagyja üresen a TV saját viselkedéséhez: visszatér az utolsó forráshoz, Frame-en gyakran TV (Samsung TV Plus). Távirányítóval történő kilépéskor nem érvényes. Olyan forrás kell, amelyet a TV el tud érni: a SmartThings által automatikusan felderített lista csak ST_ kulcsokat tartalmaz, amelyek a megfelelő WebSocket gombra esnek vissza (ST_HDMI3 -> KEY_HDMI3), ha a SmartThings nem elérhető. Egyes modellek figyelmen kívül hagyják a számozott HDMI gombokat; ilyenkor a napló jelzi, hogy a TV nem váltott bemenetet.",
+          "external_audio_entity": "Opcionális: használj egy meglévő médialejátszót a tényleges hangerő és némítás visszajelzéséhez, amíg a tévé külső hangszórókat használ. A tévé vezérlői változatlanok maradnak. Hagyd üresen a tévé értékeinek használatához. Nem ad hozzá további lekérdezést. A tényleges hangprojektort vagy vevőt válaszd, ne egy csoportot vagy egy másik, ezt a tévét tükröző entitást.",
+          "rest_app_list": "Rendelj megjelenített neveket a natív Tizen-alkalmazásazonosítókhoz azokhoz az alkalmazásokhoz, amelyek hiányoznak az automatikus felderítésből. Hagyd üresen a további REST állapotellenőrzések letiltásához.",
+          "rest_app_poll_interval": "Azok az alkalmazások, amelyeknek friss leolvasásuk van a normál követőtől, nem igényelnek extra ellenőrzést. A többi alapértelmezés szerint 30 másodpercenként frissül, alkalmazásonként óránként legfeljebb 120 ütemezett ellenőrzéssel. Az eredmények gyorsítótárazásra kerülnek a frissítések között; a forrásváltások és az Art mód eseményei korábban is frissíthetnek. Az üres alkalmazáslista nem ad hozzá kéréseket.",
+          "report_art_mode_as_off": "Opcionális: jelentsd a műalkotást kikapcsoltként, miközben az art_mode_status bekapcsolva marad. A normál nézet bekapcsolva marad; a fizikai bekapcsolás követése és az Art mód vezérlői tovább működnek. Alapértelmezés szerint letiltva.",
+          "art_on_non_frame": "Opcionális: engedélyezd az Art módot egy olyan tévénél, amely nem Frame-ként azonosítja magát, de futtatja az art alkalmazást, például a 2026-os Micro RGB R95H. A rendszer lekéri az art alkalmazás csatornájának verzióját, és az Art mód entitásai csak akkor jönnek létre, ha az válaszol. Az első alkalommal legyen bekapcsolva a tévé. Alapértelmezés szerint letiltva."
         }
       },
       "save_exit": {
         "title": "Save Configuration"
+      },
+      "art_identify": {
+        "title": "Műalkotás azonosítása",
+        "description": "Azonosítja a Frame tévén megjelenített műalkotást fordított képkereséssel (Google Vision), amelyet egy LLM megerősít. A kapcsolót kivéve minden mező opcionális; hagyj egy kulcsot üresen a korábban mentett megtartásához.",
+        "data": {
+          "art_identify_enable": "Műalkotás azonosításának engedélyezése",
+          "art_vision_api_key": "Google Cloud Vision API-kulcs",
+          "art_llm_provider": "LLM-szolgáltató",
+          "art_llm_api_key": "LLM API-kulcs (Anthropic, OpenAI vagy Gemini)",
+          "art_llm_model": "LLM-modell (üres = szolgáltató alapértelmezése)",
+          "art_identify_personal": "Személyes fotók azonosítása is (általában kikapcsolva)"
+        }
       }
     },
     "error": {
       "invalid_tv_list": "Érvénytelen formátum. Kérjük, ellenőrizze a dokumentációt.",
       "ip_control_no_host": "Nincs gazdacím beállítva ehhez a TV-hez.",
       "ip_control_pair_failed": "A párosítás sikertelen. Győződjön meg róla, hogy a TV be van kapcsolva és normál nézetben van (nem Art módban), és hogy az IP Remote engedélyezve van, majd próbálja újra.",
-      "ip_control_unreachable": "A tévé nem érhető el az 1516-os porton: semmi nem figyel rajta. Így sem a tévé állapota, sem az IP Remote beállítás nem az ok. Ez a modell nagy valószínűséggel nem támogatja az IP Controlt. Csak a háttérvilágítás, színtónus, képkalibráció és újraindítás entitások függenek tőle."
+      "ip_control_unreachable": "A tévé nem érhető el az 1516-os porton: semmi nem figyel rajta. Így sem a tévé állapota, sem az IP Remote beállítás nem az ok. Ez a modell nagy valószínűséggel nem támogatja az IP Controlt. Csak a háttérvilágítás, színtónus, képkalibráció és újraindítás entitások függenek tőle.",
+      "invalid_rest_app_list": "Adj meg egyedi megjelenített neveket és natív alkalmazásazonosítókat betűkkel, számjegyekkel, pontokkal, aláhúzásokkal vagy kötőjelekkel."
     }
   },
   "application_credentials": {
@@ -268,11 +337,108 @@
           "intelligent": "AI optimalizálás",
           "ai_customization": "AI testreszabás"
         }
+      },
+      "qs_sound_mode": {
+        "name": "Hangmód"
+      },
+      "qs_ai_mode": {
+        "name": "MI-mód"
+      },
+      "qs_energy_saving_solution": {
+        "name": "Energiatakarékossági megoldás"
+      },
+      "qs_sleep_timer": {
+        "name": "Elalváskapcsoló"
+      },
+      "qs_game_mode": {
+        "name": "Játékmód"
+      },
+      "qs_picture_clarity": {
+        "name": "Képtisztaság"
+      },
+      "qs_contrast_enhancer": {
+        "name": "Kontrasztnövelő"
+      },
+      "qs_color_tone": {
+        "name": "Színárnyalat"
+      },
+      "qs_color_space": {
+        "name": "Színtér"
+      },
+      "qs_digital_audio_format": {
+        "name": "Digitális hangkimeneti formátum"
+      },
+      "source": {
+        "name": "Forrás"
+      },
+      "ip_auto_motion_plus": {
+        "name": "Auto Motion Plus",
+        "state": {
+          "off": "Ki",
+          "auto": "Automatikus",
+          "custom": "Egyéni"
+        }
+      },
+      "ip_apply_picture_settings": {
+        "name": "Képbeállítások alkalmazása",
+        "state": {
+          "current_source": "Jelenlegi forrás",
+          "all_sources": "Minden forrás"
+        }
+      },
+      "ip_peak_brightness": {
+        "name": "Csúcsfényerő",
+        "state": {
+          "off": "Ki",
+          "medium": "Közepes",
+          "high": "Magas"
+        }
+      },
+      "ip_contrast_enhancer": {
+        "name": "Kontrasztnövelő (IP Control)",
+        "state": {
+          "off": "Ki",
+          "low": "Alacsony",
+          "high": "Magas"
+        }
+      },
+      "ip_color_tone": {
+        "name": "Színárnyalat (IP Control)"
+      },
+      "speaker_select": {
+        "name": "Hangszóró kiválasztása"
+      },
+      "art_motion_sensitivity": {
+        "name": "Mozgásérzékenység"
+      },
+      "art_brightness_sensor": {
+        "name": "Fényerőérzékelő"
+      },
+      "st_picture_mode": {
+        "name": "Képmód"
       }
     },
     "switch": {
       "art_mode": {
         "name": "Művészet üzemmód"
+      },
+      "power": {
+        "name": "Főkapcsoló"
+      },
+      "ip_auto_hdr_remastering": {
+        "name": "Automatikus HDR-újramaszterelés"
+      },
+      "ip_brightness_optimization": {
+        "name": "Fényerő-optimalizálás"
+      },
+      "ip_motion_lighting": {
+        "name": "Mozgásérzékelős világítás"
+      },
+      "ip_auto_power_saving": {
+        "name": "Automatikus energiatakarékosság"
+      },
+      "ip_energy_saving_solution": {
+        "name": "Energiatakarékossági megoldás (IP Control)"
       }
     },
     "sensor": {
@@ -282,6 +448,89 @@
           "landscape": "Fekvő",
           "portrait": "Álló"
         }
+      },
+      "illuminance": {
+        "name": "Megvilágítás"
+      },
+      "brightness_intensity": {
+        "name": "Fényerő-intenzitás"
+      },
+      "ip_input_source": {
+        "name": "Bemeneti forrás"
+      },
+      "ip_picture_mode": {
+        "name": "Képmód"
+      },
+      "ip_sound_mode": {
+        "name": "Hangmód"
+      },
+      "ip_picture_size": {
+        "name": "Képméret"
+      },
+      "ip_mute": {
+        "name": "Némítás"
+      },
+      "ip_volume": {
+        "name": "Hangerő"
+      },
+      "art_metadata": {
+        "name": "Műalkotás metaadatai"
+      },
+      "art_folder_personal": {
+        "name": "Személyes fotók"
+      },
+      "art_folder_store": {
+        "name": "Art Store"
+      },
+      "art_folder_other": {
+        "name": "Egyéb műalkotások"
+      },
+      "frame_art": {
+        "name": "Frame Art"
+      },
+      "st_power": {
+        "name": "Teljesítmény"
+      },
+      "st_energy": {
+        "name": "Energia"
+      },
+      "st_energy_difference": {
+        "name": "Energiakülönbség"
+      },
+      "st_power_energy": {
+        "name": "Teljesítményenergia"
+      },
+      "st_energy_saved": {
+        "name": "Megtakarított energia"
+      }
+    },
+    "number": {
+      "ip_gamma_bt1886": {
+        "name": "Gamma (BT.1886)"
+      },
+      "ip_backlight": {
+        "name": "Háttérvilágítás"
+      },
+      "ip_contrast": {
+        "name": "Kontraszt"
+      },
+      "ip_brightness": {
+        "name": "Fényerő"
+      },
+      "ip_sharpness": {
+        "name": "Élesség"
+      },
+      "ip_color": {
+        "name": "Szín"
+      },
+      "ip_tint": {
+        "name": "Árnyalat"
+      },
+      "art_brightness": {
+        "name": "Art mód fényereje"
+      },
+      "art_color_temperature": {
+        "name": "Art mód színhőmérséklete"
       }
     }
   }

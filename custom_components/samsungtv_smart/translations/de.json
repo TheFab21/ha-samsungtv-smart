@@ -63,16 +63,116 @@
           "intelligent": "KI-Optimierung",
           "ai_customization": "KI-Anpassung"
         }
+      },
+      "qs_sound_mode": {
+        "name": "Tonmodus"
+      },
+      "qs_ai_mode": {
+        "name": "KI-Modus"
+      },
+      "qs_energy_saving_solution": {
+        "name": "Energiesparlösung"
+      },
+      "qs_sleep_timer": {
+        "name": "Sleep-Timer"
+      },
+      "qs_game_mode": {
+        "name": "Spielmodus"
+      },
+      "qs_picture_clarity": {
+        "name": "Bildklarheit"
+      },
+      "qs_contrast_enhancer": {
+        "name": "Kontrastverstärkung"
+      },
+      "qs_color_tone": {
+        "name": "Farbton"
+      },
+      "qs_color_space": {
+        "name": "Farbraum"
+      },
+      "qs_digital_audio_format": {
+        "name": "Digitales Audioausgabeformat"
+      },
+      "source": {
+        "name": "Quelle"
+      },
+      "ip_auto_motion_plus": {
+        "name": "Auto Motion Plus",
+        "state": {
+          "off": "Aus",
+          "auto": "Automatisch",
+          "custom": "Benutzerdefiniert"
+        }
+      },
+      "ip_apply_picture_settings": {
+        "name": "Bildeinstellungen anwenden",
+        "state": {
+          "current_source": "Aktuelle Quelle",
+          "all_sources": "Alle Quellen"
+        }
+      },
+      "ip_peak_brightness": {
+        "name": "Spitzenhelligkeit",
+        "state": {
+          "off": "Aus",
+          "medium": "Mittel",
+          "high": "Hoch"
+        }
+      },
+      "ip_contrast_enhancer": {
+        "name": "Kontrastverstärkung (IP Control)",
+        "state": {
+          "off": "Aus",
+          "low": "Niedrig",
+          "high": "Hoch"
+        }
+      },
+      "ip_color_tone": {
+        "name": "Farbton (IP Control)"
+      },
+      "speaker_select": {
+        "name": "Lautsprecherauswahl"
+      },
+      "art_motion_sensitivity": {
+        "name": "Bewegungsempfindlichkeit"
+      },
+      "art_brightness_sensor": {
+        "name": "Helligkeitssensor"
+      },
+      "st_picture_mode": {
+        "name": "Bildmodus"
       }
     },
     "switch": {
       "art_mode": {
         "name": "Kunstmodus"
+      },
+      "power": {
+        "name": "Ein/Aus"
+      },
+      "ip_auto_hdr_remastering": {
+        "name": "Automatisches HDR-Remastering"
+      },
+      "ip_brightness_optimization": {
+        "name": "Helligkeitsoptimierung"
+      },
+      "ip_motion_lighting": {
+        "name": "Bewegungsbeleuchtung"
+      },
+      "ip_auto_power_saving": {
+        "name": "Automatisches Energiesparen"
+      },
+      "ip_energy_saving_solution": {
+        "name": "Energiesparlösung (IP Control)"
       }
     },
     "button": {
       "art_brightness_reset": {
         "name": "Helligkeits-Reset"
+      },
+      "reboot": {
+        "name": "Fernseher neu starten"
       }
     },
     "sensor": {
@@ -82,7 +182,356 @@
           "landscape": "Querformat",
           "portrait": "Hochformat"
         }
+      },
+      "illuminance": {
+        "name": "Beleuchtungsstärke"
+      },
+      "brightness_intensity": {
+        "name": "Helligkeitsintensität"
+      },
+      "ip_input_source": {
+        "name": "Eingangsquelle"
+      },
+      "ip_picture_mode": {
+        "name": "Bildmodus"
+      },
+      "ip_sound_mode": {
+        "name": "Tonmodus"
+      },
+      "ip_picture_size": {
+        "name": "Bildgröße"
+      },
+      "ip_mute": {
+        "name": "Stumm"
+      },
+      "ip_volume": {
+        "name": "Lautstärke"
+      },
+      "art_metadata": {
+        "name": "Kunstwerk-Metadaten"
+      },
+      "art_folder_personal": {
+        "name": "Persönliche Fotos"
+      },
+      "art_folder_store": {
+        "name": "Art Store"
+      },
+      "art_folder_other": {
+        "name": "Andere Kunstwerke"
+      },
+      "frame_art": {
+        "name": "Frame-Art"
+      },
+      "st_power": {
+        "name": "Leistung"
+      },
+      "st_energy": {
+        "name": "Energie"
+      },
+      "st_energy_difference": {
+        "name": "Energiedifferenz"
+      },
+      "st_power_energy": {
+        "name": "Leistungsenergie"
+      },
+      "st_energy_saved": {
+        "name": "Eingesparte Energie"
       }
+    },
+    "number": {
+      "ip_gamma_bt1886": {
+        "name": "Gamma (BT.1886)"
+      },
+      "ip_backlight": {
+        "name": "Hintergrundbeleuchtung"
+      },
+      "ip_contrast": {
+        "name": "Kontrast"
+      },
+      "ip_brightness": {
+        "name": "Helligkeit"
+      },
+      "ip_sharpness": {
+        "name": "Schärfe"
+      },
+      "ip_color": {
+        "name": "Farbe"
+      },
+      "ip_tint": {
+        "name": "Farbton"
+      },
+      "art_brightness": {
+        "name": "Art-Modus-Helligkeit"
+      },
+      "art_color_temperature": {
+        "name": "Art-Modus-Farbtemperatur"
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Samsung TV Smart – Authentifizierung",
+        "description": "Wähle, wie du dich bei SmartThings authentifizierst.\n\nOAuth-Status: {oauth_status}",
+        "data": {
+          "auth_method": "Authentifizierungsmethode"
+        }
+      },
+      "pick_implementation": {
+        "title": "Mit Samsung anmelden",
+        "description": "Wähle dein SmartThings-Konto zur Authentifizierung aus."
+      },
+      "host": {
+        "title": "Fernseher konfigurieren",
+        "description": "Gib die IP-Adresse deines Samsung-Fernsehers und einen Namen für das Gerät ein.",
+        "data": {
+          "host": "IP-Adresse des Fernsehers",
+          "name": "Gerätename",
+          "use_ha_name_for_ws": "Home-Assistant-Standortnamen für WebSocket verwenden"
+        }
+      },
+      "manual": {
+        "title": "Manuelle Konfiguration",
+        "description": "Gib die IP-Adresse deines Fernsehers und deine SmartThings-Zugangsdaten ein.\n\nUm ein persönliches Zugriffstoken zu erstellen, besuche [SmartThings-Tokens]({st_tokens_url})",
+        "data": {
+          "host": "IP-Adresse des Fernsehers",
+          "name": "Gerätename",
+          "use_ha_name_for_ws": "Home-Assistant-Standortnamen für WebSocket verwenden",
+          "api_key": "Persönliches SmartThings-Zugriffstoken (PAT)",
+          "st_entry_unique_id": "Oder SmartThings-Integrationstoken verwenden"
+        }
+      },
+      "st_integration": {
+        "title": "SmartThings-Integration verwenden",
+        "description": "Verwende die Authentifizierung deiner vorhandenen SmartThings-Integration erneut.",
+        "data": {
+          "st_entry": "SmartThings-Integration",
+          "host": "IP-Adresse des Fernsehers",
+          "name": "Gerätename"
+        }
+      },
+      "stdevice": {
+        "title": "SmartThings-Gerät auswählen",
+        "description": "Mehrere Samsung-Fernseher gefunden. Bitte wähle deinen Fernseher aus:",
+        "data": {
+          "st_devices": "Samsung-Fernseher"
+        }
+      },
+      "stdeviceid": {
+        "title": "SmartThings-Geräte-ID",
+        "description": "Kein Fernseher automatisch gefunden. Bitte gib die SmartThings-Geräte-ID manuell ein.\n\nDu findest sie in der SmartThings-App oder im Entwicklerportal.",
+        "data": {
+          "device_id": "SmartThings-Geräte-ID"
+        }
+      },
+      "reconfigure": {
+        "title": "Samsung TV neu konfigurieren",
+        "description": "Wähle aus, was für diesen Fernseher geändert werden soll.",
+        "menu_options": {
+          "reconfigure_connection": "Verbindung (IP-Adresse und Port)",
+          "reconfigure_auth": "Authentifizierung (OAuth2 / PAT / SmartThings)",
+          "reconfigure_ip_control": "IP Control (zuverlässiges Ein-/Ausschalten und Kopplung)",
+          "reconfigure_st_device": "SmartThings-Gerät (nach einer Reparatur neu verknüpfen)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneute Authentifizierung erforderlich",
+        "description": "Deine SmartThings-Authentifizierung ist abgelaufen. Klicke auf Absenden, um dich erneut anzumelden."
+      },
+      "reconfigure_connection": {
+        "title": "Verbindung",
+        "description": "Aktualisiere die IP-Adresse des Fernsehers und den WebSocket-Port. Verwende 8001, es sei denn, dein Fernseher antwortet nur auf dem SSL-Port 8002.",
+        "data": {
+          "host": "IP-Adresse des Fernsehers",
+          "port": "Port"
+        }
+      },
+      "reconfigure_auth": {
+        "title": "Authentifizierung",
+        "description": "Wähle, wie sich Home Assistant bei diesem Fernseher authentifiziert. Für OAuth2 einfach auswählen und absenden – der Anmeldevorgang startet automatisch (die Felder unten werden ignoriert). Für PAT füge ein persönliches SmartThings-Zugriffstoken ein. Für die SmartThings-Integration wähle einen vorhandenen Eintrag.",
+        "data": {
+          "auth_method": "Authentifizierungsmethode",
+          "api_key": "Persönliches SmartThings-Zugriffstoken (PAT)",
+          "st_entry_unique_id": "SmartThings-Integration"
+        }
+      },
+      "reconfigure_ip_control": {
+        "title": "IP Control",
+        "description": "IP Control sorgt für zuverlässiges Ein-/Ausschalten (auch aus dem Art-Modus) ohne SmartThings. Aktueller Status: {status}.\n\nAktiviere „Jetzt koppeln“, um den Fernseher (erneut) zu koppeln – er muss EINGESCHALTET im normalen Betrieb mit aktivierter IP-Fernbedienung sein. Die Schalter unten erscheinen nach der Kopplung.",
+        "data": {
+          "pair_now": "Jetzt koppeln",
+          "enable_ip_control": "IP Control aktivieren",
+          "ip_control_art_mode": "Art-Modus über IP Control umschalten"
+        }
+      },
+      "reconfigure_ip_pair": {
+        "title": "IP Control koppeln",
+        "description": "Koppelt die IP-Control-Schnittstelle des Fernsehers.\n\nVor dem Fortfahren:\n1. Der Fernseher muss EINGESCHALTET und im NORMALEN Betrieb sein – nicht im Art-Modus.\n2. Aktiviere die IP-Fernbedienung: Einstellungen → Alle Einstellungen → Verbindung → Netzwerk → Experteneinstellungen → IP-Fernbedienung aktivieren.\n\nBestätige die Autorisierungsaufforderung auf dem Fernseher, wenn sie erscheint. Aktueller Status: {status}."
+      },
+      "reconfigure_st_device": {
+        "title": "SmartThings-Gerät",
+        "description": "Wähle aus, welchem SmartThings-Gerät dieser Fernseher entspricht.\n\nDerzeit: **{current}**\n\nEin Fernseher, der in der SmartThings-App repariert, zurückgesetzt oder entfernt und wieder hinzugefügt wurde, erhält eine **neue Geräte-ID**, und die alte wird mit *Forbidden* abgewiesen. Durch erneutes Auswählen hier bleiben deine Entitäten und dein Verlauf erhalten.",
+        "data": {
+          "st_devices": "SmartThings-Gerät",
+          "device_id": "SmartThings-Geräte-ID"
+        }
+      }
+    },
+    "error": {
+      "invalid_host": "Verbindung zum Fernseher nicht möglich. Überprüfe die IP-Adresse und stelle sicher, dass der Fernseher eingeschaltet ist.",
+      "only_key_or_st": "Bitte gib entweder ein persönliches Zugriffstoken an ODER wähle eine SmartThings-Integration, nicht beides.",
+      "st_api_key_fail": "Der API-Schlüssel konnte nicht aus der SmartThings-Integration abgerufen werden.",
+      "wrong_api_key": "Das SmartThings-Token ist ungültig. Bitte überprüfe es und versuche es erneut.",
+      "st_device_not_found": "Kein Samsung-Fernseher mit dieser SmartThings-Geräte-ID gefunden.",
+      "st_device_used": "Dieses SmartThings-Gerät ist bereits konfiguriert.",
+      "not_successful": "Verbindung zum Fernseher nicht möglich. Stelle sicher, dass er eingeschaltet ist, und erlaube die Verbindung, wenn du dazu aufgefordert wirst.",
+      "ip_control_pair_failed": "Die IP-Control-Kopplung ist fehlgeschlagen. Stelle sicher, dass der Fernseher EINGESCHALTET im normalen Betrieb (nicht im Art-Modus) ist und die IP-Fernbedienung in den Einstellungen aktiviert ist, und versuche es erneut.",
+      "ip_control_unreachable": "Der Fernseher konnte am Port 1516 nicht erreicht werden. Dort lauscht nichts: Weder der Einschaltzustand des Fernsehers noch die Einstellung der IP-Fernbedienung sind die Ursache. Höchstwahrscheinlich hat dieses Modell keinen IP-Control-Server – es ist eine Samsung-Funktion, die bei vielen Fernsehern fehlt, besonders bei älteren. Alles andere in der Integration funktioniert ohne sie; nur die Entitäten für Hintergrundbeleuchtung, Farbton, Bildkalibrierung und Neustart benötigen sie.",
+      "ip_control_no_host": "Für diesen Eintrag ist kein Fernseher-Host konfiguriert."
+    },
+    "abort": {
+      "already_configured": "Dieser Fernseher ist bereits konfiguriert.",
+      "unsupported_version": "Diese Integration erfordert Home Assistant {req_ver} oder neuer. Du verwendest {run_ver}.",
+      "host_unique_id": "Neukonfiguration nicht möglich: Die eindeutige ID des Fernsehers basiert auf der Host-Adresse.",
+      "oauth_failed": "OAuth-Authentifizierung fehlgeschlagen. Bitte versuche es erneut.",
+      "oauth_not_configured": "OAuth2 ist nicht konfiguriert.\n\nBitte füge SmartThings-Zugangsdaten hinzu unter:\n**Einstellungen → Geräte & Dienste → Anmeldedaten für Anwendungen**",
+      "no_smartthings_integration": "Keine SmartThings-Integration gefunden. Bitte richte zuerst SmartThings ein oder verwende eine andere Authentifizierungsmethode.",
+      "missing_scopes": "Die gewährten Berechtigungen reichen nicht aus. Bitte stelle sicher, dass du alle angeforderten Berechtigungen erteilst.",
+      "reauth_account_mismatch": "Das für die erneute Authentifizierung verwendete Konto stimmt nicht mit dem ursprünglichen Konto überein.",
+      "reauth_successful": "Erneute Authentifizierung erfolgreich.",
+      "reauth_failed": "Erneute Authentifizierung fehlgeschlagen.",
+      "reconfigure_successful": "Konfiguration aktualisiert.",
+      "ip_control_pair_successful": "IP Control erfolgreich gekoppelt. Das Zugriffstoken wurde gespeichert.",
+      "st_device_updated": "SmartThings-Gerät aktualisiert. Die Integration wird neu geladen.",
+      "st_not_configured": "SmartThings ist für diesen Fernseher nicht konfiguriert.",
+      "st_device_missing": "Es wurde kein SmartThings-Gerät ausgewählt."
+    },
+    "create_entry": {
+      "default": "{name} erfolgreich konfiguriert"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Samsung TV Smart-Optionen",
+        "data": {
+          "logo_option": "Logo-Stil",
+          "use_local_logo": "Lokalen Logo-Cache verwenden",
+          "app_load_method": "App-Lademethode",
+          "use_st_status_info": "SmartThings für Status verwenden",
+          "use_st_channel_info": "SmartThings für Senderinformationen verwenden",
+          "show_channel_number": "Sendernummer anzeigen",
+          "power_on_method": "Einschaltmethode",
+          "show_adv_opt": "Erweiterte Optionen anzeigen"
+        }
+      },
+      "menu": {
+        "title": "Konfigurationsmenü",
+        "menu_options": {
+          "source_list": "Quellen konfigurieren",
+          "app_list": "Anwendungen konfigurieren",
+          "channel_list": "Sender konfigurieren",
+          "sync_ent": "Synchronisierte Entitäten",
+          "init": "Grundlegende Optionen",
+          "adv_opt": "Erweiterte Optionen",
+          "art_identify": "Kunstwerk-Identifizierung",
+          "save_exit": "Speichern und beenden"
+        }
+      },
+      "source_list": {
+        "title": "Quellen konfigurieren",
+        "description": "Definiere benutzerdefinierte Quellen (Name-Befehl-Paare).",
+        "data": {
+          "source_list": "Quellenliste"
+        }
+      },
+      "app_list": {
+        "title": "Anwendungen konfigurieren",
+        "description": "Definiere benutzerdefinierte Anwendungen (Name-App-ID-Paare).",
+        "data": {
+          "app_list": "Anwendungsliste"
+        }
+      },
+      "channel_list": {
+        "title": "Sender konfigurieren",
+        "description": "Definiere Lieblingssender (Name-Sendernummer-Paare).",
+        "data": {
+          "channel_list": "Senderliste"
+        }
+      },
+      "sync_ent": {
+        "title": "Synchronisierte Entitäten",
+        "description": "Wähle Entitäten aus, die mit dem Einschaltzustand des Fernsehers synchronisiert werden sollen.",
+        "data": {
+          "sync_turn_off": "Mit Fernseher ausschalten",
+          "sync_turn_on": "Mit Fernseher einschalten"
+        }
+      },
+      "adv_opt": {
+        "title": "Erweiterte Optionen",
+        "data": {
+          "app_launch_method": "App-Startmethode",
+          "wol_repeat": "Wake-on-LAN-Wiederholungsanzahl",
+          "ping_port": "Ping-Port (0 = automatisch)",
+          "ext_power_entity": "Externe Ein-/Aus-Entität",
+          "use_mute_check": "Stummschaltungszustand zur Einschalterkennung verwenden",
+          "dump_apps": "Debug: Apps ausgeben",
+          "toggle_art_mode": "Art-Modus beim Einschalten umschalten",
+          "st_poll_on_interval": "SmartThings-Intervall im eingeschalteten Zustand (s)",
+          "ip_control_poll_interval": "IP-Control-Intervall (s)",
+          "content_list_interval": "Aktualisierungsintervall der Kunstwerk-Inhaltsliste (s)",
+          "art_exit_source": "Quelle nach Verlassen des Art-Modus",
+          "external_audio_entity": "Statusentität der externen Soundbar oder des Receivers",
+          "rest_app_list": "Zusätzlich zu erkennende Apps",
+          "rest_app_poll_interval": "Aktualisierungsintervall für zusätzliche Apps (s)",
+          "report_art_mode_as_off": "Medienplayer im Art-Modus als aus melden",
+          "art_on_non_frame": "Frame-Art auf einem Nicht-Frame-Fernseher"
+        },
+        "data_description": {
+          "art_exit_source": "Eingang oder App, zu der gewechselt wird, wenn der Art-Modus über Home Assistant deaktiviert wird (Art-Modus-Schalter oder art_set_artmode). Leer lassen, um das eigene Verhalten des Fernsehers beizubehalten: Er kehrt zur letzten Quelle zurück, bei einem Frame oft TV (Samsung TV Plus). Wird nicht angewendet, wenn der Art-Modus mit der Fernbedienung verlassen wird.",
+          "external_audio_entity": "Optional: Verwende einen vorhandenen Medienplayer für die tatsächliche Lautstärke- und Stummschaltungsrückmeldung, während der Fernseher externe Lautsprecher nutzt. Die Steuerung des Fernsehers bleibt unverändert. Leer lassen, um die Werte des Fernsehers zu verwenden. Es wird kein zusätzliches Abfragen hinzugefügt. Wähle die tatsächliche Soundbar oder den Receiver, nicht eine Gruppe oder eine andere Entität, die diesen Fernseher spiegelt.",
+          "rest_app_list": "Ordne Anzeigenamen nativen Tizen-App-IDs für Apps zu, die bei der automatischen Erkennung fehlen. Leer lassen, um zusätzliche REST-Statusprüfungen zu deaktivieren.",
+          "rest_app_poll_interval": "Apps mit einem aktuellen Wert vom normalen Tracker benötigen keine zusätzlichen Prüfungen. Andere Apps werden standardmäßig alle 30 Sekunden aktualisiert, mit bis zu 120 geplanten Prüfungen pro App und Stunde. Die Ergebnisse werden zwischen den Aktualisierungen zwischengespeichert; Quellenwechsel und Art-Modus-Ereignisse können früher aktualisieren. Eine leere App-Liste fügt keine Anfragen hinzu.",
+          "report_art_mode_as_off": "Optional: Melde das Kunstwerk als aus, während art_mode_status eingeschaltet bleibt. Der normale Betrieb bleibt eingeschaltet; die Erfassung des physischen Einschaltzustands und die Art-Modus-Steuerung laufen weiter. Standardmäßig deaktiviert.",
+          "art_on_non_frame": "Optional: Aktiviere den Art-Modus für einen Fernseher, der sich selbst als Nicht-Frame meldet, aber die Art-App ausführt, etwa den Micro RGB R95H von 2026. Der Art-App-Kanal wird nach seiner Version gefragt und die Art-Modus-Entitäten werden nur erstellt, wenn er antwortet. Habe den Fernseher beim ersten Mal eingeschaltet. Standardmäßig deaktiviert."
+        }
+      },
+      "save_exit": {
+        "title": "Konfiguration speichern"
+      },
+      "art_identify": {
+        "title": "Kunstwerk-Identifizierung",
+        "description": "Identifiziert das auf dem Frame-Fernseher gezeigte Kunstwerk über eine umgekehrte Bildersuche (Google Vision), bestätigt durch ein LLM. Alle Felder sind optional außer dem Schalter; lasse einen Schlüssel leer, um den zuvor gespeicherten zu behalten.",
+        "data": {
+          "art_identify_enable": "Kunstwerk-Identifizierung aktivieren",
+          "art_vision_api_key": "Google Cloud Vision API-Schlüssel",
+          "art_llm_provider": "LLM-Anbieter",
+          "art_llm_api_key": "LLM-API-Schlüssel (Anthropic, OpenAI oder Gemini)",
+          "art_llm_model": "LLM-Modell (leer = Standard des Anbieters)",
+          "art_identify_personal": "Auch persönliche Fotos identifizieren (normalerweise aus)"
+        }
+      }
+    },
+    "error": {
+      "invalid_tv_list": "Ungültiges Listenformat. Bitte verwende ein gültiges JSON-Format.",
+      "ip_control_pair_failed": "Kopplung fehlgeschlagen. Stelle sicher, dass der Fernseher eingeschaltet und im normalen Betrieb (nicht im Art-Modus) ist und die IP-Fernbedienung aktiviert ist, und versuche es erneut.",
+      "ip_control_unreachable": "Der Fernseher konnte am Port 1516 nicht erreicht werden – dort lauscht nichts. Dieses Modell unterstützt höchstwahrscheinlich kein IP Control; der Zustand des Fernsehers und die Einstellung der IP-Fernbedienung sind nicht die Ursache. Nur die Entitäten für Hintergrundbeleuchtung, Farbton, Bildkalibrierung und Neustart hängen davon ab.",
+      "ip_control_no_host": "Für diesen Fernseher ist keine Host-Adresse konfiguriert.",
+      "invalid_rest_app_list": "Gib eindeutige Anzeigenamen und native App-IDs mit Buchstaben, Ziffern, Punkten, Unterstrichen oder Bindestrichen ein."
+    }
+  },
+  "application_credentials": {
+    "description": "Um die OAuth2-Authentifizierung mit Samsung TV Smart zu verwenden, musst du SmartThings-Entwickler-Zugangsdaten erstellen.\n\n**Einrichtungsanleitung:**\n\n1. Gehe zum [SmartThings-Entwicklerportal]({smartthings_portal})\n2. Melde dich mit deinem Samsung-Konto an\n3. Klicke auf **New Project** → Wähle **Automation for the Home**\n4. Gib deinem Projekt einen Namen (z. B. „Home Assistant TV“)\n5. Klicke in der Seitenleiste auf **Register App**\n6. Wähle **OAuth2 / Credentials**\n7. Fülle das Formular aus:\n   - **App Name**: Home Assistant Samsung TV\n   - **Redirect URI**: `{callback_url}`\n   - **Scopes**: Wähle `r:devices:*` und `x:devices:*`\n8. Klicke auf **Save** und kopiere deine Zugangsdaten unten\n\n[SmartThings-OAuth-Dokumentation]({oauth_docs})"
+  },
+  "exceptions": {
+    "oauth2_implementation_unavailable": {
+      "message": "OAuth2-Zugangsdaten sind nicht konfiguriert. Bitte füge SmartThings-Zugangsdaten unter Einstellungen → Geräte & Dienste → Anmeldedaten für Anwendungen hinzu."
+    }
+  },
+  "issues": {
+    "oauth_auth_failed": {
+      "title": "SmartThings-Authentifizierung für {device_name} fehlgeschlagen",
+      "description": "Home Assistant konnte das SmartThings-Zugriffstoken für **{device_name}** nicht aktualisieren. Das Aktualisierungstoken ist nicht mehr gültig – das kann passieren, wenn das Token widerrufen wird, abläuft oder von SmartThings rotiert wird.\n\nSmartThings-basierte Funktionen (Einschaltzustand, Bildmodus, Quellenauswahl) funktionieren nicht, bis du die Verbindung wiederherstellst.\n\nUm dies zu beheben, gehe zu **Einstellungen → Geräte & Dienste → Samsung TV Smart**, wähle den betroffenen Eintrag, wähle **Neu konfigurieren** und melde dich erneut mit Samsung an."
     }
   }
 }
