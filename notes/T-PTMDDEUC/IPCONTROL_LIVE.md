@@ -147,6 +147,26 @@ and comes only via SmartThings.
   power/energy property** here (TV energy rides the SmartThings energy
   capability / `db/smartthing/energy/*`, not a thing property).
 
+## Power / energy — computed, but SmartThings-only too
+
+`libmde-service-energy-consumption.so` is the TV's power meter
+(`powermeter::TVCalculator`): from the panel type, a per-model power-factors
+data file, and the `memory/ave/powerconsumption` model inputs it runs
+`calculate_power_consumption()` → "Instantaneous Power: %lf" and "Calculated
+Power Consumption: %lf (W/h)" (plus saved-power figures), per power status
+(NORMAL / PICTURE_OFF / LPM / SUSPEND / …). The result is **not written to a
+vconf key**: it is surfaced through the SmartThings energy capability
+(`EnergyType::makeResponse`; fields `ENERGY_VALUE` / `REQ_POWER` / `PowerSum`,
+and `db/smartthing/energy/*`). So, exactly like ambient light, real watts are
+not reachable without SmartThings. The only local, ST-free energy data is the
+**model inputs** in `memory/ave/powerconsumption` (APL, backlight duty, panel
+TEMP); deriving watts from them would mean replicating this calculator and its
+per-panel factors, which is not portable.
+
+(`libtvs-api.so` is the tuner/TV-service API — `GetLnbPower` etc., nothing for
+sensors or energy — and `libsamsung-svcmgr.so` is a service/AI-model registry;
+neither exposes a sensor or power value.)
+
 ## Side finding: reading vconf remotely over mobilebff
 
 The mobilebff channel (`/sec/tv/appdata/mobilebff`) exposes
