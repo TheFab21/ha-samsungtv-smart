@@ -167,6 +167,29 @@ per-panel factors, which is not portable.
 sensors or energy — and `libsamsung-svcmgr.so` is a service/AI-model registry;
 neither exposes a sensor or power value.)
 
+## OCF is locally exposed, but gated by ownership (live CoAP probe)
+
+Confirmed on the wire. The TV listens on CoAP `5683` (plain) and `5684` (DTLS),
+and an unsecured `GET coap://<tv>:5683/oic/res` answers `2.05 Content` — but it
+lists only the **onboarding / security** surface: `/oic/sec/doxm`
+(`oic.r.doxm`), `/oic/sec/pstat`, `/oic/d` (`oic.d.tv`), `/oic/p`,
+`/EasySetupResURI` (`oic.r.easysetup`), `/WiFiConfResURI`,
+`/CoapCloudConfResURI`, `/DevConfResURI`, `/sec/accesspointlist`. Every entry is
+marked secure (`"sec"`), endpoints `x.org.iotivity.tls`. The capability
+resources (the `x.com.st.d.sensor.light` above, the TV controls, the energy
+capability) are **not in the open discovery** — they sit behind the secure DTLS
+endpoint.
+
+`GET /oic/sec/doxm` (also unsecured) shows the device is already **owned**
+(`"owned": true`, a non-nil `devowneruuid` = the user's SmartThings), so the
+Owner Transfer Method is closed: an already-owned OCF device cannot be
+re-onboarded. Reading the secured resources would need either that owner's DTLS
+credential (held by the user's SmartThings, not extractable) or resetting the
+device's OCF ownership (which breaks their SmartThings). So there is **no local,
+SmartThings-free path** to the ambient-light or power values — proven end to
+end: not in vconf, no IP Control method, and OCF-gated behind an ownership the
+integration cannot hold.
+
 ## Side finding: reading vconf remotely over mobilebff
 
 The mobilebff channel (`/sec/tv/appdata/mobilebff`) exposes
