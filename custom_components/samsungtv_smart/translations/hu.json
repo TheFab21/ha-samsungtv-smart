@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Samsung TV Smart - Authentication",
-        "description": "Adja meg a Samsung TV adataidat. A SmartThings token opcionális, de erősen javasolt.\nMiután megerősítette, látnia kell egy felugró ablakot a TV-n, ami engedélyezést kér.",
+        "description": "Válassza ki, hogyan hitelesítsen a SmartThings-szel.\n\nOAuth állapot: {oauth_status}",
         "data": {
           "auth_method": "Authentication Method"
         }

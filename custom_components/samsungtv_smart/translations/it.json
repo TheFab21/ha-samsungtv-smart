@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Samsung TV Smart - Authentication",
-        "description": "Inserisci le informazioni del tuo Samsung TV. L'uso di SmartThings è opzionale ma fortemente consigliato.\nDopo aver confermato i dati, dovresti vedere un messaggio sul TV in cui è richiesta l'autorizzazione.",
+        "description": "Scegli come autenticarti con SmartThings.\n\nStato OAuth: {oauth_status}",
         "data": {
           "auth_method": "Authentication Method"
         }
