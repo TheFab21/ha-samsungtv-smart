@@ -267,9 +267,27 @@ ERROR_PARSE_STALE_TOKEN = -32700
 # accept them. Not a transport or pairing problem: retrying after switching
 # picture mode succeeds.
 ERROR_SERVER = -32002
-# Methods whose -32002 genuinely means "the current picture mode forbids this
-# write". Reads (notably getTVStates) return the same code for unrelated
-# reasons, so the picture-mode advice must not be attached to them.
+# The TV's server-error family, decoded from the live mde IP Control library
+# (T-PTMDDEUC / Tizen 9 — see notes/T-PTMDDEUC/IPCONTROL_LIVE.md). They all
+# carry message "Server error"; the data string is the real reason:
+#   -32000 "Unknown"            -32001 "Not supported model"
+#   -32002 "Failed"             -32003 "Invalid operation"
+#   -32004 "No support for batch request"
+# -32001 is a permanent model-capability verdict (latch it). -32000/-32002/
+# -32003 are state-dependent — an expert-picture write in a mode that drives
+# it automatically, or a volume read while audio is on an external speaker
+# output (directVolumeControl answers -32003 there) — so they are retryable
+# once the state changes, not a missing capability.
+ERROR_UNKNOWN = -32000
+ERROR_NOT_SUPPORTED_MODEL = -32001
+ERROR_INVALID_OPERATION = -32003
+ERROR_NO_BATCH = -32004
+# The server-error codes that mean "refused in the current state"; handled
+# like a mode lock (retry once the state changes), unlike -32001.
+SERVER_STATE_CODES = frozenset({ERROR_UNKNOWN, ERROR_SERVER, ERROR_INVALID_OPERATION})
+# Methods whose server-state error genuinely means "the current picture mode
+# forbids this write". Reads (notably getTVStates) return the same family for
+# unrelated reasons, so the picture-mode advice must not be attached to them.
 PICTURE_WRITE_METHODS = frozenset(
     {
         "applyPictureSettingsControl",
@@ -1042,11 +1060,20 @@ class SamsungIPControl:
                 raise SamsungIPControlAuthError(
                     f"token rejected (code {code}): {message} — re-pair required"
                 )
-            if code == ERROR_SERVER:
-                # The picture-mode explanation only applies to the expert
-                # picture WRITES it was written for. getTVStates also returns
-                # -32002 occasionally, and telling someone to change picture
-                # mode to fix a state READ sends them nowhere.
+            if code == ERROR_NOT_SUPPORTED_MODEL:
+                # -32001 "Not supported model": a definitive capability verdict,
+                # unlike the ambiguous -32601 below, so it is safe to latch.
+                raise SamsungIPControlUnsupportedError(
+                    f"TV returned error {code}: {message} — this control is not "
+                    "supported on this model"
+                )
+            if code in SERVER_STATE_CODES:
+                # -32000/-32002/-32003: refused in the current state. The
+                # picture-mode explanation only applies to the expert picture
+                # WRITES it was written for; reads (notably getTVStates) and a
+                # volume read on an external speaker output return the same
+                # family for unrelated reasons, so the picture-mode advice must
+                # not be attached to them.
                 if method in PICTURE_WRITE_METHODS:
                     raise SamsungIPControlModeLockedError(
                         f"{method} returned error {code}: {message} — the "
