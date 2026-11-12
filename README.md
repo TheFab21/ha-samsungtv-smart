@@ -1,6 +1,6 @@
 # SamsungTV Smart and Art Mode
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![Marketplace](https://img.shields.io/badge/Marketplace-Custom-orange.svg)](https://www.home-assistant.io/integrations/marketplace/)
 [![Version](https://img.shields.io/github/v/release/TheFab21/ha-samsungtv-smart?style=flat&color=blue)](https://github.com/TheFab21/ha-samsungtv-smart/releases/latest)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-%3E%3D2025.6.0-green.svg)](https://www.home-assistant.io)
 [![License: LGPL v2.1](https://img.shields.io/badge/License-LGPL%20v2.1-yellow.svg)](https://www.gnu.org/licenses/lgpl-2.1)
@@ -8,7 +8,7 @@
 
 A custom integration for Home Assistant to control Samsung Smart TVs (Tizen OS), based on the excellent work of [ollo69/ha-samsungtv-smart](https://github.com/ollo69/ha-samsungtv-smart).
 
-Installed through HACS as a **custom repository** (it is not in the HACS default store) — see [Installation](#installation) for the two-step setup.
+Installed through the Home Assistant **Marketplace** as a **custom repository** (it is not in the default catalogue) — see [Installation](#installation) for the setup. (The Marketplace replaced HACS in Home Assistant 2026.11; on older versions it is still HACS.)
 
 If this project is useful to you, you can support its development:
 
@@ -132,19 +132,19 @@ This fork is a drop-in replacement for ollo69's integration. Migration is straig
 
 1. **Remove ollo69's integration** for each TV via Settings → Integrations → SamsungTV Smart → Delete. Do not rename or remove any entities beforehand.
 
-2. **Uninstall ollo69 via HACS** — go to HACS → Integrations, find the ollo69 integration and remove it. Then **verify** that the `samsungtv_smart` folder is gone from your `config/custom_components/` directory (use File Editor or SSH). If it still exists, delete it manually.
+2. **Uninstall ollo69** — in the **Marketplace** (Settings → Marketplace → Installed; on HA before 2026.11, HACS → Integrations), find the ollo69 integration and remove it. Then **verify** that the `samsungtv_smart` folder is gone from your `config/custom_components/` directory (use File Editor or SSH). If it still exists, delete it manually.
 
-   > ⚠️ This step is critical: when migrating between two integrations sharing the same domain (`samsungtv_smart`), HACS can sometimes remove the newly installed files when uninstalling the old one. Always confirm the folder is absent before reinstalling.
+   > ⚠️ This step is critical: when migrating between two integrations sharing the same domain (`samsungtv_smart`), the store can sometimes remove the newly installed files when uninstalling the old one. Always confirm the folder is absent before reinstalling.
 
 3. **Restart Home Assistant** before proceeding. This ensures the old domain is fully cleared from HA's internal registry.
 
-4. **Install this fork** via HACS (add `https://github.com/TheFab21/ha-samsungtv-smart` as a custom repository, see [Installation](#installation)), then restart Home Assistant again.
+4. **Install this fork** via the Marketplace (add `TheFab21/ha-samsungtv-smart` as a custom repository, see [Installation](#installation)), then restart Home Assistant again.
 
 5. **Verify files are on disk** before trying to add the integration:
    ```bash
    ls /config/custom_components/samsungtv_smart/
    ```
-   If the folder is missing or empty despite HACS showing the integration as "Downloaded", use the HACS 3-dot menu → **Redownload** to force a fresh install.
+   If the folder is missing or empty despite the store showing the integration as "Downloaded", redownload it (Marketplace: open the entry → ⋮ → **Redownload**; HACS: 3-dot menu → **Redownload**) to force a fresh install.
 
 6. **Add each TV** using the badge below or via Settings → Devices & Services → + Add Integration → search **SamsungTV Smart**. Use the **exact same device name** as before — this preserves your entity IDs (e.g. `media_player.living_room_tv`).
 
@@ -165,13 +165,16 @@ This fork is a drop-in replacement for ollo69's integration. Migration is straig
 
 ## Installation
 
-### HACS (recommended)
+### Marketplace (recommended)
 
-This integration is a **custom repository** — it is not in the HACS default store, so it has to be added once by hand (there is no one-click link for custom repositories):
+Home Assistant **2026.11** folded HACS into the core as the built-in **Marketplace** (Settings → Marketplace). This integration is a **custom repository** — it is not in the default catalogue, so it has to be added once by hand:
 
-1. Go to **HACS → Integrations → ⋮ (top right) → Custom repositories**
-2. Add `https://github.com/TheFab21/ha-samsungtv-smart` as category **Integration**
-3. Search for **SamsungTV Smart**, install it, and restart Home Assistant
+1. Go to **Settings → Marketplace**
+2. Top right: **Add from link** (the ⋮ menu is for *Download source* / *Dismiss new repositories*, not for adding)
+3. Enter `TheFab21/ha-samsungtv-smart` (or the full `https://github.com/TheFab21/ha-samsungtv-smart`) and select **Add**. The first time, you'll approve a GitHub device sign-in — custom repositories need it (the catalogue does not).
+4. Open the **SamsungTV Smart** entry, **Download** it, and restart Home Assistant
+
+> On Home Assistant **before 2026.11**, HACS is still used: **HACS → Integrations → ⋮ (top right) → Custom repositories**, add `https://github.com/TheFab21/ha-samsungtv-smart` as category **Integration**, install, and restart. Existing HACS installs migrate to the Marketplace automatically on first start after updating to 2026.11.
 
 
 ### Manual
@@ -371,7 +374,7 @@ Click the badge above to open the config flow directly, or follow these steps ma
 4. Enter your **TV's IP address** (a static IP or DHCP reservation is strongly recommended).
 5. Follow the on-screen steps. Your TV may prompt you to accept the pairing request — accept it.
 
-> **Note**: Custom integrations installed via HACS do not appear under the "Samsung" brand group in the Add Integration search. If you can't find "SamsungTV Smart" in the search results, use the badge above — it opens the config flow directly regardless.
+> **Note**: Custom integrations installed via the Marketplace (or HACS) do not appear under the "Samsung" brand group in the Add Integration search. If you can't find "SamsungTV Smart" in the search results, use the badge above — it opens the config flow directly regardless.
 
 > **Tip**: If your TV is off and you are using Wake-on-LAN, make sure WOL is enabled in your TV's network settings.
 
@@ -1253,16 +1256,16 @@ automation:
 
 ### Integration not appearing in Add Integration
 
-Custom integrations installed via HACS do not appear under branded groups (e.g. "Samsung") in the Add Integration search. Use the badge in [Integration Setup](#integration-setup) to open the config flow directly, or search for `samsungtv` (not `samsung`) in the search box.
+Custom integrations installed via the Marketplace (or HACS) do not appear under branded groups (e.g. "Samsung") in the Add Integration search. Use the badge in [Integration Setup](#integration-setup) to open the config flow directly, or search for `samsungtv` (not `samsung`) in the search box.
 
-If the config flow still fails with *"This integration cannot be added from the UI"*, the most likely cause is that the integration files are missing from disk despite HACS showing it as installed — a known issue when migrating from ollo69 (same domain, same folder name).
+If the config flow still fails with *"This integration cannot be added from the UI"*, the most likely cause is that the integration files are missing from disk despite the store showing it as installed — a known issue when migrating from ollo69 (same domain, same folder name).
 
 **Verify files are present:**
 ```bash
 ls /config/custom_components/samsungtv_smart/
 ```
 
-If the folder is missing or empty, use HACS → SamsungTV Smart → ⋮ → **Redownload**, select the version explicitly, then restart Home Assistant.
+If the folder is missing or empty, redownload it — Marketplace: open the **SamsungTV Smart** entry → ⋮ → **Redownload**; HACS (HA < 2026.11): HACS → SamsungTV Smart → ⋮ → **Redownload** — select the version explicitly, then restart Home Assistant.
 
 If the folder exists but the flow still fails, enable DEBUG logging and check for errors on startup:
 ```yaml
