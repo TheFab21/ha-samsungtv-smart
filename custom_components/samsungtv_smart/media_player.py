@@ -836,6 +836,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     _ip_art_getter_supported: bool | None = None
     # Until when an app opened locally stays the running app (monotonic).
     _local_app_hold_until: float = 0.0
+    # Set once the "KEY_POWER can only toggle Art Mode" warning has been logged
+    # for this TV, so turning off a Frame without IP Control or SmartThings
+    # says why once per run instead of on every power off (#437).
+    _warned_ws_only_frame_power_off: bool = False
     # The app a local launch replaced; stale readings of it are ignored
     # during the hold (see _get_running_app).
     _local_app_replaced: str | None = None
@@ -4697,12 +4701,31 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     async def async_turn_off(self):
         """Turn the media player off.
 
-        Frame TV + SmartThings: use SmartThings REST switch/off which
-        reliably powers off regardless of current state (ON or Art Mode).
-        The WS KEY_POWER hold only toggles between ON and Art Mode on
-        Frame 2024 and never truly powers off.
-        Falls back to WS for non-Frame TVs or when SmartThings is absent.
+        IP Control powerOff first when it is paired: a real standby from TV
+        or Art Mode, confirmed by reading the power state back — the same
+        order the power switch uses. Then, on a Frame, SmartThings REST
+        switch/off, which also powers off from either state. The WS KEY_POWER
+        hold is the last resort: on 2024+ Frames it only toggles between TV
+        and Art Mode and never reaches standby (#437).
         """
+        if await self._async_ip_control_turn_off():
+            return
+
+        if (
+            not self._st
+            and self.support_art_mode != ArtModeSupport.UNSUPPORTED
+            and self._get_ip_control_client() is None
+            and not self._warned_ws_only_frame_power_off
+        ):
+            self._warned_ws_only_frame_power_off = True
+            self._log.warning(
+                "Turning off with neither IP Control nor SmartThings: only the "
+                "remote's KEY_POWER is left, and on 2024 and newer Frames it "
+                "switches between TV and Art Mode instead of going to standby. "
+                "Pair IP Control (Reconfigure → IP Control) for a real, "
+                "confirmed power off"
+            )
+
         if self._st and self.support_art_mode != ArtModeSupport.UNSUPPORTED:
             try:
                 await self._st.async_turn_off()
@@ -4719,16 +4742,70 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         if result:
             await self._async_switch_entity(False)
 
+    async def _async_ip_control_turn_off(self) -> bool:
+        """Power off over IP Control; True once handled, False to fall back.
+
+        ``powerControl`` powerOff is a real standby from TV or Art Mode, unlike
+        a KEY_POWER that a Frame reads as TV <-> Art Mode. It is only trusted
+        once the TV reports ``powerOff``: an unconfirmed or failed call falls
+        back to SmartThings / the remote, as the power switch does.
+        """
+        client = self._get_ip_control_client()
+        if client is None:
+            return False
+        if self._power_off_in_progress():
+            return True
+        try:
+            await client.async_power_off()
+            for delay in (0, 0.5):
+                if delay:
+                    await asyncio.sleep(delay)
+                if await client.async_get_power_state() == "powerOff":
+                    break
+            else:
+                self._log.debug("IP Control power off was not confirmed; falling back")
+                return False
+        except SamsungIPControlError as ex:
+            self._log.debug("IP Control power off failed (%s); falling back", ex)
+            return False
+
+        self._ws.set_power_off_request()
+        self._end_of_power_off = dt_util.utcnow() + timedelta(seconds=POWER_OFF_DELAY)
+        await self._async_switch_entity(False)
+        self._log.debug("Turned off via IP Control")
+        return True
+
     async def async_toggle(self):
-        """Toggle the power on the media player."""
-        if (
-            self.state == MediaPlayerState.ON
-            and self.support_art_mode != ArtModeSupport.UNSUPPORTED
+        """Toggle the power on the media player.
+
+        With "Toggle Art Mode on Power" set on a Frame, toggle switches between
+        TV and Art Mode instead of powering off, like a short press of the Frame
+        remote's power button: from Art Mode it goes back to the TV, while
+        watching it goes to Art Mode. From standby it still turns the TV on.
+        Art Mode is looked up first because, with "Report media player off in
+        Art Mode", the state reads off while the art is showing.
+        """
+        if self.support_art_mode != ArtModeSupport.UNSUPPORTED and self._get_option(
+            CONF_TOGGLE_ART_MODE, False
         ):
-            if self._get_option(CONF_TOGGLE_ART_MODE, False):
+            if self._art_mode_is_on() is True:
+                await self._async_leave_art_mode_for_toggle()
+                return
+            if self.state == MediaPlayerState.ON:
                 await self.async_set_art_mode()
                 return
         await super().async_toggle()
+
+    async def _async_leave_art_mode_for_toggle(self) -> None:
+        """Go from Art Mode back to the TV for the symmetric power toggle."""
+        if self.support_art_mode == ArtModeSupport.PARTIAL:
+            # No art channel to write to: a short KEY_POWER is the Frame's own
+            # TV <-> Art Mode toggle.
+            await self.async_send_command("KEY_POWER")
+            return
+        result = await self.async_art_set_artmode(False)
+        if "error" in result:
+            self._log.warning("Toggle: could not leave Art Mode (%s)", result["error"])
 
     async def async_volume_up(self):
         """Volume up the media player."""
