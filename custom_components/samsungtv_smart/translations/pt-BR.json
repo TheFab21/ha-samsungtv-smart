@@ -402,6 +402,13 @@
           "high": "Alto"
         }
       },
+      "ip_hdr_tone_mapping": {
+        "name": "Mapeamento de tons HDR",
+        "state": {
+          "active": "Ativo",
+          "static": "Estático"
+        }
+      },
       "ip_color_tone": {
         "name": "Tom de cor (IP Control)"
       },

@@ -488,6 +488,13 @@
           "high": "Élevé"
         }
       },
+      "ip_hdr_tone_mapping": {
+        "name": "Mappage des tons HDR",
+        "state": {
+          "active": "Actif",
+          "static": "Statique"
+        }
+      },
       "ip_color_tone": {
         "name": "Nuance de couleur (IP Control)"
       },

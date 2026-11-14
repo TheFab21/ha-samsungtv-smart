@@ -2,7 +2,8 @@
 
 notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md lists, per method, what a
 QN55LS03FAFXZA accepted live, and notes/TQ65S95HFTXXC/IPCONTROL_LIVE.md the same
-for a TQ65S95HFTXXC. The entities must only use methods and values marked
+for a TQ65S95HFTXXC, and notes/QE65S99HATXXU/IPCONTROL_LIVE.md for a
+QE65S99HATXXU. The entities must only use methods and values marked
 accepted in one of them, and every picture setting must be a picture write so a
 -32002 ("not in this picture mode / input") is reported as a TV-side state
 rather than a broken pairing.
@@ -24,6 +25,7 @@ NOTES = "\n".join(
     for model, name in (
         ("QN55LS03FAFXZA", "IPCONTROL_DECOMPILED.md"),
         ("TQ65S95HFTXXC", "IPCONTROL_LIVE.md"),
+        ("QE65S99HATXXU", "IPCONTROL_LIVE.md"),
     )
 )
 IPCONTROL = (CC / "api" / "ipcontrol.py").read_text()
@@ -59,8 +61,8 @@ def _verified_row(method):
 
 
 class TableTest(unittest.TestCase):
-    def test_ten_settings(self):
-        self.assertEqual(len(SETTINGS_FOUND), 10)
+    def test_eleven_settings(self):
+        self.assertEqual(len(SETTINGS_FOUND), 11)
 
     def test_every_method_was_accepted_live(self):
         for key, method, _param, _options in SETTINGS_FOUND:

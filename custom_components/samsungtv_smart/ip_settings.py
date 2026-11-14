@@ -3,7 +3,8 @@
 Every setting below was accepted, read and written, in normal viewing on a
 QN55LS03FAFXZA (2025 Frame, firmware T-PTMFAKUC-0090-1296.8) - see
 notes/QN55LS03FAFXZA/IPCONTROL_DECOMPILED.md, "Expert Picture Methods" - or on a
-TQ65S95HFTXXC (2026 S95H, Tizen 10) - see notes/TQ65S95HFTXXC/IPCONTROL_LIVE.md.
+TQ65S95HFTXXC (2026 S95H, Tizen 10) - see notes/TQ65S95HFTXXC/IPCONTROL_LIVE.md -
+or on a QE65S99HATXXU (2026 S99H) - see notes/QE65S99HATXXU/IPCONTROL_LIVE.md.
 Values a TV rejected are not offered. Like the other IP Control picture
 entities they answer only in normal viewing (not in Art Mode or while off), so
 they poll only then and are unavailable otherwise.
@@ -97,6 +98,16 @@ IP_SELECTS = (
         "contrastEnhancer",
         "mdi:contrast-box",
         options={"off": "Off", "low": "Low", "high": "High"},
+    ),
+    # The menu's two values, accepted on the S99H with HDR content playing.
+    # Off / On / Dynamic are refused. The 2025 Frame's getter reports "0",
+    # which matches no option, so the select stays unknown there.
+    IPSetting(
+        "ip_hdr_tone_mapping",
+        "HDRToneMappingControl",
+        "HDRToneMapping",
+        "mdi:chart-bell-curve-cumulative",
+        options={"active": "Active", "static": "Static"},
     ),
 )
 

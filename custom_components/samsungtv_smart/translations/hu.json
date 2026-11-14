@@ -402,6 +402,13 @@
           "high": "Magas"
         }
       },
+      "ip_hdr_tone_mapping": {
+        "name": "HDR tónusleképezés",
+        "state": {
+          "active": "Aktív",
+          "static": "Statikus"
+        }
+      },
       "ip_color_tone": {
         "name": "Színárnyalat (IP Control)"
       },

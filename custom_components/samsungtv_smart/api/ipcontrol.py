@@ -296,6 +296,7 @@ PICTURE_WRITE_METHODS = frozenset(
         "brightnessOptimizationControl",
         "contrastEnhancerControl",
         "gamma.BT1886Control",
+        "HDRToneMappingControl",
         "motionLightingControl",
         "peakBrightnessControl",
         "backlightControl",

@@ -488,6 +488,13 @@
           "high": "High"
         }
       },
+      "ip_hdr_tone_mapping": {
+        "name": "HDR tone mapping",
+        "state": {
+          "active": "Active",
+          "static": "Static"
+        }
+      },
       "ip_color_tone": {
         "name": "Color tone (IP Control)"
       },
