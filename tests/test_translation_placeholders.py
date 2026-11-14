@@ -160,3 +160,37 @@ def test_every_entity_translation_key_has_a_name():
 def test_strings_and_en_entity_sections_match():
     en = json.loads((ROOT / "translations" / "en.json").read_text())
     assert STRINGS["entity"] == en["entity"]
+
+
+# ── Translation files stay in step with strings.json ─────────────────────────
+
+
+def _flatten(node, path=""):
+    if isinstance(node, dict):
+        out = {}
+        for key, value in node.items():
+            out.update(_flatten(value, f"{path}/{key}"))
+        return out
+    return {path: node}
+
+
+def test_en_json_is_strings_json():
+    # Only the entity section used to be compared, so en.json and strings.json
+    # drifted apart elsewhere: the art exit source help gained a sentence in
+    # en.json only, and the manual-setup link was a bare URL in en.json.
+    en = json.loads((ROOT / "translations" / "en.json").read_text())
+    assert _flatten(en) == _flatten(STRINGS)
+
+
+def test_every_translation_keeps_the_reference_placeholders():
+    # hu, it and pt-BR once kept a pre-OAuth user-step description that had
+    # lost {oauth_status}; hassfest does not catch a dropped placeholder.
+    reference = _flatten(STRINGS)
+    broken = []
+    for path in sorted((ROOT / "translations").glob("*.json")):
+        for key, text in _flatten(json.loads(path.read_text())).items():
+            if key not in reference:
+                broken.append(f"{path.stem}: {key} (not in strings.json)")
+            elif _placeholders(str(text)) != _placeholders(str(reference[key])):
+                broken.append(f"{path.stem}: {key}")
+    assert not broken, broken

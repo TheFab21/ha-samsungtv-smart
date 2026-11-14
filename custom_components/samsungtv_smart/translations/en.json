@@ -23,7 +23,7 @@
       },
       "manual": {
         "title": "Manual Configuration",
-        "description": "Enter your TV's IP address and SmartThings credentials.\n\nTo create a Personal Access Token, visit {st_tokens_url}",
+        "description": "Enter your TV's IP address and SmartThings credentials.\n\nTo create a Personal Access Token, visit [SmartThings Tokens]({st_tokens_url})",
         "data": {
           "host": "TV IP Address",
           "name": "Device Name",
