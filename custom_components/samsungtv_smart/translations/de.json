@@ -128,6 +128,13 @@
           "high": "Hoch"
         }
       },
+      "ip_hdr_tone_mapping": {
+        "name": "HDR-Tone-Mapping",
+        "state": {
+          "active": "Aktiv",
+          "static": "Statisch"
+        }
+      },
       "ip_color_tone": {
         "name": "Farbton (IP Control)"
       },

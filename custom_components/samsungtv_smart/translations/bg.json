@@ -488,6 +488,13 @@
           "high": "Високо"
         }
       },
+      "ip_hdr_tone_mapping": {
+        "name": "HDR тонално картографиране",
+        "state": {
+          "active": "Активно",
+          "static": "Статично"
+        }
+      },
       "ip_color_tone": {
         "name": "Цветови тон (IP Control)"
       },
