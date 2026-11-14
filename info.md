@@ -1,8 +1,9 @@
 # SamsungTV Smart and Art Mode
 
 Control Samsung Smart TVs (Tizen OS) from Home Assistant, with first-class
-support for **The Frame**. A maintained fork of
-[ollo69/ha-samsungtv-smart](https://github.com/ollo69/ha-samsungtv-smart).
+support for **The Frame**. An evolution of
+[ollo69/ha-samsungtv-smart](https://github.com/ollo69/ha-samsungtv-smart),
+now well beyond the original.
 
 ## What this fork adds
 
@@ -25,12 +26,17 @@ support for **The Frame**. A maintained fork of
 
 ## Install
 
-This is a HACS **custom repository** (it is not in the HACS default store,
-because the `samsungtv_smart` domain belongs to the upstream project).
+This is a **custom repository** (it is not in the default catalogue, because
+the `samsungtv_smart` domain belongs to the upstream project). Home Assistant
+2026.11 replaced HACS with the built-in **Marketplace**.
 
-1. HACS → Integrations → ⋮ → **Custom repositories**
-2. Add `https://github.com/TheFab21/ha-samsungtv-smart` as **Integration**
-3. Search for **SamsungTV Smart** and install, then restart Home Assistant.
+1. Settings → Marketplace → **Add from link** (top right)
+2. Enter `TheFab21/ha-samsungtv-smart` and select **Add** (approve the GitHub
+   device sign-in the first time — custom repositories need it)
+3. Open **SamsungTV Smart**, download it, then restart Home Assistant.
+
+On Home Assistant before 2026.11, use HACS → Integrations → ⋮ → **Custom
+repositories** instead.
 
 Full setup, SmartThings authentication and options are in the
 [README](https://github.com/TheFab21/ha-samsungtv-smart#readme).
