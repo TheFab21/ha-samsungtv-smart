@@ -1803,6 +1803,8 @@ Frame Art API based on [xchwarze/samsung-tv-ws-api](https://github.com/xchwarze/
 
 WebSocket library: [websocket-client](https://github.com/websocket-client/websocket-client) / [Xchwarze](https://github.com/Xchwarze).
 
+Code contributions: thanks to [@rudizl](https://github.com/rudizl) for a long run of pull requests — IP Control expert picture and eco settings, uploads fitted to how the Frame hangs, Art Store collections in the slideshow, SmartThings power in diagnostics, entity and service translation keys, the full Bulgarian translation, and many careful fixes across the art, gallery and recorder paths.
+
 Special thanks to [@PrestonMcAfee](https://github.com/PrestonMcAfee) and [@potatosalad](https://github.com/potatosalad) for extensive real-world testing across multiple TV generations and detailed bug reports — many of the 8.0.0 reliability fixes exist because of their feedback.
 
 ---
