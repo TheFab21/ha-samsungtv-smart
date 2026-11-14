@@ -224,7 +224,8 @@
           "rest_app_list": "Map display names to native Tizen app IDs for apps missing from automatic discovery. Leave empty to disable additional REST status checks.",
           "rest_app_poll_interval": "Apps with a recent reading from the normal tracker need no extra checks. Other apps refresh every 30 seconds by default, with up to 120 scheduled checks per app per hour. Results are cached between refreshes; source changes and Art Mode events can refresh sooner. An empty app list adds no requests.",
           "report_art_mode_as_off": "Optional: report artwork as off while keeping art_mode_status on. Normal viewing remains on; physical power tracking and Art Mode controls continue. Disabled by default.",
-          "art_on_non_frame": "Optional: enable Art Mode for a TV that reports itself as not a Frame but runs the art app, such as the 2026 Micro RGB R95H. The art-app channel is asked for its version and the Art Mode entities are created only when it answers. Have the TV on the first time. Disabled by default."
+          "art_on_non_frame": "Optional: enable Art Mode for a TV that reports itself as not a Frame but runs the art app, such as the 2026 Micro RGB R95H. The art-app channel is asked for its version and the Art Mode entities are created only when it answers. Have the TV on the first time. Disabled by default.",
+          "toggle_art_mode": "Frame TVs only. When the media player's toggle action is used, switch between TV and Art Mode instead of powering off, like a short press of the Frame remote's power button: from Art Mode it goes back to the TV, while watching it goes to Art Mode, and from standby it turns the TV on. Turn on, turn off and the Power switch are not affected."
         }
       },
       "save_exit": {

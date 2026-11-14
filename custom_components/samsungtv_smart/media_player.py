@@ -4776,15 +4776,36 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         return True
 
     async def async_toggle(self):
-        """Toggle the power on the media player."""
-        if (
-            self.state == MediaPlayerState.ON
-            and self.support_art_mode != ArtModeSupport.UNSUPPORTED
+        """Toggle the power on the media player.
+
+        With "Toggle Art Mode on Power" set on a Frame, toggle switches between
+        TV and Art Mode instead of powering off, like a short press of the Frame
+        remote's power button: from Art Mode it goes back to the TV, while
+        watching it goes to Art Mode. From standby it still turns the TV on.
+        Art Mode is looked up first because, with "Report media player off in
+        Art Mode", the state reads off while the art is showing.
+        """
+        if self.support_art_mode != ArtModeSupport.UNSUPPORTED and self._get_option(
+            CONF_TOGGLE_ART_MODE, False
         ):
-            if self._get_option(CONF_TOGGLE_ART_MODE, False):
+            if self._art_mode_is_on() is True:
+                await self._async_leave_art_mode_for_toggle()
+                return
+            if self.state == MediaPlayerState.ON:
                 await self.async_set_art_mode()
                 return
         await super().async_toggle()
+
+    async def _async_leave_art_mode_for_toggle(self) -> None:
+        """Go from Art Mode back to the TV for the symmetric power toggle."""
+        if self.support_art_mode == ArtModeSupport.PARTIAL:
+            # No art channel to write to: a short KEY_POWER is the Frame's own
+            # TV <-> Art Mode toggle.
+            await self.async_send_command("KEY_POWER")
+            return
+        result = await self.async_art_set_artmode(False)
+        if "error" in result:
+            self._log.warning("Toggle: could not leave Art Mode (%s)", result["error"])
 
     async def async_volume_up(self):
         """Volume up the media player."""
