@@ -65,6 +65,7 @@ you can tune.
 - [Automations & Tips](#automations--tips)
 - [Troubleshooting](#troubleshooting)
   - [Integration not appearing in Add Integration](#integration-not-appearing-in-add-integration)
+  - [Power off only switches Art Mode (Frame 2024+)](#power-off-only-switches-art-mode-frame-2024)
   - [Art Mode won't turn on from standby (some 2020 Frames)](#art-mode-wont-turn-on-from-standby-some-2020-frames)
   - [Art Mode said ON but the screen stayed dark](#art-mode-said-on-but-the-screen-stayed-dark)
   - [SmartThings stops working: "Forbidden"](#smartthings-stops-working-forbidden-in-the-log)
@@ -607,7 +608,7 @@ The **Requires** column below says what each one needs.
 |---|---|---|---|
 | `media_player.<tv_name>` | Media Player | — | Main TV control entity |
 | `remote.<tv_name>` | Remote | — | Send remote key sequences |
-| `switch.<tv_name>_power` | Switch | — | Power the TV on/off (uses SmartThings when configured, WebSocket/WOL otherwise) |
+| `switch.<tv_name>_power` | Switch | — | Power the TV on/off: IP Control when paired, then SmartThings, then WebSocket/WOL. On a 2024+ Frame with neither IP Control nor SmartThings, *off* can only toggle Art Mode — see [Power off only switches Art Mode](#power-off-only-switches-art-mode-frame-2024) |
 | `select.<tv_name>_picture_mode` | Select | SmartThings **or** IP Control | Change picture mode (Standard, Movie, etc.). The list and the current mode come first from the TV itself, over its local quick-settings channel: the modes the current input offers, updated within a second of an input switch or a change made with the remote, with no cloud request (a Frame 2024 lists FILMMAKER MODE on the TV input and not on HDMI). When that channel does not answer: with SmartThings the options are the TV's per-input list from the cloud, as named in its menu; without it, IP Control offers Dynamic, Standard, Movie, FILMMAKER MODE and Eco (plus any other mode the TV reports), translated by Home Assistant and stable across TV menu languages — measured on a Frame 2024 and a 2026 S95H. With AI Mode on, a TV offers AI Optimised and AI Customisation instead — see [Picture mode with AI Mode on](#picture-mode-with-ai-mode-on). Available in normal viewing, not in Art Mode |
 | `select.<tv_name>_source` | Select | Media player | The media player's source list (inputs, apps, channels) and current source as a select; selecting calls `media_player.select_source`. Added because the Home Assistant mobile app's media player dialog showed only the current source of the list. Mirrors the published state, no request of its own; unavailable while the TV is off, keeping its options |
 | `select.<tv_name>_sound_mode`, `_ai_mode`, `_sleep_timer`, `_energy_saving_solution`, `_game_mode`, `_picture_clarity`, `_contrast_enhancer`, `_color_tone`, `_color_space`, `_digital_audio_format` | Select | Local (quick-settings channel) | The TV's own quick settings, read and set locally with no SmartThings call. Options and labels are the TV's, in its menu language, and follow the input (with a receiver on, sound mode offers Standard only). A change made with the remote shows within a second; a selection counts as done only once the TV reports it. Each entity appears the first time the TV reports that setting, so a TV without it gets none. Unavailable while the TV is off or in Art Mode, or when the TV greys the setting out. `color_tone` is not added when IP Control is paired (its own select covers it). Measured on a Frame 2024 |
@@ -1340,6 +1341,18 @@ Mitigations built into this fork:
 - Proper handling of invalid WebSocket close opcodes
 - Active connection cleanup to prevent zombie connections
 - Use the **nightly reload automation** above as a preventive measure.
+
+### Power off only switches Art Mode (Frame 2024+)
+
+**Symptom:** turning `switch.<tv_name>_power` (or the media player) off makes a Frame leave Art Mode and show the home screen, or go *into* Art Mode, instead of going to a black-screen standby. The log shows `Sending key KEY_POWER` twice, about 3 s apart.
+
+**Why:** with neither IP Control nor SmartThings, the only power-off left is the remote's `KEY_POWER`, held for 3 s over the WebSocket. On 2024 and newer Frames the TV reads that key as **TV ↔ Art Mode**, however long it is held, so it never reaches standby. Older Frames and non-Frame TVs do go to standby with it. The integration logs a warning the first time this happens.
+
+**Fix — pair IP Control:**
+1. On the TV: **Settings → All Settings → Connection → Network → Expert Settings → IP Remote** → on.
+2. With the TV **on in normal viewing (not Art Mode)**: **Settings → Devices & services → SamsungTV Smart → ⋮ → Reconfigure → IP Control**, tick **Pair now** and accept the prompt on the TV. Leave **Enable IP Control** on; *Switch Art Mode over IP Control* is not needed for power.
+
+Power off then sends IP Control `powerOff`, from TV or Art Mode, and is only trusted once the TV reports `powerOff`; otherwise it falls back to SmartThings, then the remote. If pairing says port 1516 is unreachable, this model has no IP Control server, and SmartThings is the only remaining real power off.
 
 ### Art Mode won't turn on from standby (some 2020 Frames)
 
