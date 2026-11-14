@@ -541,5 +541,365 @@
         "name": "Art Mode color temperature"
       }
     }
+  },
+  "services": {
+    "select_picture_mode": {
+      "name": "Select Picture Mode",
+      "description": "Send to samsung TV the command to change picture mode.",
+      "fields": {
+        "picture_mode": {
+          "name": "Picture Mode",
+          "description": "Name of the picture mode to switch to. Possible options can be found in the picture_mode_list state attribute. Applied over IP Control when paired and the TV supports it, then SmartThings, then a remote key."
+        }
+      }
+    },
+    "start_hue_sync": {
+      "name": "Start Hue Sync",
+      "description": "Start Philips Hue Sync. Launches the Hue Sync app on the TV first when no sync session is running."
+    },
+    "stop_hue_sync": {
+      "name": "Stop Hue Sync",
+      "description": "Stop Philips Hue Sync on the TV."
+    },
+    "send_text": {
+      "name": "Send Text",
+      "description": "Type a text string into a native Tizen text field (Settings search, the built-in web browser address bar, a Wi-Fi password or login field), where the on-screen Tizen keyboard is shown. It does NOT work in the search screens of streaming apps (Netflix, YouTube, Prime...), which draw their own character grid rather than a Tizen text field.",
+      "fields": {
+        "text": {
+          "name": "Text",
+          "description": "The text to type on the TV."
+        }
+      }
+    },
+    "art_get_artmode": {
+      "name": "Get Art Mode Status",
+      "description": "Get the current Art Mode status from Samsung Frame TV."
+    },
+    "art_set_artmode": {
+      "name": "Set Art Mode Status",
+      "description": "Enable or disable Art Mode on Samsung Frame TV.",
+      "fields": {
+        "enabled": {
+          "name": "Enabled",
+          "description": "True to enable Art Mode, False to disable"
+        }
+      }
+    },
+    "art_available": {
+      "name": "Get Available Artwork",
+      "description": "Get list of all available artwork on the Samsung Frame TV.",
+      "fields": {
+        "category_id": {
+          "name": "Category ID",
+          "description": "Optional category filter (MY-C0002 for My Photos, MY-C0004 for Favorites)"
+        }
+      }
+    },
+    "art_get_current": {
+      "name": "Get Current Artwork",
+      "description": "Get information about the currently displayed artwork."
+    },
+    "art_identify": {
+      "name": "Identify Artwork",
+      "description": "Identify the artwork currently displayed on a Frame TV via reverse image search (Google Vision) confirmed by an LLM. Requires the opt-in Art Identification options to be configured. Returns the metadata (use a response variable). Results are cached per artwork.",
+      "fields": {
+        "force": {
+          "name": "Force refresh",
+          "description": "Ignore the cache and re-run the identification for this artwork."
+        }
+      }
+    },
+    "art_select_image": {
+      "name": "Select Artwork",
+      "description": "Select and display a specific piece of artwork.",
+      "fields": {
+        "content_id": {
+          "name": "Content ID",
+          "description": "The content ID of the artwork (e.g., SAM-F0206, MY_F0001)"
+        },
+        "category_id": {
+          "name": "Category ID",
+          "description": "Optional category ID"
+        },
+        "show": {
+          "name": "Show Immediately",
+          "description": "If true, immediately display the artwork"
+        },
+        "wake": {
+          "name": "Wake the TV",
+          "description": "If true (default), power the TV on and switch it to Art Mode first. If false, only change the artwork while Art Mode is already on screen, and do nothing otherwise — for slideshow loops that keep running while the TV is off."
+        }
+      }
+    },
+    "art_upload": {
+      "name": "Upload Artwork",
+      "description": "Upload an image file to the Samsung Frame TV.",
+      "fields": {
+        "file_path": {
+          "name": "File Path",
+          "description": "Path to the image file to upload"
+        },
+        "matte_id": {
+          "name": "Matte Style",
+          "description": "Matte style, \"type_color\" (e.g. modern_apricot, shadowbox_polar). Both halves must exist on YOUR TV — call art_get_matte_list to see its lists, or read the options of the Matte Type / Matte Color selects. An id the TV does not know is refused before the upload. Use \"none\" for no matte."
+        },
+        "file_type": {
+          "name": "File Type",
+          "description": "Image file type (png or jpg)"
+        },
+        "show": {
+          "name": "Show Immediately",
+          "description": "Display the artwork on the TV as soon as it is uploaded."
+        }
+      }
+    },
+    "art_upload_batch": {
+      "name": "Batch Upload Artwork",
+      "description": "Upload every image (jpg/png) in a folder to the Frame TV. Re-running the same folder uploads only new/changed files (a hidden per-folder sidecar tracks what was uploaded), and uploads are throttled so large batches don't fail partway through. Returns the uploaded content_ids (use a response variable).",
+      "fields": {
+        "folder": {
+          "name": "Folder",
+          "description": "Absolute path to the folder of images to upload."
+        },
+        "matte_id": {
+          "name": "Matte Style",
+          "description": "Matte style (format: type_color, e.g., modern_apricot, shadowbox_polar)."
+        },
+        "throttle": {
+          "name": "Throttle (seconds)",
+          "description": "Delay between uploads. Large batches fail without spacing."
+        },
+        "skip_unchanged": {
+          "name": "Skip unchanged files",
+          "description": "Skip files already uploaded and unchanged since the last run."
+        },
+        "dedup": {
+          "name": "Skip perceptual duplicates",
+          "description": "Also skip a file that visually matches art already on the TV (compared against the downloaded thumbnails). Strict match to avoid false skips. Requires thumbnails to have been downloaded first."
+        }
+      }
+    },
+    "art_delete": {
+      "name": "Delete Artwork",
+      "description": "Delete an uploaded artwork from the TV. Only user-uploaded content (MY-* or MY_*) can be deleted.",
+      "fields": {
+        "content_id": {
+          "name": "Content ID",
+          "description": "The content ID to delete (must start with MY- or MY_)"
+        }
+      }
+    },
+    "art_get_thumbnail": {
+      "name": "Get Artwork Thumbnail",
+      "description": "Download the thumbnail image for a specific piece of artwork. Thumbnails are saved to /config/www/frame_art/ in organized subdirectories (personal/, store/, other/). Skips if file already exists unless Force Download is enabled. Works with all image types including Samsung Art Store.",
+      "fields": {
+        "content_id": {
+          "name": "Content ID",
+          "description": "The content ID of the artwork (e.g., MY_F0001 for personal photos, SAM-S* for Art Store)"
+        },
+        "force_download": {
+          "name": "Force Download",
+          "description": "Re-download even if file already exists"
+        }
+      }
+    },
+    "art_get_thumbnails_batch": {
+      "name": "Batch Download Artwork Thumbnails",
+      "description": "Download thumbnails for multiple artworks at once. Automatically organizes into /config/www/frame_art/personal/, /store/, /other/. Skips files that already exist (unless Force Download is enabled). All image types supported equally - NO DRM assumptions! Perfect for Lovelace galleries.",
+      "fields": {
+        "category_id": {
+          "name": "Category ID",
+          "description": "Optional category filter (MY-C0002=My Photos, MY-C0004=Favorites, MY-C0008=All). Leave empty for all artworks."
+        },
+        "favorites_only": {
+          "name": "Favorites Only",
+          "description": "Enable to download ONLY favorited artworks (leave OFF for all artworks)"
+        },
+        "personal_only": {
+          "name": "Personal Photos Only",
+          "description": "Enable to download ONLY your uploaded photos (leave OFF for all artworks)"
+        },
+        "force_download": {
+          "name": "Force Download",
+          "description": "Re-download files even if they already exist (normally skipped to save time)"
+        }
+      }
+    },
+    "art_set_brightness": {
+      "name": "Set Art Mode Brightness",
+      "description": "Set the brightness level for Art Mode display. Input 0-100 is converted to TV's 1-10 scale.",
+      "fields": {
+        "brightness": {
+          "name": "Brightness",
+          "description": "Brightness level (0-100, converted to TV's 1-10 scale)"
+        },
+        "wake": {
+          "name": "Wake the TV",
+          "description": "If true (default), power the TV on and switch it to Art Mode first. If false, only apply the change while Art Mode is already on screen, and do nothing otherwise — for automations that must not pull the TV out of an app or a menu."
+        }
+      }
+    },
+    "art_get_brightness": {
+      "name": "Get Art Mode Brightness",
+      "description": "Get the current brightness level for Art Mode display. Returns both TV scale (1-10) and UI scale (0-100)."
+    },
+    "art_set_color_temperature": {
+      "name": "Set Art Mode Color Temperature",
+      "description": "Set the color temperature for Art Mode display. Range -5 to +5 (negative = warmer, 0 = neutral, positive = cooler).",
+      "fields": {
+        "color_temperature": {
+          "name": "Color Temperature",
+          "description": "Color temperature value (-5 = warmest, 0 = neutral, +5 = coolest)"
+        },
+        "wake": {
+          "name": "Wake the TV",
+          "description": "If true (default), power the TV on and switch it to Art Mode first. If false, only apply the change while Art Mode is already on screen, and do nothing otherwise — for automations that must not pull the TV out of an app or a menu."
+        }
+      }
+    },
+    "art_get_color_temperature": {
+      "name": "Get Art Mode Color Temperature",
+      "description": "Get the current color temperature for Art Mode display."
+    },
+    "art_change_matte": {
+      "name": "Change Artwork Matte",
+      "description": "Change the matte/frame style for a piece of artwork.",
+      "fields": {
+        "content_id": {
+          "name": "Content ID",
+          "description": "The content ID of the artwork"
+        },
+        "matte_id": {
+          "name": "Matte ID",
+          "description": "Matte style ID (format: type_color). Types: none, modernthin, modern, modernwide, flexible, shadowbox, panoramic, triptych, mix, squares. Colors: black, neutral, antique, warm, polar, sand, seafoam, sage, burgandy, navy, apricot, byzantine, lavender, redorange, skyblue, turquoise"
+        },
+        "wake": {
+          "name": "Wake the TV",
+          "description": "If true (default), power the TV on and switch it to Art Mode first. If false, only apply the change while Art Mode is already on screen, and do nothing otherwise — for automations that must not pull the TV out of an app or a menu."
+        }
+      }
+    },
+    "art_set_photo_filter": {
+      "name": "Set Photo Filter",
+      "description": "Apply a photo filter effect to artwork.",
+      "fields": {
+        "content_id": {
+          "name": "Content ID",
+          "description": "The content ID of the artwork"
+        },
+        "filter_id": {
+          "name": "Filter ID",
+          "description": "Filter name to apply"
+        }
+      }
+    },
+    "art_get_photo_filter_list": {
+      "name": "Get Photo Filter List",
+      "description": "Get list of available photo filters."
+    },
+    "art_get_matte_list": {
+      "name": "Get Matte List",
+      "description": "Get the matte types and colours this TV supports. Returns response data — call it with a response variable, or run it from Developer Tools > Actions to see the lists."
+    },
+    "art_get_device_info": {
+      "name": "Get Art Device Info",
+      "description": "Read the art app's capability flags (motion sensor, brightness sensor, colour tone, resolution, flash size), the panel orientation and the Art Mode picture type. Returns response data."
+    },
+    "art_set_picture_mode": {
+      "name": "Set Art Picture Mode",
+      "description": "Set the Art Mode picture type (the art app's art_picture_mode). The value is the TV platform's own number: read the current one with art_get_device_info, or from the Frame Art sensor's art_picture_mode attribute, before changing it.",
+      "fields": {
+        "art_picture_mode": {
+          "name": "Art picture mode",
+          "description": "Picture type value as reported by the TV"
+        }
+      }
+    },
+    "art_restart_app": {
+      "name": "Restart the Art Mode app",
+      "description": "Stop and relaunch the TV's built-in Art Mode app (org.tizen.art-app). Last resort for a Frame whose art app has stopped answering — the one whose Art Mode no longer toggles from Home Assistant nor from the TV's own remote. It is the software equivalent of a power cycle, without cutting the power. EXPERIMENTAL: the art app is a built-in Tizen app and some models decline to stop one, in which case the TV accepts the command and nothing changes. The panel may go dark while the app is down. The response reports the stop and the start separately.",
+      "fields": {
+        "delay": {
+          "name": "Delay",
+          "description": "Seconds to wait between stopping the app and launching it again. Raise it if the app comes back in the same wedged state."
+        }
+      }
+    },
+    "art_recover": {
+      "name": "Recover the Art Mode channel",
+      "description": "Press KEY_POWER once to revive a Frame whose Art Mode channel has wedged — the socket connects but ms.channel.ready never arrives and every art request times out. On some 2020 Frames this is the only thing that brings the art app back (art_restart_app does nothing there). Meant for TVs with no IP Control paired, driven from your own automation. WARNING: KEY_POWER TOGGLES Art Mode on a Frame — pressing it while the TV is already in Art Mode turns the panel off. The service therefore refuses when Art Mode is already on, and when the TV is off; it acts only on a powered TV that is not currently in Art Mode. It presses once, waits, and reports whether Art Mode came back.",
+      "fields": {
+        "delay": {
+          "name": "Delay",
+          "description": "Seconds to wait after the key press before reading back whether Art Mode recovered."
+        }
+      }
+    },
+    "art_set_favourite": {
+      "name": "Set Favourite Status",
+      "description": "Add or remove artwork from favourites.",
+      "fields": {
+        "content_id": {
+          "name": "Content ID",
+          "description": "The content ID of the artwork"
+        },
+        "status": {
+          "name": "Status",
+          "description": "'on' to add to favourites, 'off' to remove"
+        }
+      }
+    },
+    "art_set_slideshow": {
+      "name": "Set Slideshow",
+      "description": "Configure artwork slideshow settings.",
+      "fields": {
+        "duration": {
+          "name": "Duration",
+          "description": "Rotation interval. Pick a preset or enter a custom value (e.g. \"30\", \"30min\", \"180\") if your Frame model supports durations outside the presets."
+        },
+        "shuffle": {
+          "name": "Shuffle",
+          "description": "Enable shuffle mode"
+        },
+        "category_id": {
+          "name": "Category",
+          "description": "What to rotate. Pick a My Collection category, or type an Art Store collection's full id to play it (what the TV's own \"Display All\" does) - the current_category_id attribute of the Frame Art sensor while one of its works is shown, e.g. STORE22_C0003_SC_477."
+        },
+        "sub_category_id": {
+          "name": "Sub-category",
+          "description": "Passed through as the Art app's sub_category_id. Leave empty: a 2025 Frame plays a collection from its full id in Category alone."
+        },
+        "wake": {
+          "name": "Wake the TV",
+          "description": "If true (default), power the TV on and switch it to Art Mode first. If false, only apply the change while Art Mode is already on screen, and do nothing otherwise — for automations that must not pull the TV out of an app or a menu."
+        }
+      }
+    },
+    "art_set_auto_rotation": {
+      "name": "Set Auto Rotation",
+      "description": "Configure automatic artwork rotation. Functionally identical to art_set_slideshow — both service names are aliases that target the Frame TV's artwork rotation feature; the integration routes the request to whichever underlying Samsung API the TV responds to.",
+      "fields": {
+        "duration": {
+          "name": "Duration",
+          "description": "Rotation interval. Pick a preset or enter a custom value (e.g. \"30\", \"30min\", \"180\") if your Frame model supports durations outside the presets."
+        },
+        "shuffle": {
+          "name": "Shuffle",
+          "description": "Enable shuffle mode"
+        },
+        "category_id": {
+          "name": "Category",
+          "description": "What to rotate. Pick a My Collection category, or type an Art Store collection's full id to play it (what the TV's own \"Display All\" does) - the current_category_id attribute of the Frame Art sensor while one of its works is shown, e.g. STORE22_C0003_SC_477."
+        },
+        "sub_category_id": {
+          "name": "Sub-category",
+          "description": "Passed through as the Art app's sub_category_id. Leave empty: a 2025 Frame plays a collection from its full id in Category alone."
+        },
+        "wake": {
+          "name": "Wake the TV",
+          "description": "If true (default), power the TV on and switch it to Art Mode first. If false, only apply the change while Art Mode is already on screen, and do nothing otherwise — for automations that must not pull the TV out of an app or a menu."
+        }
+      }
+    }
   }
 }
