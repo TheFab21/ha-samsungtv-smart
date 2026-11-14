@@ -453,6 +453,7 @@ art_set_photo_filter:
       example: "ink"
       selector:
         select:
+          translation_key: photo_filter
           options:
             - "none"
             - "mono"
@@ -594,6 +595,7 @@ art_set_favourite:
       default: "on"
       selector:
         select:
+          translation_key: favourite_status
           options:
             - "on"
             - "off"
@@ -616,21 +618,15 @@ art_set_slideshow:
       selector:
         select:
           custom_value: true
+          translation_key: slideshow_duration
           options:
-            - label: "3 minutes"
-              value: "3min"
-            - label: "15 minutes"
-              value: "15min"
-            - label: "1 hour"
-              value: "1h"
-            - label: "12 hours"
-              value: "12h"
-            - label: "1 day"
-              value: "1d"
-            - label: "7 days"
-              value: "7d"
-            - label: "Off (stop the slideshow)"
-              value: "off"
+            - "3min"
+            - "15min"
+            - "1h"
+            - "12h"
+            - "1d"
+            - "7d"
+            - "off"
     shuffle:
       name: Shuffle
       description: Enable shuffle mode
@@ -651,13 +647,11 @@ art_set_slideshow:
       selector:
         select:
           custom_value: true
+          translation_key: art_category
           options:
-            - label: "My Photos"
-              value: "2"
-            - label: "Favourites"
-              value: "4"
-            - label: "Purchased / Store artworks"
-              value: "8"
+            - "2"
+            - "4"
+            - "8"
     sub_category_id:
       name: Sub-category
       description: >-
@@ -701,21 +695,15 @@ art_set_auto_rotation:
       selector:
         select:
           custom_value: true
+          translation_key: slideshow_duration
           options:
-            - label: "3 minutes"
-              value: "3min"
-            - label: "15 minutes"
-              value: "15min"
-            - label: "1 hour"
-              value: "1h"
-            - label: "12 hours"
-              value: "12h"
-            - label: "1 day"
-              value: "1d"
-            - label: "7 days"
-              value: "7d"
-            - label: "Off (stop the slideshow)"
-              value: "off"
+            - "3min"
+            - "15min"
+            - "1h"
+            - "12h"
+            - "1d"
+            - "7d"
+            - "off"
     shuffle:
       name: Shuffle
       description: Enable shuffle mode
@@ -736,13 +724,11 @@ art_set_auto_rotation:
       selector:
         select:
           custom_value: true
+          translation_key: art_category
           options:
-            - label: "My Photos"
-              value: "2"
-            - label: "Favourites"
-              value: "4"
-            - label: "Purchased / Store artworks"
-              value: "8"
+            - "2"
+            - "4"
+            - "8"
     sub_category_id:
       name: Sub-category
       description: >-

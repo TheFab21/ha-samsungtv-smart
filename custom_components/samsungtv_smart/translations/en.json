@@ -901,5 +901,45 @@
         }
       }
     }
+  },
+  "selector": {
+    "slideshow_duration": {
+      "options": {
+        "3min": "3 minutes",
+        "15min": "15 minutes",
+        "1h": "1 hour",
+        "12h": "12 hours",
+        "1d": "1 day",
+        "7d": "7 days",
+        "off": "Off (stop the slideshow)"
+      }
+    },
+    "art_category": {
+      "options": {
+        "2": "My Photos",
+        "4": "Favourites",
+        "8": "Purchased / Store artworks"
+      }
+    },
+    "photo_filter": {
+      "options": {
+        "none": "None",
+        "mono": "Mono",
+        "original": "Original",
+        "ink": "Ink",
+        "watercolor": "Watercolor",
+        "oil": "Oil",
+        "pastel": "Pastel",
+        "posterize": "Posterize",
+        "noir": "Noir",
+        "quartertone": "Quartertone"
+      }
+    },
+    "favourite_status": {
+      "options": {
+        "on": "Add to favourites",
+        "off": "Remove from favourites"
+      }
+    }
   }
 }

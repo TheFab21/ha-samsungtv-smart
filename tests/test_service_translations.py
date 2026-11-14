@@ -39,3 +39,38 @@ def test_reference_strings_match_services_yaml():
             if fref["description"] != _clean(fspec["description"]):
                 drift.append(f"{name}.{field}: description")
     assert not drift, drift
+
+
+def _select_selectors():
+    for name, spec in SERVICES.items():
+        for field, fspec in (spec.get("fields") or {}).items():
+            select = (fspec.get("selector") or {}).get("select")
+            if select:
+                yield f"{name}.{field}", select
+
+
+def test_translated_selects_have_a_label_for_every_option():
+    # A select with a translation_key shows its raw values ("3min", "2")
+    # in any language whose file lacks the label.
+    selectors = STRINGS["selector"]
+    missing = []
+    for where, select in _select_selectors():
+        key = select.get("translation_key")
+        if key is None:
+            continue
+        labels = selectors.get(key, {}).get("options", {})
+        for option in select["options"]:
+            if option not in labels:
+                missing.append(f"{where}: {key}.{option}")
+    assert not missing, missing
+
+
+def test_translated_selects_use_plain_values():
+    # A label in services.yaml would override the translation.
+    labelled = [
+        where
+        for where, select in _select_selectors()
+        if select.get("translation_key")
+        and any(isinstance(o, dict) for o in select["options"])
+    ]
+    assert not labelled, labelled
