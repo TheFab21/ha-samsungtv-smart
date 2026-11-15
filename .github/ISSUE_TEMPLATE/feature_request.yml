@@ -8,6 +8,28 @@ body:
         Describe **what you want to achieve**, not only the implementation you
         have in mind — there is often a shorter route than the one imagined.
 
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before filing
+      description: >-
+        Many requests are for something that already exists — a slider, a
+        select or an action that is only one click away once you know its name.
+      options:
+        - label: >-
+            I checked the README's
+            [Entities](https://github.com/TheFab21/ha-samsungtv-smart#entities)
+            and [Services](https://github.com/TheFab21/ha-samsungtv-smart#services)
+            sections, and what I want is not there.
+          required: true
+        - label: >-
+            I looked at the entities this integration already created for my TV
+            (Settings → Devices & services → SamsungTV Smart → my TV), including
+            the disabled ones.
+          required: true
+        - label: I searched the existing issues, open and closed, for the same request.
+          required: true
+
   - type: textarea
     id: goal
     attributes:
