@@ -960,8 +960,8 @@ These services require a Samsung **Frame TV** with Art Mode. They are called on 
 
 | Service | Description |
 |---|---|
-| `samsungtv_smart.art_get_artmode` | Get current Art Mode status |
-| `samsungtv_smart.art_set_artmode` | Enable or disable Art Mode |
+| `samsungtv_smart.art_get_artmode` | Get current Art Mode status. `status: null` with an `error` when the TV did not answer |
+| `samsungtv_smart.art_set_artmode` | Enable or disable Art Mode. `success: true` only once the TV confirms the change; otherwise `success: false` with an `error` saying whether the request reached the TV |
 | `samsungtv_smart.art_available` | List all available artworks (optionally filtered by category) |
 | `samsungtv_smart.art_get_current` | Get info about the currently displayed artwork |
 | `samsungtv_smart.art_select_image` | Display a specific artwork by content ID. Powers the TV on into Art Mode first, unless `wake: false` (then only acts while Art Mode is already on) |
