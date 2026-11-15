@@ -6090,6 +6090,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         try:
             status = await self._art_api.get_artmode()
             result = {"service": "art_get_artmode", "status": status}
+            if status is None:
+                # A bare null left the user guessing (#442): say it is the TV
+                # that stayed silent, not an Art Mode state.
+                result["error"] = "The TV did not answer the Art Mode request"
             self._store_art_result(result)
             return result
         except Exception as ex:
@@ -6108,7 +6112,21 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         )
         try:
             applied = await self._art_api.set_artmode(enabled)
-            result = {"service": "art_set_artmode", "success": True, "enabled": enabled}
+            # Only a confirmed change is a success. set_artmode returns False
+            # when neither the TV's answer nor an art_mode_changed broadcast
+            # came back; reporting success then hid a dead art channel (#442).
+            result = {
+                "service": "art_set_artmode",
+                "success": bool(applied),
+                "enabled": enabled,
+            }
+            if not applied:
+                result["error"] = (
+                    "The TV did not confirm the Art Mode change"
+                    if self._art_api.last_set_artmode_sent
+                    else "The request never reached the TV: the Art Mode "
+                    "channel is not open"
+                )
             self._store_art_result(result)
             if applied and not enabled:
                 self.hass.async_create_task(self._async_apply_art_exit_source())
