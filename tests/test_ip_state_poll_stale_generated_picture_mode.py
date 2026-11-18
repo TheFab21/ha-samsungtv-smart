@@ -15,10 +15,15 @@ mode other than Ambient and no art_mode_changed ON broadcast came after it.
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from custom_components.samsungtv_smart.api.ipcontrol import (
+    ERROR_METHOD_NOT_FOUND,
+    SamsungIPControl,
+    SamsungIPControlUnsupportedError,
+)
 from custom_components.samsungtv_smart.const import DATA_ART_API, DOMAIN
 
 from .test_ipcontrol_channel_coordinator import (
@@ -188,3 +193,37 @@ async def test_an_unknown_art_state_is_asked_about(hass, previous):
     await _update(coordinator, client)
 
     client.async_generated_mode_is_art.assert_awaited_once_with("Gen_327705")
+
+
+# -- a TV with no art-mode getter (review on #448) --------------------------
+
+
+async def test_a_non_frame_without_an_art_getter_keeps_its_generated_mode(hass):
+    """artModeControl -32601 on a Gen_ snapshot: stored as read, every poll.
+
+    Runs the real client helper (only the request is stubbed), so the poll
+    must come out as it does on master: no Ambient, no pictureModeControl.
+    """
+    real = SamsungIPControl(MagicMock(), "192.0.2.10", token="synthetic")
+    asked = []
+
+    async def request(method, params=None, **_kwargs):
+        asked.append(method)
+        if method == "artModeControl":
+            error = SamsungIPControlUnsupportedError("TV returned error -32601")
+            error.code = ERROR_METHOD_NOT_FOUND
+            raise error
+        raise AssertionError(f"unexpected request {method}")
+
+    real._async_request = request
+    client = _client("Gen_327705", None)
+    client.async_generated_mode_is_art.side_effect = real.async_generated_mode_is_art
+    coordinator = IPControlStateCoordinator(hass, _entry(hass), HOST)
+
+    first = await _update(coordinator, client)
+    coordinator.data = first
+    second = await _update(coordinator, client)
+
+    for data in (first, second):
+        assert data["tv"]["pictureMode"] == "Gen_327705"
+    assert "pictureModeControl" not in asked

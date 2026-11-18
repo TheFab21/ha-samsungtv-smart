@@ -556,19 +556,28 @@ class SamsungIPControl:
         failed some other way. ``None`` leaves the caller on its usual path.
 
         ``art_flag`` is an artModeControl answer the caller has just read, to
-        save asking again. The ``-32601`` here describes what is on screen,
-        not the model, so nothing is recorded as unsupported.
+        save asking again. Any error reading the flag here gives ``None``: a
+        ``-32601`` from artModeControl means the TV has no art-mode getter.
+        The ``-32601`` that settles the case comes from pictureModeControl and
+        describes what is on screen, not the model, so nothing is recorded as
+        unsupported.
         """
         if not isinstance(picture_mode, str):
             return None
         if not _GENERATED_PICTURE_MODE.match(picture_mode):
             return None
-        try:
-            if art_flag is None:
+        if art_flag is None:
+            # Its own try: a -32601 from artModeControl means the TV has no
+            # art-mode getter (non-Frames, some Frames), not art on the panel.
+            # Only pictureModeControl's -32601 says that.
+            try:
                 result = await self._async_request("artModeControl")
-                art_flag = result.get("artMode")
-            if art_flag != "artModeOn":
+            except SamsungIPControlError:
                 return None
+            art_flag = result.get("artMode")
+        if art_flag != "artModeOn":
+            return None
+        try:
             result = await self._async_request("pictureModeControl")
         except SamsungIPControlUnsupportedError as ex:
             if ex.code != ERROR_METHOD_NOT_FOUND:

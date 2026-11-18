@@ -284,3 +284,60 @@ async def test_a_not_supported_model_from_the_tv_does_not_count_as_art():
     assert await client.async_panel_shows_art() is False
     expected = [True] * (ART_DESYNC_THRESHOLD - 1) + [False, False]
     assert await _reads(client) == expected
+
+
+# -- a TV with no art-mode getter (review on #448) --------------------------
+#
+# A -32601 from artModeControl means the TV has no art-mode getter (a non-Frame
+# such as a 2026 S95H, or a Frame without it), not art on the panel. Only
+# pictureModeControl's -32601 says that, so the flag read must not share its
+# except clause.
+
+
+def _no_art_getter(*, snapshot=HOME_SCREEN):
+    client = SamsungIPControl(MagicMock(), "192.0.2.10", token="synthetic")
+    asked = []
+
+    async def request(method, params=None, **_kwargs):
+        asked.append(method)
+        if method == "powerControl":
+            return {"power": "powerOn"}
+        if method == "artModeControl":
+            raise _refused()
+        if method == "getTVStates":
+            return {"pictureMode": snapshot}
+        if method == "pictureModeControl":
+            return {"pictureMode": snapshot}
+        raise AssertionError(f"unexpected request {method}")
+
+    client._async_request = request
+    return client, asked
+
+
+async def test_a_refused_flag_read_decides_nothing():
+    client, asked = _no_art_getter()
+    assert await client.async_generated_mode_is_art(HOME_SCREEN) is None
+    assert asked == ["artModeControl"]
+
+
+@pytest.mark.parametrize(
+    "error", [_refused(ERROR_NOT_SUPPORTED_MODEL), SamsungIPControlError("boom")]
+)
+async def test_any_flag_read_error_decides_nothing(error):
+    client, asked = _client(picture_mode=_refused())
+
+    async def request(method, params=None, **_kwargs):
+        asked.append(method)
+        if method == "artModeControl":
+            raise error
+        raise AssertionError(f"unexpected request {method}")
+
+    client._async_request = request
+    assert await client.async_generated_mode_is_art(HOME_SCREEN) is None
+    assert asked == ["artModeControl"]
+
+
+async def test_the_write_guard_on_a_tv_with_no_art_getter():
+    client, asked = _no_art_getter()
+    assert await client.async_panel_shows_art() is False
+    assert "pictureModeControl" not in asked
