@@ -36,6 +36,7 @@ from hashlib import sha256
 import http.client
 import json
 import logging
+import re
 import ssl
 from typing import Any
 
@@ -323,9 +324,18 @@ ERROR_METHOD_NOT_FOUND = -32601
 # the flag on exit); a persistent one means the flag has wedged "on".
 ART_DESYNC_THRESHOLD = 2
 
+# getTVStates.pictureMode ids the TV generates instead of a named mode (the
+# home screen, apps, AI Customisation). Same pattern as picture_mode_keys.py,
+# repeated here so this module keeps importing on its own.
+_GENERATED_PICTURE_MODE = re.compile(r"^Gen_\d+")
+
 
 class SamsungIPControlError(Exception):
     """Base error for IP Control communication failures."""
+
+    # The JSON-RPC error code, where the caller has to tell two codes of the
+    # same exception class apart (-32601 and -32001 are both "unsupported").
+    code: int | None = None
 
 
 class SamsungIPControlAuthError(SamsungIPControlError):
@@ -469,6 +479,10 @@ class SamsungIPControl:
         short-circuits to ``False``. Art Mode itself reports ``powerOn``.
         ``power_state`` is a powerControl answer the caller has just read, to
         save asking again.
+
+        A generated ``Gen_<n>`` pictureMode is not counted as a disagreement
+        before ``pictureModeControl`` has been asked: see
+        :meth:`async_generated_mode_is_art`.
         """
         if power_state is None:
             power_state = await self.async_get_power_state()
@@ -496,6 +510,14 @@ class SamsungIPControl:
         flag_on = art_flag == "artModeOn"
 
         if flag_on and panel_art is False:
+            settled = await self.async_generated_mode_is_art(
+                picture_mode, art_flag=art_flag
+            )
+            if settled is True:
+                # The flag is right and the getTVStates snapshot is stale
+                # (#447): not a desync, so it must not count as one.
+                self._art_desync_count = 0
+                return True
             # Flag says art, panel says a real input. Tolerate a brief lag;
             # escalate to the panel only once it persists.
             self._art_desync_count += 1
@@ -512,6 +534,66 @@ class SamsungIPControl:
 
         self._art_desync_count = 0
         return flag_on
+
+    async def async_generated_mode_is_art(
+        self, picture_mode: Any, *, art_flag: str | None = None
+    ) -> bool | None:
+        """Settle a ``Gen_<n>`` pictureMode read while the art flag is on.
+
+        getTVStates.pictureMode can stay on a generated id (``Gen_327705``,
+        the home screen code) after the Frame has gone back to art, while
+        ``artModeControl`` correctly says ``artModeOn`` (#447, QE43LS03FAUXXH).
+        ``pictureModeControl`` tells the two cases apart. It sits in the
+        none-ambient dispatch map, so with art on the panel it answers
+        ``-32601`` (or ``"Ambient"``, seen for minutes after a wake from
+        standby into art), and on the real home screen or in an app it
+        answers the same ``Gen_<n>`` id as getTVStates.
+
+        Returns ``True`` when art is on the panel, ``False`` when
+        ``pictureModeControl`` reports a real mode, and ``None`` when there is
+        nothing to settle or no answer to settle it on: ``picture_mode`` is
+        not a generated id, the flag is not ``artModeOn``, or the request
+        failed some other way. ``None`` leaves the caller on its usual path.
+
+        ``art_flag`` is an artModeControl answer the caller has just read, to
+        save asking again. Any error reading the flag here gives ``None``: a
+        ``-32601`` from artModeControl means the TV has no art-mode getter.
+        The ``-32601`` that settles the case comes from pictureModeControl and
+        describes what is on screen, not the model, so nothing is recorded as
+        unsupported.
+        """
+        if not isinstance(picture_mode, str):
+            return None
+        if not _GENERATED_PICTURE_MODE.match(picture_mode):
+            return None
+        if art_flag is None:
+            # Its own try: a -32601 from artModeControl means the TV has no
+            # art-mode getter (non-Frames, some Frames), not art on the panel.
+            # Only pictureModeControl's -32601 says that.
+            try:
+                result = await self._async_request("artModeControl")
+            except SamsungIPControlError:
+                return None
+            art_flag = result.get("artMode")
+        if art_flag != "artModeOn":
+            return None
+        try:
+            result = await self._async_request("pictureModeControl")
+        except SamsungIPControlUnsupportedError as ex:
+            if ex.code != ERROR_METHOD_NOT_FOUND:
+                return None
+            _LOGGER.debug(
+                "IP Control art-mode: getTVStates pictureMode='%s' but the flag "
+                "is on and pictureModeControl is refused — art is on the panel",
+                picture_mode,
+            )
+            return True
+        except SamsungIPControlError:
+            return None
+        value = result.get("pictureMode")
+        if not isinstance(value, str) or not value.strip():
+            return None
+        return value.strip() == "Ambient"
 
     async def async_set_art_mode_on(self) -> None:
         """Switch the TV to Art Mode."""
@@ -858,6 +940,12 @@ class SamsungIPControl:
         without this a write guard reads art-on for a dark panel and refuses to
         wake it — the panel never comes back into art. Art Mode itself reports
         ``powerOn``, so this only filters a genuinely powered-off TV.
+
+        A generated ``Gen_<n>`` id can be a stale snapshot with art on screen
+        (#447), so it is settled with :meth:`async_generated_mode_is_art`
+        first. That reads the flag, but never trusts it alone: a wedged flag
+        over a real home screen gets a real mode from ``pictureModeControl``
+        and still reads as not art.
         """
         if await self.async_get_power_state() == "powerOff":
             return None
@@ -865,6 +953,8 @@ class SamsungIPControl:
         mode = states.get("pictureMode")
         if not isinstance(mode, str) or not mode:
             return None
+        if await self.async_generated_mode_is_art(mode) is True:
+            return True
         return mode == "Ambient"
 
     async def async_get_tv_states(self) -> dict[str, Any]:
@@ -1064,10 +1154,12 @@ class SamsungIPControl:
             if code == ERROR_NOT_SUPPORTED_MODEL:
                 # -32001 "Not supported model": a definitive capability verdict,
                 # unlike the ambiguous -32601 below, so it is safe to latch.
-                raise SamsungIPControlUnsupportedError(
+                unsupported = SamsungIPControlUnsupportedError(
                     f"TV returned error {code}: {message} — this control is not "
                     "supported on this model"
                 )
+                unsupported.code = code
+                raise unsupported
             if code in SERVER_STATE_CODES:
                 # -32000/-32002/-32003: refused in the current state. The
                 # picture-mode explanation only applies to the expert picture
@@ -1087,11 +1179,13 @@ class SamsungIPControl:
                     "refused it in its current state; usually transient"
                 )
             if code == ERROR_METHOD_NOT_FOUND:
-                raise SamsungIPControlUnsupportedError(
+                unsupported = SamsungIPControlUnsupportedError(
                     f"TV returned error {code}: {message} — this method is not "
                     "available right now (it may not exist on this model, or the "
                     "TV may be in Art Mode)"
                 )
+                unsupported.code = code
+                raise unsupported
             raise SamsungIPControlError(f"TV returned error {code}: {message}")
 
         result = data.get("result")

@@ -2998,6 +2998,40 @@ class IPControlStateCoordinator(DataUpdateCoordinator):
             self._ip_control_token = token
         return self._ip_control
 
+    def _art_may_be_on(self) -> bool:
+        """Whether art can be on the panel behind a ``Gen_<n>`` pictureMode.
+
+        Settling a generated id costs an artModeControl read, and a TV on its
+        home screen or in an app reports one on every poll. So the read is
+        skipped while art is known to be off: the previous snapshot showed a
+        mode other than ``Ambient`` and no art_mode_changed ON broadcast has
+        arrived since it was taken. Anything else asks: no previous snapshot,
+        one from a powered-off TV, one that read ``Ambient`` (which includes a
+        stale id this poll corrected, so a stuck snapshot is asked about on
+        every cycle), or a broadcast ON newer than the snapshot.
+        """
+        data = self.data
+        if not isinstance(data, dict) or data.get("powered_off"):
+            return True
+        tv_states = data.get("tv")
+        mode = tv_states.get("pictureMode") if isinstance(tv_states, dict) else None
+        known_at = data.get("polled_at")
+        if not isinstance(mode, str) or not mode:
+            return True
+        if type(known_at) not in (int, float):
+            return True
+        if mode == "Ambient":
+            return True
+        art_api = (
+            self.hass.data.get(DOMAIN, {})
+            .get(self._entry.entry_id, {})
+            .get(DATA_ART_API)
+        )
+        broadcast = getattr(art_api, "art_mode_last_broadcast", None)
+        if not isinstance(broadcast, tuple) or len(broadcast) != 2:
+            return False
+        return broadcast[0] is True and broadcast[1] >= known_at
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the getTVStates snapshot over IP Control."""
         client = self._get_ip_control()
@@ -3034,6 +3068,25 @@ class IPControlStateCoordinator(DataUpdateCoordinator):
             # computed before the switch.
             polled_at = time.monotonic()
             tv_states = await client.async_get_tv_states()
+
+            # A Gen_<n> pictureMode with the art flag on can be a snapshot the
+            # TV never refreshed after going back to art (#447). Settled here,
+            # once per poll, so every reader of this snapshot sees the same
+            # answer: the media player's cached art state, the picture mode
+            # entities and the tuner check below. Costs nothing unless the TV
+            # reports a generated id, and nothing then either while art is
+            # known to be off (_art_may_be_on).
+            stale_mode = tv_states.get("pictureMode")
+            if (
+                self._art_may_be_on()
+                and await client.async_generated_mode_is_art(stale_mode) is True
+            ):
+                self._log.debug(
+                    "IP Control state: pictureMode %s is stale, art is on the "
+                    "panel; reporting Ambient",
+                    stale_mode,
+                )
+                tv_states = {**tv_states, "pictureMode": "Ambient"}
 
             channel_states: dict[str, Any] = {}
             input_source = tv_states.get("inputSource")
