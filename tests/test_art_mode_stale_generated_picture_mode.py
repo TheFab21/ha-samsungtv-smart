@@ -29,6 +29,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from custom_components.samsungtv_smart.api.ipcontrol import (
+    _HOST_LOCKS,
     ART_DESYNC_THRESHOLD,
     ERROR_METHOD_NOT_FOUND,
     ERROR_NOT_SUPPORTED_MODEL,
@@ -224,6 +225,36 @@ async def test_the_helper_decides_nothing_when_the_flag_cannot_be_read():
 
 
 # -- the error code reaches the caller -------------------------------------
+#
+# These go through the real _async_request and _sync_request, with only the
+# HTTP post replaced, so the code is read from the instance the client raises.
+
+
+class _Executor:
+    """Stands in for hass: runs the blocking request inline."""
+
+    async def async_add_executor_job(self, function, *args):
+        return function(*args)
+
+
+def _wired(picture_mode_code):
+    """A client on the real request path, pictureModeControl refused with a code."""
+    _HOST_LOCKS.clear()
+    client = SamsungIPControl(_Executor(), "192.0.2.10", token="synthetic")
+    answers = {
+        "powerControl": {"result": {"power": "powerOn"}},
+        "artModeControl": {"result": {"artMode": "artModeOn"}},
+        "getTVStates": {"result": {"pictureMode": HOME_SCREEN}},
+        "pictureModeControl": {
+            "error": {"code": picture_mode_code, "message": "refused"}
+        },
+    }
+
+    def post(payload, _timeout):
+        return json.dumps(answers[json.loads(payload)["method"]])
+
+    client._sync_post = post
+    return client
 
 
 @pytest.mark.parametrize("code", [ERROR_METHOD_NOT_FOUND, ERROR_NOT_SUPPORTED_MODEL])
@@ -233,4 +264,23 @@ def test_an_unsupported_error_carries_its_code(code):
     with patch.object(client, "_sync_post", return_value=reply):
         with pytest.raises(SamsungIPControlUnsupportedError) as raised:
             client._sync_request("pictureModeControl", None, True, 5)
-    assert raised.value.code == code
+    # On the instance: the class keeps its default, so nothing leaks between
+    # two errors.
+    assert vars(raised.value)["code"] == code
+    assert SamsungIPControlUnsupportedError.code is None
+
+
+async def test_a_method_not_found_from_the_tv_counts_as_art():
+    client = _wired(ERROR_METHOD_NOT_FOUND)
+    assert await client.async_generated_mode_is_art(HOME_SCREEN) is True
+    assert await client.async_panel_shows_art() is True
+    assert await _reads(client) == [True] * (ART_DESYNC_THRESHOLD + 1)
+
+
+async def test_a_not_supported_model_from_the_tv_does_not_count_as_art():
+    """-32001 says the model has no pictureModeControl, not what is on screen."""
+    client = _wired(ERROR_NOT_SUPPORTED_MODEL)
+    assert await client.async_generated_mode_is_art(HOME_SCREEN) is None
+    assert await client.async_panel_shows_art() is False
+    expected = [True] * (ART_DESYNC_THRESHOLD - 1) + [False, False]
+    assert await _reads(client) == expected
