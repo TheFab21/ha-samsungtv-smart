@@ -213,16 +213,20 @@ class SmartThingsTV:
                 "Ignoring unknown persisted picture mode capability: %s", capability
             )
 
+    def set_api_key(self, api_key: str) -> None:
+        """Switch to a new API key, if it differs from the one in use."""
+        if api_key and api_key != self._api_key:
+            self._api_key = api_key
+            self._st.authenticate(api_key)
+            self._refresh_failures = 0
+            self._next_periodic_refresh = 0.0
+            self._refresh_request_seq += 1
+
     def _get_api_key(self) -> str:
         """Get API key used to connect to SmartThings."""
         if self._api_key_callback is not None:
             if api_key := self._api_key_callback():
-                if api_key != self._api_key:
-                    self._api_key = api_key
-                    self._st.authenticate(api_key)
-                    self._refresh_failures = 0
-                    self._next_periodic_refresh = 0.0
-                    self._refresh_request_seq += 1
+                self.set_api_key(api_key)
         return self._api_key
 
     # ──────────────────────────────────────────────────────────────────────────

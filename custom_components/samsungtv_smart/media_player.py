@@ -71,6 +71,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.async_ import run_callback_threadsafe
 
 from . import (
+    async_get_smartthings_api_key,
     get_oauth_refresh_lock,
     get_smartthings_api_key,
     is_invalid_grant_error,
@@ -1083,6 +1084,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         # Store auth method for later use
         self._auth_method = auth_method
+        self._st_entry_uniqueid = st_entry_uniqueid
 
         def api_key_callback() -> str | None:
             """Get current api key - for OAuth, read from entry data after refresh."""
@@ -1236,6 +1238,26 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             self._st_api_key = new_token
 
         return self._st_api_key
+
+    async def _async_refresh_st_entry_token(self) -> None:
+        """Use the SmartThings integration's token, renewed if it expired.
+
+        The token is borrowed from the SmartThings integration, which renews
+        it only when it makes a request itself. _update_smartthing_token reads
+        it at most every 30 minutes and never renews it, so an expired token
+        was kept until the integration happened to renew it. Ask for a renewed
+        one before the SmartThings poll and switch to it at once.
+        """
+        if not self._st_entry_uniqueid:
+            return
+        new_token = await async_get_smartthings_api_key(
+            self.hass, self._st_entry_uniqueid
+        )
+        if new_token and new_token != self._st_api_key:
+            self._log.info("SmartThings access token updated")
+            self._update_token_func(new_token, CONF_API_KEY)
+            self._st_api_key = new_token
+            self._st.set_api_key(new_token)
 
     async def _async_refresh_oauth_token(self) -> bool:
         """Refresh OAuth token if needed.
@@ -3566,6 +3588,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # Refresh OAuth token if needed (before any SmartThings API call)
         if self._auth_method == AUTH_METHOD_OAUTH:
             await self._async_refresh_oauth_token()
+        elif self._auth_method == AUTH_METHOD_ST_ENTRY and self._st:
+            await self._async_refresh_st_entry_token()
 
         # Required to get source and media title. SmartThings is the fallback
         # data source (cloud-only fields), throttled and gated on local power;
