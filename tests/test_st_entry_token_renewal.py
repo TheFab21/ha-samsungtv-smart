@@ -13,6 +13,7 @@ The TV now renews the borrowed token through the integration's own OAuth
 session when it has expired, and writes the new one to that entry.
 """
 
+import asyncio
 import sys
 import time
 from types import ModuleType
@@ -74,6 +75,7 @@ def _st_entry(hass, expires_at):
     )
     entry.add_to_hass(hass)
     samsungtv_smart._st_entry_refresh_retry_at.clear()
+    samsungtv_smart._st_entry_refresh_locks.clear()
     return entry
 
 
@@ -108,6 +110,41 @@ async def test_a_token_about_to_expire_is_renewed(hass):
 
     assert key == "new-access"
     assert len(implementation.calls) == 1
+
+
+async def test_concurrent_callers_renew_only_once(hass):
+    """The media player, sensors and switches renew one at a time.
+
+    OAuth2Session holds its lock per instance, so callers that each create one
+    would all renew with the same refresh token. The ones that wait must find
+    the renewed token and not submit the old refresh token again.
+    """
+    entry = _st_entry(hass, expires_at=time.time() - 60)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = []
+
+    class Implementation:
+        async def async_refresh_token(self, token):
+            calls.append(token["refresh_token"])
+            started.set()
+            await release.wait()
+            return _new_token()
+
+    with patch(IMPLEMENTATION, return_value=Implementation()):
+        first = asyncio.create_task(async_get_smartthings_api_key(hass, ST_UNIQUE_ID))
+        await started.wait()
+        others = [
+            asyncio.create_task(async_get_smartthings_api_key(hass, ST_UNIQUE_ID))
+            for _ in range(3)
+        ]
+        await asyncio.sleep(0)
+        release.set()
+        keys = await asyncio.gather(first, *others)
+
+    assert calls == ["old-refresh"]
+    assert keys == ["new-access"] * 4
+    assert entry.data["token"]["access_token"] == "new-access"
 
 
 async def test_a_valid_token_is_read_without_a_refresh(hass):

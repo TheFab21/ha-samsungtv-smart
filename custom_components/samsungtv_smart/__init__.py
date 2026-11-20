@@ -576,9 +576,54 @@ def get_smartthings_api_key(hass: HomeAssistant, st_unique_id: str) -> str | Non
 # Do not try to renew the SmartThings integration's token more often than this
 # after a renewal failed, so a dead refresh token is not retried on every poll.
 ST_ENTRY_REFRESH_RETRY_DELAY = 300
-# Renew this many seconds before the token expires.
+# Start checking this many seconds before the token expires. OAuth2Session
+# itself renews only within CLOCK_OUT_OF_SYNC_MAX_SEC (20 s) of expiry, so the
+# renewal happens in the last 20 s or right after the token expired.
 ST_ENTRY_REFRESH_MARGIN = 60
 _st_entry_refresh_retry_at: dict[str, float] = {}
+# One renewal at a time per SmartThings entry. OAuth2Session holds its lock per
+# instance, and the media player, sensors and switches each create their own,
+# so without this they could all renew with the same refresh token at once.
+_st_entry_refresh_locks: dict[str, asyncio.Lock] = {}
+
+
+def _st_entry_needs_refresh(entry: ConfigEntry) -> bool:
+    """Return True if the SmartThings entry's token should be renewed now."""
+    token = entry.data.get(CONF_TOKEN)
+    return bool(
+        isinstance(token, dict)
+        and token.get("refresh_token")
+        and (expires_at := token.get("expires_at"))
+        and time.time() > expires_at - ST_ENTRY_REFRESH_MARGIN
+        and time.time() >= _st_entry_refresh_retry_at.get(entry.entry_id, 0)
+    )
+
+
+async def _async_renew_st_entry_token(
+    hass: HomeAssistant, st_entry: ConfigEntry
+) -> None:
+    """Renew the SmartThings integration's token through its OAuth session."""
+    try:
+        implementation = (
+            await config_entry_oauth2_flow.async_get_config_entry_implementation(
+                hass, st_entry
+            )
+        )
+        await config_entry_oauth2_flow.OAuth2Session(
+            hass, st_entry, implementation
+        ).async_ensure_token_valid()
+    except Exception as ex:  # pylint: disable=broad-except
+        _st_entry_refresh_retry_at[st_entry.entry_id] = (
+            time.time() + ST_ENTRY_REFRESH_RETRY_DELAY
+        )
+        _LOGGER.warning(
+            "SmartThings: could not renew the expired token of the"
+            " SmartThings integration: %s",
+            ex,
+        )
+    else:
+        _st_entry_refresh_retry_at.pop(st_entry.entry_id, None)
+        _LOGGER.debug("SmartThings: renewed the token of the SmartThings integration")
 
 
 async def async_get_smartthings_api_key(
@@ -602,37 +647,12 @@ async def async_get_smartthings_api_key(
         ),
         None,
     )
-    token = st_entry.data.get(CONF_TOKEN) if st_entry else None
-    if (
-        isinstance(token, dict)
-        and token.get("refresh_token")
-        and (expires_at := token.get("expires_at"))
-        and time.time() > expires_at - ST_ENTRY_REFRESH_MARGIN
-        and time.time() >= _st_entry_refresh_retry_at.get(st_entry.entry_id, 0)
-    ):
-        try:
-            implementation = (
-                await config_entry_oauth2_flow.async_get_config_entry_implementation(
-                    hass, st_entry
-                )
-            )
-            await config_entry_oauth2_flow.OAuth2Session(
-                hass, st_entry, implementation
-            ).async_ensure_token_valid()
-        except Exception as ex:  # pylint: disable=broad-except
-            _st_entry_refresh_retry_at[st_entry.entry_id] = (
-                time.time() + ST_ENTRY_REFRESH_RETRY_DELAY
-            )
-            _LOGGER.warning(
-                "SmartThings: could not renew the expired token of the"
-                " SmartThings integration: %s",
-                ex,
-            )
-        else:
-            _st_entry_refresh_retry_at.pop(st_entry.entry_id, None)
-            _LOGGER.debug(
-                "SmartThings: renewed the token of the SmartThings integration"
-            )
+    if st_entry and _st_entry_needs_refresh(st_entry):
+        lock = _st_entry_refresh_locks.setdefault(st_entry.entry_id, asyncio.Lock())
+        async with lock:
+            # A caller that waited here finds the token already renewed.
+            if _st_entry_needs_refresh(st_entry):
+                await _async_renew_st_entry_token(hass, st_entry)
 
     return get_smartthings_api_key(hass, st_unique_id)
 
