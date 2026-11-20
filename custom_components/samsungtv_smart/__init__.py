@@ -573,6 +573,70 @@ def get_smartthings_api_key(hass: HomeAssistant, st_unique_id: str) -> str | Non
     return None
 
 
+# Do not try to renew the SmartThings integration's token more often than this
+# after a renewal failed, so a dead refresh token is not retried on every poll.
+ST_ENTRY_REFRESH_RETRY_DELAY = 300
+# Renew this many seconds before the token expires.
+ST_ENTRY_REFRESH_MARGIN = 60
+_st_entry_refresh_retry_at: dict[str, float] = {}
+
+
+async def async_get_smartthings_api_key(
+    hass: HomeAssistant, st_unique_id: str
+) -> str | None:
+    """Get the SmartThings integration's access token, renewed if it expired.
+
+    The SmartThings integration renews its OAuth token only when it makes a
+    request of its own. An entry that borrows that token (AUTH_METHOD_ST_ENTRY)
+    only reads it, so when the integration makes no request for a day, the
+    borrowed token expires and every SmartThings call of the TV fails with an
+    authentication error until something reloads the integration. Renew it
+    here through the integration's own OAuth session: the new token is written
+    to its config entry, where the integration itself picks it up as well.
+    """
+    st_entry = next(
+        (
+            entry
+            for entry in hass.config_entries.async_entries(ST_DOMAIN, False, False)
+            if entry.unique_id == st_unique_id
+        ),
+        None,
+    )
+    token = st_entry.data.get(CONF_TOKEN) if st_entry else None
+    if (
+        isinstance(token, dict)
+        and token.get("refresh_token")
+        and (expires_at := token.get("expires_at"))
+        and time.time() > expires_at - ST_ENTRY_REFRESH_MARGIN
+        and time.time() >= _st_entry_refresh_retry_at.get(st_entry.entry_id, 0)
+    ):
+        try:
+            implementation = (
+                await config_entry_oauth2_flow.async_get_config_entry_implementation(
+                    hass, st_entry
+                )
+            )
+            await config_entry_oauth2_flow.OAuth2Session(
+                hass, st_entry, implementation
+            ).async_ensure_token_valid()
+        except Exception as ex:  # pylint: disable=broad-except
+            _st_entry_refresh_retry_at[st_entry.entry_id] = (
+                time.time() + ST_ENTRY_REFRESH_RETRY_DELAY
+            )
+            _LOGGER.warning(
+                "SmartThings: could not renew the expired token of the"
+                " SmartThings integration: %s",
+                ex,
+            )
+        else:
+            _st_entry_refresh_retry_at.pop(st_entry.entry_id, None)
+            _LOGGER.debug(
+                "SmartThings: renewed the token of the SmartThings integration"
+            )
+
+    return get_smartthings_api_key(hass, st_unique_id)
+
+
 @callback
 def has_refreshable_oauth_token(entry: ConfigEntry) -> bool:
     """Return True if the entry stores an OAuth token that can be refreshed.
@@ -755,7 +819,7 @@ async def async_get_samsungtv_api_key(  # noqa: C901
     if auth_method == AUTH_METHOD_ST_ENTRY:
         st_unique_id = entry.data.get(CONF_ST_ENTRY_UNIQUE_ID)
         if st_unique_id:
-            api_key = get_smartthings_api_key(hass, st_unique_id)
+            api_key = await async_get_smartthings_api_key(hass, st_unique_id)
             if api_key:
                 _LOGGER.debug("[%s] Using SmartThings integration token", entry.title)
                 return api_key
@@ -771,7 +835,7 @@ async def async_get_samsungtv_api_key(  # noqa: C901
     if not api_key and CONF_ST_ENTRY_UNIQUE_ID in entry.data:
         st_unique_id = entry.data.get(CONF_ST_ENTRY_UNIQUE_ID)
         if st_unique_id:
-            api_key = get_smartthings_api_key(hass, st_unique_id)
+            api_key = await async_get_smartthings_api_key(hass, st_unique_id)
             if api_key:
                 _LOGGER.debug("Using SmartThings integration token (legacy config)")
                 return api_key
