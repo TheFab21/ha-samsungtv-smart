@@ -67,3 +67,16 @@ if "pysmartthings" not in sys.modules and find_spec("pysmartthings") is None:
     _pysmartthings.Command = _Names()
     _pysmartthings.SmartThings = object
     sys.modules["pysmartthings"] = _pysmartthings
+
+
+# The IP Control circuit breaker (#409) is module state keyed by TV endpoint:
+# a slow transport failure simulated in one test must not short-circuit the
+# reads of the next.
+@pytest.fixture(autouse=True)
+def reset_ip_control_breaker():
+    """Start every test with no IP Control endpoint marked unreachable."""
+    from custom_components.samsungtv_smart.api import ipcontrol
+
+    ipcontrol._UNREACHABLE_UNTIL.clear()
+    yield
+    ipcontrol._UNREACHABLE_UNTIL.clear()

@@ -38,6 +38,7 @@ import json
 import logging
 import re
 import ssl
+import time
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -52,6 +53,25 @@ _LOGGER = logging.getLogger(__name__)
 # the color-tone select trample each other. Keyed by host so multiple TVs stay
 # independent. Created lazily on the running loop.
 _HOST_LOCKS: dict[str, _HostGate] = {}
+
+# Per-endpoint circuit breaker for background reads (#409). The gate above
+# serializes every call to a TV, so when the TV stops answering without
+# refusing — a set shutting down still accepts the TCP connection but never
+# completes the TLS handshake or the reply — every call queued behind the first
+# one spends its own CMD_TIMEOUT. Measured on a 2018 UE82NU8005 going into
+# standby: a speaker read, an Art Mode read and a volume read timed out one
+# after another and the media player update took 11 s, every 30 s for four
+# minutes. So a failure that cost time marks the endpoint unreachable for a
+# short while, and the background reads that follow fail at once instead of
+# timing out in turn. Writes, pairing and user-initiated calls
+# (priority_requests) always go to the wire, and any answer at all clears the
+# mark. A refused connection costs nothing and leaves the breaker alone, so a
+# TV that is merely off does not delay its own wake-up.
+_UNREACHABLE_UNTIL: dict[tuple[str, int], float] = {}
+# Seconds a failed call must have taken to open the breaker.
+_SLOW_FAILURE = 1.0
+# Seconds background reads are short-circuited after such a failure.
+_UNREACHABLE_BACKOFF = 10.0
 
 # Set for the duration of a user-initiated operation (see priority_requests).
 # Every IP Control call made inside it jumps ahead of the background polls
@@ -1025,6 +1045,8 @@ class SamsungIPControl:
         read_only = (
             method in _SHAREABLE_READ_METHODS and params is None and include_token
         )
+        # Only background reads are short-circuited: see _UNREACHABLE_UNTIL.
+        breaker_applies = params is None and include_token and not priority
 
         async def request(
             flight: _SharedRead | None = None,
@@ -1035,9 +1057,23 @@ class SamsungIPControl:
                     if (self._port, self._token) != expected_context:
                         raise _ReadContextChanged
                     flight.started = True
-                return await self._hass.async_add_executor_job(
-                    self._sync_request, method, params, include_token, timeout
-                )
+                if breaker_applies:
+                    self._raise_if_unreachable()
+                started = time.monotonic()
+                try:
+                    result = await self._hass.async_add_executor_job(
+                        self._sync_request, method, params, include_token, timeout
+                    )
+                except SamsungIPControlTransportError:
+                    if include_token:
+                        self._note_transport_failure(time.monotonic() - started)
+                    raise
+                except SamsungIPControlError:
+                    # The TV answered, even if only with an error.
+                    _UNREACHABLE_UNTIL.pop((self._host, self._port), None)
+                    raise
+                _UNREACHABLE_UNTIL.pop((self._host, self._port), None)
+                return result
 
         if read_only and not priority:
             # A write separates queued reads so replies cannot predate the command.
@@ -1065,6 +1101,38 @@ class SamsungIPControl:
         if not read_only:
             gate._read_generation += 1
         return await request()
+
+    def _raise_if_unreachable(self) -> None:
+        """Fail at once while the endpoint is marked unreachable (#409)."""
+        until = _UNREACHABLE_UNTIL.get((self._host, self._port))
+        if until is None:
+            return
+        remaining = until - time.monotonic()
+        if remaining <= 0:
+            # Expired: this call is the probe.
+            _UNREACHABLE_UNTIL.pop((self._host, self._port), None)
+            return
+        raise SamsungIPControlTransportError(
+            f"transport failure talking to {self._host}:{self._port}: skipped, "
+            f"the TV stopped answering moments ago (next attempt in "
+            f"{remaining:.0f}s)"
+        )
+
+    def _note_transport_failure(self, elapsed: float) -> None:
+        """Open the breaker after a failure that cost time."""
+        if elapsed < _SLOW_FAILURE:
+            return
+        key = (self._host, self._port)
+        if key not in _UNREACHABLE_UNTIL:
+            _LOGGER.debug(
+                "IP Control: %s:%s did not answer within %.1fs; background "
+                "reads will skip it for %.0fs",
+                self._host,
+                self._port,
+                elapsed,
+                _UNREACHABLE_BACKOFF,
+            )
+        _UNREACHABLE_UNTIL[key] = time.monotonic() + _UNREACHABLE_BACKOFF
 
     def _build_ssl_context(self, legacy: bool) -> ssl.SSLContext:
         """Build the SSL context for talking to the TV.
