@@ -1252,6 +1252,75 @@ automation:
           entity_id: switch.samsung_frame_art_mode
 ```
 
+### Picture mode follows SDR / HDR
+
+Many TVs keep one picture mode for SDR and HDR. To use, say, *Standard* for SDR and
+*FILMMAKER MODE* for HDR, watch the **Picture mode** diagnostic sensor
+(`sensor.<tv_name>_picture_mode`, IP Control). It shows the raw mode the TV reports, and
+the TV adds `HDR` while HDR content plays: `StandardHDR`, `FilmmakerModeHDR`. The media
+player's `picture_mode` attribute shows the display name, without that suffix.
+
+Two quirks were measured on a 2020 Q95T (#451), and older sets may share them:
+
+- **A transitional value after a mode change.** The TV first reports the SDR variant,
+  then the correct one 3–5 s later. Wait about 10 s, with `mode: restart`, before acting
+  on a reading.
+- **HDR → SDR is not reported on its own.** When the content goes back to SDR, the
+  sensor keeps the `…HDR` value until a picture-mode command arrives. Sending the mode
+  that is already set is enough, with no visible change. The automation below does that
+  when the source player pauses, goes back to its menus or changes title.
+
+On TVs that report HDR → SDR by themselves, the `check` triggers are simply never
+needed. This automation was contributed by [@medapayne](https://github.com/medapayne)
+for an Apple TV with *Match Dynamic Range*:
+
+```yaml
+alias: Picture mode follows SDR / HDR
+mode: restart
+triggers:
+  - trigger: state
+    entity_id: sensor.<tv_name>_picture_mode
+    not_to: [unavailable, unknown]
+    id: mode
+  - trigger: state
+    entity_id: media_player.apple_tv
+    to: [paused, idle, standby, "on"]
+    for: { seconds: 3 }
+    id: check
+  - trigger: state
+    entity_id: media_player.apple_tv
+    attribute: media_title
+    id: check
+conditions:
+  - condition: state
+    entity_id: media_player.<tv_name>
+    state: "on"
+actions:
+  - delay: { seconds: 10 }  # let the transitional value settle
+  - variables:
+      mode: "{{ states('sensor.<tv_name>_picture_mode') }}"
+  - choose:
+      - conditions: "{{ mode.endswith('HDR') and not mode.startswith('FilmmakerMode') }}"
+        sequence:
+          - action: samsungtv_smart.select_picture_mode
+            data: { entity_id: media_player.<tv_name>, picture_mode: "FILMMAKER MODE" }
+      - conditions: "{{ mode == 'FilmmakerMode' }}"
+        sequence:
+          - action: samsungtv_smart.select_picture_mode
+            data: { entity_id: media_player.<tv_name>, picture_mode: "Standard" }
+      # Older sets only: re-send the current mode so the TV reports the real signal.
+      - conditions:
+          - condition: trigger
+            id: check
+          - "{{ mode == 'FilmmakerModeHDR' }}"
+        sequence:
+          - action: samsungtv_smart.select_picture_mode
+            data: { entity_id: media_player.<tv_name>, picture_mode: "FILMMAKER MODE" }
+```
+
+Use the `picture_mode` values your TV accepts; they are the names `select_picture_mode`
+already works with on your set.
+
 ---
 
 ## Troubleshooting
