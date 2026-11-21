@@ -195,6 +195,19 @@ ART_WS_EVENT_LIVENESS_WINDOW = 180.0
 # all, so it still recovers once this elapses.
 ART_WS_BROADCAST_ONLY_LIVENESS_WINDOW = 900.0
 
+# A get_artmode_status answer can trail the TV's own art_mode_changed broadcast.
+# A 2023 Frame (GQ55LS03B, local only) woken from standby by the Art Mode switch
+# broadcast art_mode_changed='on' at 15:51:16.165 and answered a
+# get_artmode_status sent 3 ms later with 'off', while its panel showed art.
+# The reply overwrote the cached state, and on a set with no IP Control or
+# SmartThings nothing read it again: art_mode_status and the switch stayed off
+# for minutes with art on screen (#456). The broadcast is the TV announcing a
+# transition, so a contradicting read within this window does not undo it. A
+# genuine change after that broadcast announces itself with a new one; past
+# the window the read is trusted again, so a broadcast that the panel never
+# followed cannot pin the state.
+ART_READ_BROADCAST_PRECEDENCE = 20.0
+
 # When the receive loop ends, the cached art_mode is dropped so a dead channel
 # cannot keep reporting a stale "on" (Art Mode being a Frame's last state
 # before power-off). That fall-through assumes some independent source — IP
@@ -1165,7 +1178,7 @@ class SamsungTVAsyncArt:
         # get_artmode_status status report (which does carry 'value') still
         # matches here; the write's reply is still resolved by request_id below.
         if "artmode_status" in sub_event and sub_event != "set_artmode_status":
-            self.art_mode = data.get("value") == "on"
+            self._apply_artmode_read(data.get("value"), log=True)
         elif sub_event == "art_mode_changed":
             self.art_mode = data.get("status") == "on"
             self.art_mode_broadcast_count += 1
@@ -2349,9 +2362,36 @@ class SamsungTVAsyncArt:
         data = await self._send_art_request({"request": "get_artmode_status"})
         if data is not None:
             value = data.get("value", data.get("status", "off"))
-            self.art_mode = value == "on"
+            # The receive loop already applied (and logged) this reply.
+            state = self._apply_artmode_read(value, log=False)
+            if state != (value == "on"):
+                return "on" if state else "off"
             return value
         return None
+
+    def _apply_artmode_read(self, value: str | None, *, log: bool) -> bool:
+        """Cache a get_artmode_status answer unless a fresh broadcast denies it.
+
+        Returns the state now cached. See ART_READ_BROADCAST_PRECEDENCE.
+        """
+        read = value == "on"
+        broadcast = self.art_mode_last_broadcast
+        if broadcast is not None:
+            announced, heard_at = broadcast
+            age = time.monotonic() - heard_at
+            if announced != read and age < ART_READ_BROADCAST_PRECEDENCE:
+                if log:
+                    self._log.debug(
+                        "Art API: get_artmode_status answered %r %.2fs after an "
+                        "art_mode_changed=%s broadcast; keeping the broadcast",
+                        value,
+                        age,
+                        "on" if announced else "off",
+                    )
+                self.art_mode = announced
+                return announced
+        self.art_mode = read
+        return read
 
     def art_mode_broadcast_since(self, mark: int, turn_on: bool) -> bool:
         """Whether an art_mode_changed broadcast to this state arrived after mark.

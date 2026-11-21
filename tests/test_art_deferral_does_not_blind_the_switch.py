@@ -154,3 +154,46 @@ class SourceTest(unittest.TestCase):
         # The success paths of turn_on and turn_off must keep the hold.
         self.assertIn("self._set_optimistic(True)", SWITCH)
         self.assertIn("self._set_optimistic(False)", SWITCH)
+
+
+# --- the WS fallback honours the hold as well (#456) ------------------------
+
+
+class WsFallbackHoldTest(unittest.TestCase):
+    """Right after a power-on the media_player has no art_mode_status yet.
+
+    Home Assistant refreshes a polled entity after its turn_on service, so the
+    switch read the art channel directly 5 ms after confirming Art Mode ON and
+    took a stale 'off' straight into its state.
+    """
+
+    def _run(self, sw, answer):
+        import asyncio
+
+        sw._updating = False
+        sw._available = False
+        sw._is_tv_on = MagicMock(return_value=_coro(True))
+        sw._get_media_player_entity_id = MagicMock(return_value=None)
+        sw._hass = MagicMock()
+        sw._art_api = MagicMock()
+        sw._art_api.get_artmode = MagicMock(return_value=_coro(answer))
+        asyncio.run(sw.async_update())
+
+    def test_a_contradicting_ws_read_is_held_off(self):
+        sw = _switch()
+        sw._set_optimistic(True)
+        self._run(sw, "off")
+        self.assertIs(sw._attr_is_on, True)
+
+    def test_without_a_hold_the_ws_read_is_the_state(self):
+        sw = _switch()
+        self._run(sw, "off")
+        self.assertIs(sw._attr_is_on, False)
+
+
+async def _value(value):
+    return value
+
+
+def _coro(value):
+    return _value(value)

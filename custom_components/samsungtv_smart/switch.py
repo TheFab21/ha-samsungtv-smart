@@ -1225,12 +1225,25 @@ class FrameArtModeSwitch(SwitchEntity):
                 async with asyncio.timeout(8):
                     art_mode = await self._art_api.get_artmode()
                     if art_mode is not None:
-                        self._attr_is_on = art_mode == "on"
+                        incoming = art_mode == "on"
                         self._available = True
-                        self._log.debug(
-                            "Art Mode state updated (WS fallback): %s",
-                            self._attr_is_on,
-                        )
+                        # Same hold as the media_player branch: right after a
+                        # power-on the media_player has no art_mode_status yet,
+                        # and this read is what Home Assistant's refresh after
+                        # the turn_on lands on (#456).
+                        if self._optimistic_blocks(incoming):
+                            self._log.debug(
+                                "Ignoring stale WS art mode=%s (holding "
+                                "optimistic %s)",
+                                incoming,
+                                self._optimistic_value,
+                            )
+                        else:
+                            self._attr_is_on = incoming
+                            self._log.debug(
+                                "Art Mode state updated (WS fallback): %s",
+                                self._attr_is_on,
+                            )
                     else:
                         self._log.debug("Could not get Art Mode state")
         except asyncio.TimeoutError:
