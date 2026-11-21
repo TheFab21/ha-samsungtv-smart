@@ -52,7 +52,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import DOMAIN as HA_DOMAIN
 from homeassistant.core import HomeAssistant, SupportsResponse, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
@@ -4995,15 +4995,15 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         self.send_command("KEY_STOP")
 
     def media_next_track(self):
-        """Send next track command."""
-        if self.media_channel:
+        """Send next track command: next channel on live TV, else fast-forward."""
+        if self._is_on_tuner():
             self.send_command("KEY_CHUP")
         else:
             self.send_command("KEY_FF")
 
     def media_previous_track(self):
-        """Send the previous track command."""
-        if self.media_channel:
+        """Send the previous track command: previous channel on live TV, else rewind."""
+        if self._is_on_tuner():
             self.send_command("KEY_CHDOWN")
         else:
             self.send_command("KEY_REWIND")
@@ -5195,32 +5195,105 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         return await self.async_send_command(source_key)
 
+    def _tuner_source_name(self) -> str | None:
+        """Return the source list entry that selects the TV tuner, if any."""
+        if not self._source_list:
+            return None
+        for name, key in self._source_list.items():
+            if key in ("ST_TV", "KEY_TV", "KEY_DTV") or (
+                isinstance(name, str) and name.casefold() in TUNER_INPUT_SOURCES
+            ):
+                return name
+        return None
+
+    def _is_on_tuner(self) -> bool:
+        """Return True when the TV is showing its tuner (live TV).
+
+        media_channel alone is not enough: neither IP Control nor SmartThings
+        always reports a channel number, even on the tuner (#452), and without
+        one next/previous used to send FF/REWIND, which do nothing on live TV.
+        """
+        if self._state != MediaPlayerState.ON or self._running_app != DEFAULT_APP:
+            return False
+        if self._rest_app_id is not None:
+            return False
+        if self.media_channel:
+            return True
+        tuner = self._tuner_source_name()
+        return tuner is not None and self._source == tuner
+
+    def _resolve_channel_name(self, channel: str) -> str | None:
+        """Map a channel name ("Rai 1", "RAI1") to its channel_list value.
+
+        Voice assistants send the channel by name (#452). Matched ignoring case,
+        spaces and punctuation, so "Rai 1", "RAI1" and "rai-1" are the same.
+        """
+        if not self._channel_list:
+            return None
+
+        def _norm(value: str) -> str:
+            return "".join(ch for ch in value.casefold() if ch.isalnum())
+
+        wanted = _norm(channel)
+        if not wanted:
+            return None
+        for name, value in self._channel_list.items():
+            if _norm(str(name)) == wanted:
+                return str(value)
+        return None
+
     async def _async_set_channel_source(self, channel_source=None):
-        """Select the source for a channel."""
+        """Select the source for a channel.
+
+        Raises instead of only logging, so a channel change that cannot happen
+        is visible to its caller (#452): Alexa and scripts used to get "OK"
+        while the TV did nothing.
+        """
 
         if not channel_source:
             if self._running_app == DEFAULT_APP:
                 return True
-            self._log.error("Current source invalid for channel")
-            return False
+            # A bare channel number (as voice assistants send it) while an app
+            # is running: switch to the tuner first instead of failing (#452).
+            if not (channel_source := self._tuner_source_name()):
+                raise ServiceValidationError(
+                    f"Cannot change channel while {self._running_app} is running: "
+                    "no TV tuner source in the source list"
+                )
+            self._log.debug(
+                "Channel without source while %s is running: switching to %s",
+                self._running_app,
+                channel_source,
+            )
 
         if self._source == channel_source:
             return True
 
         if channel_source not in self._source_list:
-            self._log.error("Invalid channel source: %s", channel_source)
-            return False
+            raise ServiceValidationError(
+                f"Invalid channel source: {channel_source} (not in the source list)"
+            )
 
         await self.async_select_source(channel_source)
         if self._source != channel_source:
-            self._log.error("Error selecting channel source: %s", channel_source)
-            return False
+            raise HomeAssistantError(
+                f"Could not switch to the channel source {channel_source}"
+            )
         await asyncio.sleep(3)
 
         return True
 
     async def _async_set_channel(self, channel):
         """Set a specific channel."""
+
+        channel = str(channel).strip()
+        if not channel.startswith("http") and not channel.split("@")[0].isdigit():
+            # Voice assistants send the channel by name ("Rai 1"): look it up in
+            # the channel list ("Rai 1" -> "1@TV"). Resolved before the URL test,
+            # so a name that maps to a stream URL works too (#452).
+            if resolved := self._resolve_channel_name(channel):
+                self._log.debug("Channel name %s resolved to %s", channel, resolved)
+                channel = resolved
 
         if channel.startswith("http"):
             await self.async_play_media(MediaType.URL, channel)
@@ -5234,9 +5307,11 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         try:
             cv.positive_int(channel_no)
-        except vol.Invalid:
-            self._log.error("Channel must be positive integer")
-            return False
+        except vol.Invalid as ex:
+            raise ServiceValidationError(
+                f"Unknown channel {channel!r}: use a channel number, or a name "
+                "from the channel list in the integration options"
+            ) from ex
 
         if not await self._async_set_channel_source(channel_source):
             return False
@@ -5626,7 +5701,14 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # The panel is on — Art Mode was just left — even if the media player
         # state still reads OFF from Art Mode: going through the turn-on path
         # here would send a power key to a TV that is already on.
-        await self._async_select_source(source, assume_on=True)
+        try:
+            await self._async_select_source(source, assume_on=True)
+        except HomeAssistantError as ex:
+            # A background task, not a service call: nobody would see the
+            # exception, so log it (a channel the option names may be invalid).
+            self._log.warning(
+                "Art exit source '%s' could not be applied: %s", source, ex
+            )
 
     async def async_select_source(self, source):
         """Select input source."""
@@ -5725,7 +5807,14 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 # wait for smartthings available
                 return
 
-        await self.async_select_source(source)
+        try:
+            await self.async_select_source(source)
+        except HomeAssistantError as ex:
+            # Runs from the update loop after a power-on, not from a service
+            # call: an exception here would fail the update, so log it instead.
+            self._log.warning(
+                "Delayed source '%s' could not be applied: %s", source, ex
+            )
 
     def _quick_settings_client(self):
         """The TV's local quick-settings channel client, open or not."""
