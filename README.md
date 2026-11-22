@@ -667,6 +667,15 @@ Where:
 > ```
 >
 > The card POSTs the selected image to the integration's authenticated endpoint (`/api/samsungtv_smart/art_upload`), which reuses the `art_upload` service to display and refresh it on the TV.
+>
+> **Crop before uploading:** The `frame-crop-upload-card` Lovelace card is also bundled and auto-registered. It shows the picture inside a box the shape of your Frame's screen (from `screen_resolution`, and portrait when `sensor.<tv>_art_orientation` says so), so you can drag to pan, pinch, scroll or slide to zoom, rotate, and choose between filling the screen or fitting the whole picture with a border colour of your choice. The crop is made in the browser at the panel's native resolution and posted to the same endpoint, so what you frame is what appears on the TV. Pictures the browser cannot decode (HEIC outside Safari) can still be sent as-is.
+>
+> ```
+> type: custom:frame-crop-upload-card
+> entity: media_player.samsung_frame   # required
+> title: Upload to The Frame           # optional
+> matte: none                          # optional matte id, default none
+> ```
 
 ### Media Player Attributes
 

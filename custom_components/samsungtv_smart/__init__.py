@@ -1308,6 +1308,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Register the art-upload Lovelace card (served + auto-added as a resource).
     await _register_bundled_card(hass, "samsung-art-upload-card.js")
 
+    # Crop/pan/zoom variant of the upload card: frames the picture to the
+    # panel's aspect ratio in the browser before posting to the same endpoint.
+    await _register_bundled_card(hass, "frame-crop-upload-card.js")
+
     return True
 
 
