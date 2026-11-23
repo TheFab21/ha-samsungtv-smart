@@ -1,4 +1,4 @@
-"""The art-exited dispatcher target must run on the event loop (#459).
+"""The art-exited dispatcher target must run on the event loop.
 
 `_on_art_exited` is wired with `async_dispatcher_connect`. Home Assistant runs
 a connected target that is a plain function in an executor thread, and a
@@ -7,7 +7,7 @@ which is only valid on the loop, so without the decorator it raised a
 RuntimeError from a SyncWorker thread on every Art-Mode-off — the dispatcher
 swallowed it and the configured exit source never switched.
 
-Seen on a real instance (QN65LS03F): "Art Mode turned OFF", then
+Seen in the maintainer's own log on 9.5.12: "Art Mode turned OFF", then
 "calls hass.async_create_task from a thread other than the event loop", then
 "Exception in _on_art_exited when dispatching 'samsungtv_smart_art_exited_…'".
 """
