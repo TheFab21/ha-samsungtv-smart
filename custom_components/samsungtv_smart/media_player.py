@@ -5661,8 +5661,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     )
         await self.hass.async_add_executor_job(self._send_wol_packet)
 
+    @callback
     def _on_art_exited(self) -> None:
-        """Art Mode was turned off from Home Assistant: apply the exit source."""
+        """Art Mode was turned off from Home Assistant: apply the exit source.
+
+        Must be a ``@callback`` like its sibling ``_on_wake_nudge``: without it
+        Home Assistant runs a plain dispatcher target in an executor thread, and
+        ``async_create_task`` then raises from that thread, so the exit-source
+        switch never fired and every Art-Mode-off logged a RuntimeError (the
+        dispatcher swallowed it). On the event loop the task is scheduled.
+        """
         self.hass.async_create_task(self._async_apply_art_exit_source())
 
     async def _async_apply_art_exit_source(self) -> None:
