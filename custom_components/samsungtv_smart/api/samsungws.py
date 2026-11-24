@@ -1482,11 +1482,29 @@ class SamsungTVWS:
         )
 
     def hold_key(self, key, seconds):
-        """Send a key to the TV and keep it pressed for specific number of seconds"""
-        if self.send_key(key, key_press_delay=0, cmd="Press"):
-            time.sleep(seconds)
-            return self.send_key(key, key_press_delay=0, cmd="Release")
-        return False
+        """Send a key to the TV and keep it pressed for specific number of seconds.
+
+        The Release only goes out on the remote channel that carried the Press.
+        A TV that goes to standby during the hold closes that channel, and
+        _ws_send would then open a new connection just to send the Release:
+        it releases nothing (that connection never pressed the key), and
+        opening a connection to a Frame in networked standby wakes it. A 32"
+        LS03C powered off this way, with IP Control still refusing after a
+        power cut, went to standby on the Press and came back on at the
+        Release, 3 s later (#461).
+        """
+        pressed_on = self._ws_remote
+        if not self.send_key(key, key_press_delay=0, cmd="Press"):
+            return False
+        time.sleep(seconds)
+        if pressed_on is not None and self._ws_remote is not pressed_on:
+            self._log.debug(
+                "Not releasing %s: the channel it was pressed on closed during "
+                "the hold (TV going to standby); a new connection would wake it",
+                key,
+            )
+            return True
+        return self.send_key(key, key_press_delay=0, cmd="Release")
 
     def send_text(self, text, send_delay=None):
         """Send a text string to the TV."""
