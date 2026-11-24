@@ -312,6 +312,14 @@ redirect at all.
 
 **Step 1 — Create a SmartThings OAuth App (one time)**
 
+> ⚠️ **Since 4 November 2026 this step requires a paid SmartThings API plan.**
+> Without one, the CLI stops with *"Creating or modifying a Smart App requires
+> a paid plan"*, and nothing in this integration can get around it (see
+> [SmartThings Authentication](#smartthings-authentication)). If you don't want
+> a plan, skip SmartThings entirely: choose **No SmartThings (local only)** and
+> pair IP Control. Everything except power metering and the light sensor works
+> locally.
+
 > ⚠️ The SmartThings Developer Portal web UI no longer supports creating OAuth apps. Use the SmartThings CLI instead.
 
 1. Install the [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli).
