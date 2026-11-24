@@ -164,6 +164,7 @@ def _switch_methods():
         "asyncio": _Asyncio(),
         "guard_for": guard_mod.guard_for,
         "DOMAIN": "samsungtv_smart",
+        "DATA_IP_ART_UNRELIABLE": "ip_art_unreliable",
         "ArtModeWriteSuppressed": guard_mod.ArtModeWriteSuppressed,
         "SamsungIPControlError": _IPError,
         "Any": object,

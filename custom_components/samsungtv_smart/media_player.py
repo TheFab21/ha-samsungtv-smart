@@ -83,6 +83,7 @@ from . import (
 )
 from .api.art import SamsungTVAsyncArt
 from .api.ipcontrol import (
+    ERROR_METHOD_NOT_FOUND,
     PICTURE_MODE_OPTIONS,
     SamsungIPControl,
     SamsungIPControlAuthError,
@@ -174,6 +175,7 @@ from .const import (
     CONF_WS_NAME,
     DATA_ART_API,
     DATA_CFG,
+    DATA_IP_ART_UNRELIABLE,
     DATA_IP_CONTROL_STATE_COORDINATOR,
     DATA_MOBILEBFF,
     DATA_OPTIONS,
@@ -422,6 +424,9 @@ IP_ART_MODE_MIN_INTERVAL = IP_ART_MODE_REFRESH_INTERVAL.total_seconds() * 0.8
 # Frame's getTVStates had not reached "Ambient" 11 s after it broadcast ON; the
 # switch gives the panel the same 20 s (ART_MODE_PANEL_CONFLICT_WINDOW).
 ART_BROADCAST_GRACE = 20.0
+# IP Control Art Mode reads that must contradict the TV's own art_mode_changed
+# broadcast, past ART_BROADCAST_GRACE, before that reading is set aside (#466).
+IP_ART_CONTRADICTION_READS = 3
 # How long device info has to go unanswered, on a TV we do not believe to be
 # on, before the set counts as off the network entirely (seconds). A Frame
 # displaying artwork is powered up and answers the REST endpoint — the #326
@@ -1067,6 +1072,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # so the warning above is logged once per change, not per poll.
         self._last_unmapped_source: str | None = None
         self._ip_art_mode: bool | None = None
+        # Consecutive IP Control reads contradicting the art broadcast (#466).
+        self._ip_art_contradictions = 0
         # Consecutive transport-failure count; the cache is cleared once it
         # reaches IP_ART_MODE_MAX_FAILURES so a TV that stops answering on
         # port 1516 (deep standby) cannot pin a stale "art mode on" forever.
@@ -1915,6 +1922,88 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             broadcast = self._latest_art_broadcast()
             if value is not None and broadcast is not None and broadcast[0] != value:
                 self.async_write_ha_state()
+        await self._check_ip_art_contradiction(client, value, power, read_at)
+
+    def _ip_art_reading_unreliable(self) -> bool:
+        """Whether IP Control's Art Mode reading is set aside for this TV."""
+        if self.hass is None:
+            return False
+        data = self.hass.data.get(DOMAIN, {}).get(self._entry_id)
+        return bool(isinstance(data, dict) and data.get(DATA_IP_ART_UNRELIABLE))
+
+    async def _check_ip_art_contradiction(
+        self, client, value: bool | None, power: str | None, read_at: float
+    ) -> None:
+        """Set IP Control's Art Mode reading aside once it contradicts the TV.
+
+        On a 2024 Frame (QN55LS03D, firmware 2130) IP Control kept answering
+        artModeControl=off and getTVStates input HDMI1 / pictureMode
+        Intelligent while the panel showed art. The TV's own Art app knew
+        better: switched with the remote, it broadcast art_mode_changed='on',
+        art_mode_status read on for the 20 s the broadcast outranks a reading,
+        then the IP reading took over again and pinned it at off (#466). With
+        IP Control disabled everything was right, but the TV could no longer
+        be powered off: KEY_POWER only toggles Art Mode on these sets.
+
+        So the reading is set aside, for this TV until the entry reloads, when
+        all of these hold for IP_ART_CONTRADICTION_READS reads in a row:
+
+        - the TV is on (powerControl powerOn) and IP Control reads art off;
+        - the latest art_mode_changed broadcast is 'on', older than
+          ART_BROADCAST_GRACE, and the Art channel still reads on;
+        - IP Control itself refuses pictureModeControl with -32601, which it
+          does while art is on the panel (the none-ambient dispatch map), or
+          answers "Ambient".
+
+        The last condition keeps a spurious 'on' broadcast from setting aside
+        a reading that is right: on a TV really showing an input,
+        pictureModeControl answers that input's picture mode. A frozen Art
+        channel (#248) broadcasts nothing, so it never gets here. The rest of
+        IP Control (power, picture settings) keeps working.
+        """
+        if power != "powerOn" or value is not False:
+            self._ip_art_contradictions = 0
+            return
+        if self._ip_art_reading_unreliable():
+            return
+        broadcast = self._latest_art_broadcast()
+        art_api = getattr(self, "_art_api", None)
+        if not (
+            broadcast is not None
+            and broadcast[0] is True
+            and read_at >= broadcast[1] + ART_BROADCAST_GRACE
+            and getattr(art_api, "art_mode", None) is True
+        ):
+            self._ip_art_contradictions = 0
+            return
+        self._ip_art_contradictions += 1
+        if self._ip_art_contradictions < IP_ART_CONTRADICTION_READS:
+            return
+        try:
+            mode = await client.async_get_picture_mode()
+        except SamsungIPControlUnsupportedError as ex:
+            corroborated = ex.code == ERROR_METHOD_NOT_FOUND
+        except SamsungIPControlError:
+            # No answer either way: decide on a later read.
+            return
+        else:
+            corroborated = mode == "Ambient"
+        if not corroborated:
+            # pictureModeControl reports a real input: IP Control is right and
+            # the broadcast was the odd one out.
+            self._ip_art_contradictions = 0
+            return
+        data = self.hass.data.setdefault(DOMAIN, {}).setdefault(self._entry_id, {})
+        data[DATA_IP_ART_UNRELIABLE] = True
+        self._log.warning(
+            "IP Control on %s reports Art Mode off while the TV announced it is "
+            "on and refuses picture-mode reads as it does in Art Mode; reading "
+            "Art Mode from the Art channel for this TV from now on (IP Control "
+            "stays in use for everything else). This lasts until the "
+            "integration is reloaded",
+            self._host,
+        )
+        self.async_write_ha_state()
 
     def _shared_ip_art_reading(self) -> tuple[bool, float] | None:
         if self.hass is None:
@@ -2965,6 +3054,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         safe from a sync property. Independent of the art-mode option — this is
         getTVStates, not the wedge-prone artModeControl flag.
         """
+        if self._ip_art_reading_unreliable():
+            # This TV's getTVStates does not show art (#466).
+            return None
         coordinator = self._get_ip_control_state_coordinator()
         data = getattr(coordinator, "data", None)
         if not isinstance(data, dict) or data.get("powered_off"):
@@ -4270,7 +4362,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             or self._running_app not in (None, DEFAULT_APP)
         ):
             return False
-        if self._ip_art_mode is not None:
+        if self._ip_art_mode is not None and not self._ip_art_reading_unreliable():
             override = self._art_broadcast_overrides(self._ip_art_mode_at)
             return self._ip_art_mode if override is None else override
         # Without an IP reading (not paired, the read failing — or, until
