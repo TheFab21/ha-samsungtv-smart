@@ -369,6 +369,14 @@ If you already have the native SmartThings integration configured in Home Assist
 1. When adding the integration, select **Personal Access Token**.
 2. In the dropdown, select your existing SmartThings integration instead of entering a token manually.
 
+> 💡 **From Home Assistant 2026.12 this is the easiest way to SmartThings.** The
+> native SmartThings integration now creates your own SmartThings app for you:
+> you give it a Personal Access Token with the **application** scopes, once,
+> and it does what Step 1 of Option 1 does with the CLI, then signs in with
+> OAuth2 and renews the token by itself. Link to it here and this integration
+> borrows that token. It still needs an **active SmartThings API plan** on your
+> Samsung account (see the box at the top of this section).
+
 ---
 
 ### Integration Setup
@@ -1615,6 +1623,30 @@ To fix it:
 
 Your entities, history and automations are preserved — unlike deleting and
 re-adding the integration.
+
+### SmartThings: "Quota exceeded" or "flagged this client as problematic"
+
+```text
+media_player.your_tv - SmartThings refused the request (quota): Quota exceeded.
+Holding SmartThings off for 300s; see the notification
+```
+
+Since Samsung's paid API plans, SmartThings answers some requests with a
+refusal that is about the **account**, not the TV. From Home Assistant 2026.12
+(pysmartthings 4.1.0) the integration tells them apart:
+
+| SmartThings answers | Meaning | What the integration does |
+|---|---|---|
+| **402 Quota exceeded** | The account has no plan with API quota left, or used it up | Stops calling SmartThings for 5 minutes at a time, raises a notification linking [Samsung's plans page](https://developer.smartthings.com/console/service-integrations/manage-plans) |
+| **418 flagged this client as problematic** | Samsung blocked the API client | Same hold and its own notification |
+| **429 Rate limit exceeded** | Too many calls in a short time | Waits a minute, no notification |
+| **5xx server error** | SmartThings' own trouble | Retries on the next poll, logged at debug only |
+
+The power and light sensors follow the same hold, so nothing keeps calling a
+quota that is already gone. Local control (power, keys, sources, Art Mode) is
+not affected, and everything resumes, notification cleared, at the first
+answer. If you do not want a plan: **Reconfigure → Authentication → No
+SmartThings (local only)**.
 
 ### OAuth2 — "Token refresh failed"
 

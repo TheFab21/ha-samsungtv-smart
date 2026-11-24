@@ -240,9 +240,19 @@ from .picture_mode_keys import (
     picture_mode_ip_variant,
     picture_mode_ws_key,
 )
+from .st_errors import (
+    StErrorKind,
+    backoff_for,
+    classify_st_error,
+    clear_st_backoff,
+    set_st_backoff,
+    st_backoff_active,
+)
 from .token_notify import (
     METHOD_IP_CONTROL,
     METHOD_LOCAL,
+    METHOD_SMARTTHINGS_BLOCKED,
+    METHOD_SMARTTHINGS_QUOTA,
     clear_token_problem,
     forget_smartthings_access,
     notify_token_problem,
@@ -350,6 +360,14 @@ MAX_ST_AUTH_ERROR_COUNT = 3
 # TV produced 1591 refusals in two hours). Long enough to be harmless, short
 # enough that a fix is noticed without a restart.
 ST_POLL_AUTH_ERROR_INTERVAL = 300
+# SmartThings failures logged at debug only: transient (5xx, rate limit), or
+# reported by their own warning and notification (quota, blocked client).
+_ST_QUIET_KINDS = (
+    StErrorKind.SERVER,
+    StErrorKind.RATE_LIMITED,
+    StErrorKind.QUOTA,
+    StErrorKind.BLOCKED,
+)
 MEDIA_TYPE_BROWSER = "browser"
 MEDIA_TYPE_KEY = "send_key"
 MEDIA_TYPE_TEXT = "send_text"
@@ -1182,6 +1200,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         self._st_error_count = 0
         self._st_auth_error_count = 0
+        self._st_account_error: StErrorKind | None = None
         self._st_last_exc = None
         self._st_sources_loaded = False
         # Bumped by every select_picture_mode call, so an older call does not
@@ -3384,6 +3403,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         ws_connected = self._ws.is_connected
         wake_edge = ws_connected and not self._ws_was_connected
         self._ws_was_connected = ws_connected
+        if st_backoff_active(self.hass, self._entry_id):
+            # Quota used up, client blocked or rate limited: the next call
+            # would get the same answer and count against the quota again.
+            return False
         if wake_edge:
             self._st_last_poll = now
             return True
@@ -3405,15 +3428,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     def _st_error_is_authorization(exc: Exception) -> bool:
         """True when SmartThings refused the device rather than merely failing.
 
-        pysmartthings does not expose a stable exception class for this, so the
-        check is deliberately loose: the class name and the message are both
-        inspected. A false positive only slows polling down and shows a notice
-        the user can dismiss; a false negative just keeps today's behaviour.
+        A 401 or 403, from pysmartthings or a raw HTTP call; see st_errors for
+        how older pysmartthings releases without the exception classes are
+        read. A false positive only slows polling down and shows a notice the
+        user can dismiss; a false negative just keeps today's behaviour.
         """
-        text = f"{type(exc).__name__} {exc}".lower()
-        return any(
-            marker in text for marker in ("forbidden", "unauthorized", "401", "403")
-        )
+        return classify_st_error(exc) is StErrorKind.REFUSED
 
     def _allow_st_refresh(self) -> bool:
         """Return whether the active SmartThings refresh command should run.
@@ -3456,11 +3476,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     self._use_channel_info,
                     allow_refresh=self._allow_st_refresh(),
                 )
-        except (
-            asyncio.TimeoutError,
-            ClientConnectionError,
-            ClientResponseError,
-        ) as exc:
+        except (asyncio.TimeoutError, ClientConnectionError) as exc:
             self._log.debug("%s - SmartThings error: [%s]", self.entity_id, exc)
             self._st_last_exc = exc
             return False
@@ -3470,7 +3486,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             # the whole entity unavailable, and dependent entities (art mode
             # switch, frame art sensor) would wrongly report the TV as off.
             # Local WebSocket control keeps working without SmartThings.
-            if type(exc) is not type(self._st_last_exc):
+            kind = classify_st_error(exc)
+            if kind in _ST_QUIET_KINDS or (
+                isinstance(exc, ClientResponseError) and kind is StErrorKind.OTHER
+            ):
+                # Transient, a raw HTTP error with nothing to act on, or a quota
+                # / blocked client that _note_st_account_error reports itself.
+                self._log.debug(
+                    "%s - SmartThings error (%s): [%s]", self.entity_id, kind, exc
+                )
+            elif type(exc) is not type(self._st_last_exc):
                 self._log.warning(
                     "%s - SmartThings update failed, continuing with local"
                     " control only: %s",
@@ -3481,10 +3506,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     exc,
                 )
             self._st_last_exc = exc
+            self._note_st_account_error(kind, exc)
             self._note_st_auth_error(exc)
             return False
 
         self._st_last_exc = None
+        self._clear_st_account_error()
         # When this cloud reading was taken. Like the IP Control snapshots and
         # device_info, the SmartThings state describes the TV as of the moment
         # the cloud answered, so _art_mode_is_on() can weigh an art_mode_changed
@@ -3502,6 +3529,52 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # a missing API plan.
         report_smartthings_access(self.hass, self._entry_id, self._name, False)
         return True
+
+    def _note_st_account_error(self, kind: StErrorKind, exc: Exception) -> None:
+        """Hold the cloud off after a quota, blocked-client or rate-limit answer.
+
+        Unlike a 403, these are not about this TV's device id and do not need
+        three in a row to be sure: the next call gets the same answer and, for
+        a used-up quota, only counts against it again. A quota or blocked
+        client also raises its own notification, once.
+        """
+        if (seconds := backoff_for(kind)) is None:
+            return
+        set_st_backoff(self.hass, self._entry_id, seconds)
+        method = {
+            StErrorKind.QUOTA: METHOD_SMARTTHINGS_QUOTA,
+            StErrorKind.BLOCKED: METHOD_SMARTTHINGS_BLOCKED,
+        }.get(kind)
+        if method is None or getattr(self, "_st_account_error", None) is kind:
+            return
+        self._st_account_error = kind
+        self._log.warning(
+            "%s - SmartThings refused the request (%s): %s. Holding SmartThings "
+            "off for %ds; see the notification",
+            self.entity_id or self._name,
+            kind,
+            exc,
+            seconds,
+        )
+        notify_token_problem(self.hass, self._entry_id, method, self._name)
+
+    def _clear_st_account_error(self) -> None:
+        """SmartThings answered: lift the hold and its notification.
+
+        A hold that simply ran out (a rate limit) needs no clearing: an
+        expired one holds nothing off.
+        """
+        if getattr(self, "_st_account_error", None) is None:
+            return
+        clear_st_backoff(self.hass, self._entry_id)
+        self._log.info(
+            "%s - SmartThings is answering again after %s",
+            self.entity_id or self._name,
+            self._st_account_error,
+        )
+        self._st_account_error = None
+        for method in (METHOD_SMARTTHINGS_QUOTA, METHOD_SMARTTHINGS_BLOCKED):
+            clear_token_problem(self.hass, self._entry_id, method)
 
     def _note_st_auth_error(self, exc: Exception) -> None:
         """Count an authorization refusal and, past the threshold, act on it."""

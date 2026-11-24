@@ -31,6 +31,7 @@ from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN
+from .st_errors import MANAGE_PLANS_URL
 
 # Token methods that use this maison notification (SmartThings excluded — it
 # uses the native Repairs issue registry instead).
@@ -40,6 +41,10 @@ METHOD_SMARTTHINGS = "smartthings"
 # Same notification as METHOD_SMARTTHINGS, worded for every SmartThings TV of
 # the install being refused at once - the account, not one device.
 METHOD_SMARTTHINGS_PLAN = "smartthings_plan"
+# SmartThings answered 402 "Quota exceeded" (pysmartthings 4.1.0), or 418 "this
+# client is flagged as problematic": account-level, not this TV's device id.
+METHOD_SMARTTHINGS_QUOTA = "smartthings_quota"
+METHOD_SMARTTHINGS_BLOCKED = "smartthings_blocked"
 
 _TITLES: dict[str, dict[str, str]] = {
     "en": {
@@ -47,12 +52,16 @@ _TITLES: dict[str, dict[str, str]] = {
         METHOD_IP_CONTROL: "Samsung TV — IP Control token rejected",
         METHOD_SMARTTHINGS: "Samsung TV — SmartThings refuses this TV",
         METHOD_SMARTTHINGS_PLAN: "Samsung TV — SmartThings API access refused",
+        METHOD_SMARTTHINGS_QUOTA: "Samsung TV — SmartThings API quota exceeded",
+        METHOD_SMARTTHINGS_BLOCKED: "Samsung TV — SmartThings blocked this client",
     },
     "fr": {
         METHOD_LOCAL: "Téléviseur Samsung — connexion locale non autorisée",
         METHOD_IP_CONTROL: "Téléviseur Samsung — token IP Control rejeté",
         METHOD_SMARTTHINGS: "Téléviseur Samsung — SmartThings refuse ce téléviseur",
         METHOD_SMARTTHINGS_PLAN: "Téléviseur Samsung — accès à l'API SmartThings refusé",
+        METHOD_SMARTTHINGS_QUOTA: "Téléviseur Samsung — quota de l'API SmartThings épuisé",
+        METHOD_SMARTTHINGS_BLOCKED: "Téléviseur Samsung — SmartThings a bloqué ce client",
     },
 }
 
@@ -87,8 +96,8 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "- **No SmartThings API plan.** From **15 December 2026** Samsung "
             "deactivates the API keys of owners who have not chosen a paid "
             "plan (plans launched on 4 November 2026). Every TV on the same "
-            "Samsung account is then refused. Choose a plan in the SmartThings "
-            "Developer Center, or stop using SmartThings: **Reconfigure → "
+            "Samsung account is then refused. Choose a plan in the [SmartThings "
+            "Developer Center]({plans_url}), or stop using SmartThings: **Reconfigure → "
             "Authentication → No SmartThings (local only)**. Local control, "
             "Art Mode included, keeps working; set *Power On Method* to "
             "Wake-on-LAN or IP Control.\n"
@@ -110,7 +119,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "API plan (plans launched on 4 November 2026). The cloud "
             "features — channel name, power metering, the ambient light "
             "sensor, Hue Sync — are paused; local control keeps working.\n\n"
-            "Either choose a plan in the SmartThings Developer Center, or "
+            "Either choose a plan in the [SmartThings Developer Center]({plans_url}), or "
             "stop using SmartThings for each TV: **Reconfigure → "
             "Authentication → No SmartThings (local only)**, and set *Power "
             "On Method* to Wake-on-LAN or IP Control. A Personal Access Token "
@@ -119,6 +128,32 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "Authentication**.\n\n"
             "Polling has been slowed down until it works again, and this "
             "notice clears itself automatically."
+        ),
+        METHOD_SMARTTHINGS_QUOTA: (
+            "SmartThings answers **Quota exceeded** for **{device_name}**. "
+            "Since Samsung's paid API plans, the SmartThings API needs an "
+            "**active plan with API quota left** on your Samsung account; the "
+            "account has none, or has used it up. The cloud features — channel "
+            "name, power metering, the ambient light sensor, Hue Sync — are "
+            "paused; local control keeps working.\n\n"
+            "Check or change your plan in the [SmartThings Developer Center]("
+            "{plans_url}), or stop using SmartThings: **Reconfigure → "
+            "Authentication → No SmartThings (local only)**, and set *Power On "
+            "Method* to Wake-on-LAN or IP Control.\n\n"
+            "SmartThings is now asked only every 5 minutes, and this notice "
+            "clears itself as soon as it answers again."
+        ),
+        METHOD_SMARTTHINGS_BLOCKED: (
+            "SmartThings answers that it has **flagged this client as "
+            "problematic** for **{device_name}**, and refuses its requests. "
+            "That is Samsung's decision about the API client, not a fault of "
+            "the TV. The cloud features — channel name, power metering, the "
+            "ambient light sensor, Hue Sync — are paused; local control keeps "
+            "working.\n\n"
+            "SmartThings is now asked only every 5 minutes, and this notice "
+            "clears itself as soon as it answers again. If it persists, check "
+            "your app and plan in the [SmartThings Developer Center]("
+            "{plans_url}), or switch to **No SmartThings (local only)**."
         ),
     },
     "fr": {
@@ -154,8 +189,8 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "décembre 2026**, Samsung désactive les clés d'API des comptes "
             "qui n'ont pas choisi d'offre payante (offres lancées le 4 "
             "novembre 2026). Tous les téléviseurs du même compte Samsung sont "
-            "alors refusés. Choisissez une offre dans le SmartThings "
-            "Developer Center, ou cessez d'utiliser SmartThings : "
+            "alors refusés. Choisissez une offre dans le [SmartThings "
+            "Developer Center]({plans_url}), ou cessez d'utiliser SmartThings : "
             "**Reconfigurer → Authentification → No SmartThings (local "
             "only)**. Le contrôle local, Art Mode compris, continue de "
             "fonctionner ; réglez la *méthode d'allumage* sur Wake-on-LAN ou "
@@ -181,7 +216,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "2026). Les fonctions cloud — nom de chaîne, mesure de "
             "consommation, capteur de luminosité ambiante, Hue Sync — sont "
             "suspendues ; le contrôle local continue de fonctionner.\n\n"
-            "Choisissez une offre dans le SmartThings Developer Center, ou "
+            "Choisissez une offre dans le [SmartThings Developer Center]({plans_url}), ou "
             "cessez d'utiliser SmartThings pour chaque téléviseur : "
             "**Reconfigurer → Authentification → No SmartThings (local "
             "only)**, et réglez la *méthode d'allumage* sur Wake-on-LAN ou IP "
@@ -191,6 +226,35 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "Authentification**.\n\n"
             "Les interrogations ont été espacées en attendant, et cette "
             "notification disparaît automatiquement."
+        ),
+        METHOD_SMARTTHINGS_QUOTA: (
+            "SmartThings répond **Quota exceeded** pour **{device_name}**. "
+            "Depuis les offres payantes de Samsung, l'API SmartThings exige une "
+            "**offre active avec du quota restant** sur votre compte Samsung ; "
+            "le compte n'en a pas, ou l'a épuisé. Les fonctions cloud — nom de "
+            "chaîne, mesure de consommation, capteur de luminosité ambiante, "
+            "Hue Sync — sont suspendues ; le contrôle local continue de "
+            "fonctionner.\n\n"
+            "Vérifiez ou changez votre offre dans le [SmartThings Developer "
+            "Center]({plans_url}), ou cessez d'utiliser SmartThings : "
+            "**Reconfigurer → Authentification → No SmartThings (local "
+            "only)**, et réglez la *méthode d'allumage* sur Wake-on-LAN ou IP "
+            "Control.\n\n"
+            "SmartThings n'est plus interrogé que toutes les 5 minutes, et "
+            "cette notification disparaît dès qu'il répond de nouveau."
+        ),
+        METHOD_SMARTTHINGS_BLOCKED: (
+            "SmartThings répond qu'il a **signalé ce client comme "
+            "problématique** pour **{device_name}**, et refuse ses requêtes. "
+            "C'est une décision de Samsung sur le client de l'API, pas une "
+            "panne du téléviseur. Les fonctions cloud — nom de chaîne, mesure "
+            "de consommation, capteur de luminosité ambiante, Hue Sync — sont "
+            "suspendues ; le contrôle local continue de fonctionner.\n\n"
+            "SmartThings n'est plus interrogé que toutes les 5 minutes, et "
+            "cette notification disparaît dès qu'il répond de nouveau. Si cela "
+            "persiste, vérifiez votre application et votre offre dans le "
+            "[SmartThings Developer Center]({plans_url}), ou passez en "
+            "**No SmartThings (local only)**."
         ),
     },
 }
@@ -220,7 +284,9 @@ def notify_token_problem(
         return
     persistent_notification.async_create(
         hass,
-        _MESSAGES[lang][method].format(device_name=device_name),
+        _MESSAGES[lang][method].format(
+            device_name=device_name, plans_url=MANAGE_PLANS_URL
+        ),
         title=_TITLES[lang][method],
         notification_id=_notification_id(entry_id, method),
     )
@@ -261,7 +327,9 @@ def _notify_smartthings(
     key = METHOD_SMARTTHINGS_PLAN if whole_account else METHOD_SMARTTHINGS
     persistent_notification.async_create(
         hass,
-        _MESSAGES[lang][key].format(device_name=device_name),
+        _MESSAGES[lang][key].format(
+            device_name=device_name, plans_url=MANAGE_PLANS_URL
+        ),
         title=_TITLES[lang][key],
         notification_id=_notification_id(entry_id, METHOD_SMARTTHINGS),
     )

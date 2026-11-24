@@ -79,6 +79,13 @@ from .const import (
     ip_control_port,
 )
 from .coordinator_entity import ChangedCoordinatorEntity
+from .st_errors import (
+    StErrorKind,
+    backoff_for,
+    classify_st_error,
+    set_st_backoff,
+    st_backoff_active,
+)
 from .token_notify import METHOD_IP_CONTROL, clear_token_problem, notify_token_problem
 
 _LOGGER = logging.getLogger(__name__)
@@ -169,7 +176,12 @@ def _st_child_gate(entity) -> bool:
     fall back to the slow OFF keepalive cadence. When the TV is on, throttle to
     the configured ST cadence rather than the 15 s module scan interval.
     ``entity`` must expose ``hass``, ``_entry`` and a mutable ``_st_last_poll``.
+
+    Nothing polls while the media player holds SmartThings off for this TV
+    (quota used up, client blocked, rate limited): see st_errors.
     """
+    if st_backoff_active(entity.hass, entity._entry.entry_id):
+        return False
     if _tv_powered_off(entity.hass, entity._entry):
         interval = ST_POLL_OFF_INTERVAL
     else:
@@ -179,6 +191,23 @@ def _st_child_gate(entity) -> bool:
         return False
     entity._st_last_poll = now
     return True
+
+
+def _log_st_child_error(entity, what: str, ex: Exception) -> None:
+    """Log a failed SmartThings read of a child sensor, once per kind of failure.
+
+    A refused, over-quota, blocked or rate-limited account is reported by the
+    media player (warning and notification) and holds the cloud off for the
+    whole TV; repeating it here on every poll was only noise. Server errors
+    pass on their own. Anything else is still worth a warning.
+    """
+    kind = classify_st_error(ex)
+    if (seconds := backoff_for(kind)) is not None:
+        set_st_backoff(entity.hass, entity._entry.entry_id, seconds)
+    if kind is StErrorKind.OTHER:
+        _LOGGER.warning("Error updating %s: %s", what, ex)
+    else:
+        _LOGGER.debug("Error updating %s (%s): %s", what, kind, ex)
 
 
 # How long to wait before re-fetching the thumbnail of an Art Store (SAM-*)
@@ -2548,7 +2577,7 @@ class SmartThingsIlluminanceSensor(SensorEntity):
                     "Illuminance data not available for %s", self._device_name
                 )
         except Exception as ex:
-            _LOGGER.warning("Error updating illuminance sensor: %s", ex)
+            _log_st_child_error(self, "illuminance sensor", ex)
 
 
 class SmartThingsBrightnessIntensitySensor(SensorEntity):
@@ -2642,7 +2671,7 @@ class SmartThingsBrightnessIntensitySensor(SensorEntity):
                     "Brightness intensity data not available for %s", self._device_name
                 )
         except Exception as ex:
-            _LOGGER.warning("Error updating brightness intensity sensor: %s", ex)
+            _log_st_child_error(self, "brightness intensity sensor", ex)
 
 
 # Key the power coordinator adds to the SmartThings powerConsumption dict: True
@@ -2778,6 +2807,9 @@ class SmartThingsPowerCoordinator(DataUpdateCoordinator):
                     self._device_name,
                 )
                 return self.data or {}
+        if st_backoff_active(self.hass, self._entry.entry_id):
+            # Quota used up, client blocked or rate limited (see st_errors).
+            return self.data or {}
         st_client = await self._get_st_client()
         if not st_client:
             return self.data or {}
@@ -2787,7 +2819,10 @@ class SmartThingsPowerCoordinator(DataUpdateCoordinator):
         except Exception as ex:  # pylint: disable=broad-except
             # Keep last values instead of marking every energy sensor
             # unavailable on a transient cloud hiccup.
-            self.logger.debug("Power consumption read failed: %s", ex)
+            kind = classify_st_error(ex)
+            if (seconds := backoff_for(kind)) is not None:
+                set_st_backoff(self.hass, self._entry.entry_id, seconds)
+            self.logger.debug("Power consumption read failed (%s): %s", kind, ex)
             return self.data or {}
         main = components.get("main", {})
         # String capability/attribute names: the dict is keyed that way and it
