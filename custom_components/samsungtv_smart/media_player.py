@@ -89,6 +89,7 @@ from .api.ipcontrol import (
     SamsungIPControlError,
     SamsungIPControlModeLockedError,
     SamsungIPControlUnsupportedError,
+    async_power_off_confirmed,
 )
 from .api.samsungcast import SamsungCastTube
 from .api.samsungws import (
@@ -4779,18 +4780,17 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             return False
         if self._power_off_in_progress():
             return True
+        sent_at = time.monotonic()
         try:
-            await client.async_power_off()
-            for delay in (0, 0.5):
-                if delay:
-                    await asyncio.sleep(delay)
-                if await client.async_get_power_state() == "powerOff":
-                    break
-            else:
-                self._log.debug("IP Control power off was not confirmed; falling back")
-                return False
+            confirmed = await async_power_off_confirmed(
+                client,
+                standby_announced=lambda: self._standby_announced_since(sent_at),
+            )
         except SamsungIPControlError as ex:
             self._log.debug("IP Control power off failed (%s); falling back", ex)
+            return False
+        if not confirmed:
+            self._log.debug("IP Control power off was not confirmed; falling back")
             return False
 
         self._ws.set_power_off_request()
@@ -4798,6 +4798,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         await self._async_switch_entity(False)
         self._log.debug("Turned off via IP Control")
         return True
+
+    def _standby_announced_since(self, mark: float) -> bool:
+        """Whether the TV announced go_to_standby after ``mark`` (monotonic)."""
+        art_api = getattr(self, "_art_api", None)
+        heard = getattr(art_api, "standby_last_broadcast", None)
+        return heard is not None and heard >= mark
 
     async def async_toggle(self):
         """Toggle the power on the media player.

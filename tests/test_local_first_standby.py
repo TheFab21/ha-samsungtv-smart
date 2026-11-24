@@ -10,6 +10,21 @@ from custom_components.samsungtv_smart.api.ipcontrol import (
 from custom_components.samsungtv_smart.switch import SamsungTVPowerSwitch
 
 
+@pytest.fixture(autouse=True)
+def fast_power_off_window(monkeypatch):
+    """Run the power-off confirmation window (#461) on a fake clock."""
+    from custom_components.samsungtv_smart.api import ipcontrol
+
+    clock = {"now": 0.0}
+
+    def monotonic():
+        clock["now"] += 1.0
+        return clock["now"]
+
+    monkeypatch.setattr(ipcontrol, "time", SimpleNamespace(monotonic=monotonic))
+    monkeypatch.setattr(ipcontrol, "POWER_OFF_POLL_INTERVAL", 0)
+
+
 def device(*, local=True, local_error=None, cloud=True, cloud_error=None):
     entity = object.__new__(SamsungTVPowerSwitch)
     entity._log = MagicMock()
@@ -89,7 +104,8 @@ async def test_an_acknowledged_but_ignored_power_off_uses_the_cloud():
     client.async_get_power_state.return_value = "powerOn"
     await entity.async_turn_off()
     assert calls == ["local", "cloud"]
-    assert client.async_get_power_state.await_count == 2
+    # Re-read for the whole confirmation window, not just once (#461).
+    assert client.async_get_power_state.await_count > 2
     entity._set_optimistic.assert_called_once_with(False)
 
 
