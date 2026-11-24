@@ -34,6 +34,7 @@ from .api.ipcontrol import (
     SamsungIPControl,
     SamsungIPControlAuthError,
     SamsungIPControlError,
+    async_power_off_confirmed,
     priority_requests,
 )
 from .art_mode_guard import (
@@ -1604,15 +1605,15 @@ class SamsungTVPowerSwitch(SwitchEntity):
         """
         ip_control = self._get_ip_control()
         if ip_control is not None:
+            sent_at = time.monotonic()
             try:
-                await ip_control.async_power_off()
-                for delay in (0, 0.5):
-                    if delay:
-                        await asyncio.sleep(delay)
-                    if await ip_control.async_get_power_state() == "powerOff":
-                        self._set_optimistic(False)
-                        self._log.debug("Power switch: TV turned off via IP Control")
-                        return
+                if await async_power_off_confirmed(
+                    ip_control,
+                    standby_announced=lambda: self._standby_announced_since(sent_at),
+                ):
+                    self._set_optimistic(False)
+                    self._log.debug("Power switch: TV turned off via IP Control")
+                    return
                 self._log.debug(
                     "Power switch: local power-off was not confirmed; "
                     "falling back to SmartThings"
@@ -1673,6 +1674,15 @@ class SamsungTVPowerSwitch(SwitchEntity):
             self._log.debug("Power switch: TV turned off via media_player (WebSocket)")
         except Exception as ex:
             self._log.error("Power switch: WebSocket turn_off failed: %s", ex)
+
+    def _standby_announced_since(self, mark: float) -> bool:
+        """Whether the TV announced go_to_standby after ``mark`` (monotonic)."""
+        try:
+            art_api = self.hass.data[DOMAIN][self._entry.entry_id].get(DATA_ART_API)
+        except (AttributeError, KeyError):
+            return False
+        heard = getattr(art_api, "standby_last_broadcast", None)
+        return heard is not None and heard >= mark
 
     @callback
     def _handle_media_player_state_change(self, event) -> None:

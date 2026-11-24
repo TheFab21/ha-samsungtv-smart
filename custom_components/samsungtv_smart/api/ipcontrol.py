@@ -255,6 +255,16 @@ SPEAKER_SELECT_OPTIONS = ("Internal", "External", "AudioOut/Optical")
 LIST_RESULT_KEY = "_list_result"
 
 CMD_TIMEOUT = 5  # seconds for normal commands
+# How long an accepted powerOff gets to show up before a caller falls back to
+# another power-off path (#461). A 2023 32" Frame (QN32LS03C) took ~2.3 s to
+# reach standby: go_to_standby and REST PowerState=standby came 0.8-1 s after
+# the old 0.5 s window had closed, and the KEY_POWER fallback, sent into that
+# transition, woke the TV back up in 3 power-offs out of 4.
+POWER_OFF_CONFIRM_WINDOW = 5.0
+POWER_OFF_POLL_INTERVAL = 0.5
+# A TV entering standby may stop answering: keep each read-back short so one
+# unanswered read does not stretch the window by a full CMD_TIMEOUT.
+POWER_OFF_POLL_TIMEOUT = 2
 PAIR_TIMEOUT = 30  # seconds: pairing waits for the on-screen acceptance
 
 
@@ -447,9 +457,9 @@ class SamsungIPControl:
         self._token = token
         return token
 
-    async def async_get_power_state(self) -> str:
+    async def async_get_power_state(self, *, timeout: int = CMD_TIMEOUT) -> str:
         """Return 'powerOn' or 'powerOff'. A TV in Art Mode reports 'powerOn'."""
-        result = await self._async_request("powerControl")
+        result = await self._async_request("powerControl", timeout=timeout)
         return result.get("power", "unknown")
 
     async def async_power_on(self) -> str:
@@ -1318,3 +1328,48 @@ class SamsungIPControl:
         # returns or raises, so reaching here means both attempts somehow fell
         # through without raising — treat as a generic error rather than crash.
         raise SamsungIPControlError("IP Control request failed after retry")
+
+
+async def async_power_off_confirmed(
+    client: SamsungIPControl,
+    *,
+    standby_announced: Callable[[], bool] | None = None,
+) -> bool:
+    """Send powerOff and wait for the TV to reach standby (#461).
+
+    True once powerControl reads ``powerOff``, or once ``standby_announced()``
+    says the TV announced its standby since the command (the Art channel's
+    go_to_standby). False when neither happened within
+    POWER_OFF_CONFIRM_WINDOW: the caller may then fall back. Raises when the
+    powerOff itself fails — nothing was accepted, so falling back at once is
+    safe.
+
+    A read-back that fails during the wait is not a reason to fall back: a TV
+    on its way to standby may stop answering, and the fallback (KEY_POWER on a
+    Frame) is exactly what wakes it back up. The token being rejected is
+    still raised.
+
+    User-initiated: runs inside priority_requests, so the read-backs overtake
+    queued background polls and are not short-circuited by the endpoint
+    breaker.
+    """
+    with priority_requests():
+        await client.async_power_off()
+        deadline = time.monotonic() + POWER_OFF_CONFIRM_WINDOW
+        while True:
+            try:
+                state = await client.async_get_power_state(
+                    timeout=POWER_OFF_POLL_TIMEOUT
+                )
+            except SamsungIPControlAuthError:
+                raise
+            except SamsungIPControlError as ex:
+                _LOGGER.debug("IP Control power-off read-back failed: %s", ex)
+            else:
+                if state == "powerOff":
+                    return True
+            if standby_announced is not None and standby_announced():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(POWER_OFF_POLL_INTERVAL)

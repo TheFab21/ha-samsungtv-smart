@@ -40,6 +40,21 @@ from custom_components.samsungtv_smart.media_player import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def fast_power_off_window(monkeypatch):
+    """Run the power-off confirmation window (#461) on a fake clock."""
+    from custom_components.samsungtv_smart.api import ipcontrol
+
+    clock = {"now": 0.0}
+
+    def monotonic():
+        clock["now"] += 1.0
+        return clock["now"]
+
+    monkeypatch.setattr(ipcontrol, "time", SimpleNamespace(monotonic=monotonic))
+    monkeypatch.setattr(ipcontrol, "POWER_OFF_POLL_INTERVAL", 0)
+
+
 def _device(*, ip=True, power_after="powerOff", ip_error=None, st=None):
     device = object.__new__(SamsungTVDevice)
     device._log = MagicMock()
@@ -104,7 +119,8 @@ def test_an_unconfirmed_ip_power_off_falls_back_to_the_remote():
     device, client = _device(power_after="powerOn")
     _run(device)
     assert device.calls == ["ip_off", "ws_key_power"]
-    assert client.async_get_power_state.await_count == 2  # re-read once
+    # Re-read for the whole confirmation window, not just once (#461).
+    assert client.async_get_power_state.await_count > 2
 
 
 @pytest.mark.parametrize(
@@ -157,3 +173,29 @@ def test_a_frame_whose_ip_call_failed_does_not_get_the_unpaired_warning():
     device, _ = _device(ip_error=SamsungIPControlError("offline"))
     _run(device)
     device._log.warning.assert_not_called()
+
+
+def test_go_to_standby_after_the_command_sends_no_key_power():
+    # #461: the read-back still said powerOn, but the TV announced standby.
+    # A KEY_POWER from here would wake it back up.
+    import time
+
+    device, client = _device(power_after="powerOn")
+    device._art_api = SimpleNamespace(standby_last_broadcast=None)
+
+    async def read_back(**_kwargs):
+        device._art_api.standby_last_broadcast = time.monotonic()
+        return "powerOn"
+
+    client.async_get_power_state.side_effect = read_back
+    _run(device)
+    assert device.calls == ["ip_off"]
+    device._async_switch_entity.assert_awaited_once_with(False)
+
+
+def test_a_standby_announced_before_the_command_does_not_count():
+    # An old go_to_standby (an earlier power-off) is not this one's.
+    device, client = _device(power_after="powerOn")
+    device._art_api = SimpleNamespace(standby_last_broadcast=0.0)
+    _run(device)
+    assert device.calls == ["ip_off", "ws_key_power"]
