@@ -83,6 +83,7 @@ from . import (
 )
 from .api.art import SamsungTVAsyncArt
 from .api.ipcontrol import (
+    ERROR_METHOD_NOT_FOUND,
     PICTURE_MODE_OPTIONS,
     SamsungIPControl,
     SamsungIPControlAuthError,
@@ -174,6 +175,7 @@ from .const import (
     CONF_WS_NAME,
     DATA_ART_API,
     DATA_CFG,
+    DATA_IP_ART_UNRELIABLE,
     DATA_IP_CONTROL_STATE_COORDINATOR,
     DATA_MOBILEBFF,
     DATA_OPTIONS,
@@ -240,9 +242,19 @@ from .picture_mode_keys import (
     picture_mode_ip_variant,
     picture_mode_ws_key,
 )
+from .st_errors import (
+    StErrorKind,
+    backoff_for,
+    classify_st_error,
+    clear_st_backoff,
+    set_st_backoff,
+    st_backoff_active,
+)
 from .token_notify import (
     METHOD_IP_CONTROL,
     METHOD_LOCAL,
+    METHOD_SMARTTHINGS_BLOCKED,
+    METHOD_SMARTTHINGS_QUOTA,
     clear_token_problem,
     forget_smartthings_access,
     notify_token_problem,
@@ -350,6 +362,14 @@ MAX_ST_AUTH_ERROR_COUNT = 3
 # TV produced 1591 refusals in two hours). Long enough to be harmless, short
 # enough that a fix is noticed without a restart.
 ST_POLL_AUTH_ERROR_INTERVAL = 300
+# SmartThings failures logged at debug only: transient (5xx, rate limit), or
+# reported by their own warning and notification (quota, blocked client).
+_ST_QUIET_KINDS = (
+    StErrorKind.SERVER,
+    StErrorKind.RATE_LIMITED,
+    StErrorKind.QUOTA,
+    StErrorKind.BLOCKED,
+)
 MEDIA_TYPE_BROWSER = "browser"
 MEDIA_TYPE_KEY = "send_key"
 MEDIA_TYPE_TEXT = "send_text"
@@ -404,6 +424,9 @@ IP_ART_MODE_MIN_INTERVAL = IP_ART_MODE_REFRESH_INTERVAL.total_seconds() * 0.8
 # Frame's getTVStates had not reached "Ambient" 11 s after it broadcast ON; the
 # switch gives the panel the same 20 s (ART_MODE_PANEL_CONFLICT_WINDOW).
 ART_BROADCAST_GRACE = 20.0
+# IP Control Art Mode reads that must contradict the TV's own art_mode_changed
+# broadcast, past ART_BROADCAST_GRACE, before that reading is set aside (#466).
+IP_ART_CONTRADICTION_READS = 3
 # How long device info has to go unanswered, on a TV we do not believe to be
 # on, before the set counts as off the network entirely (seconds). A Frame
 # displaying artwork is powered up and answers the REST endpoint — the #326
@@ -1049,6 +1072,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # so the warning above is logged once per change, not per poll.
         self._last_unmapped_source: str | None = None
         self._ip_art_mode: bool | None = None
+        # Consecutive IP Control reads contradicting the art broadcast (#466).
+        self._ip_art_contradictions = 0
         # Consecutive transport-failure count; the cache is cleared once it
         # reaches IP_ART_MODE_MAX_FAILURES so a TV that stops answering on
         # port 1516 (deep standby) cannot pin a stale "art mode on" forever.
@@ -1182,6 +1207,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         self._st_error_count = 0
         self._st_auth_error_count = 0
+        self._st_account_error: StErrorKind | None = None
         self._st_last_exc = None
         self._st_sources_loaded = False
         # Bumped by every select_picture_mode call, so an older call does not
@@ -1896,6 +1922,88 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             broadcast = self._latest_art_broadcast()
             if value is not None and broadcast is not None and broadcast[0] != value:
                 self.async_write_ha_state()
+        await self._check_ip_art_contradiction(client, value, power, read_at)
+
+    def _ip_art_reading_unreliable(self) -> bool:
+        """Whether IP Control's Art Mode reading is set aside for this TV."""
+        if self.hass is None:
+            return False
+        data = self.hass.data.get(DOMAIN, {}).get(self._entry_id)
+        return bool(isinstance(data, dict) and data.get(DATA_IP_ART_UNRELIABLE))
+
+    async def _check_ip_art_contradiction(
+        self, client, value: bool | None, power: str | None, read_at: float
+    ) -> None:
+        """Set IP Control's Art Mode reading aside once it contradicts the TV.
+
+        On a 2024 Frame (QN55LS03D, firmware 2130) IP Control kept answering
+        artModeControl=off and getTVStates input HDMI1 / pictureMode
+        Intelligent while the panel showed art. The TV's own Art app knew
+        better: switched with the remote, it broadcast art_mode_changed='on',
+        art_mode_status read on for the 20 s the broadcast outranks a reading,
+        then the IP reading took over again and pinned it at off (#466). With
+        IP Control disabled everything was right, but the TV could no longer
+        be powered off: KEY_POWER only toggles Art Mode on these sets.
+
+        So the reading is set aside, for this TV until the entry reloads, when
+        all of these hold for IP_ART_CONTRADICTION_READS reads in a row:
+
+        - the TV is on (powerControl powerOn) and IP Control reads art off;
+        - the latest art_mode_changed broadcast is 'on', older than
+          ART_BROADCAST_GRACE, and the Art channel still reads on;
+        - IP Control itself refuses pictureModeControl with -32601, which it
+          does while art is on the panel (the none-ambient dispatch map), or
+          answers "Ambient".
+
+        The last condition keeps a spurious 'on' broadcast from setting aside
+        a reading that is right: on a TV really showing an input,
+        pictureModeControl answers that input's picture mode. A frozen Art
+        channel (#248) broadcasts nothing, so it never gets here. The rest of
+        IP Control (power, picture settings) keeps working.
+        """
+        if power != "powerOn" or value is not False:
+            self._ip_art_contradictions = 0
+            return
+        if self._ip_art_reading_unreliable():
+            return
+        broadcast = self._latest_art_broadcast()
+        art_api = getattr(self, "_art_api", None)
+        if not (
+            broadcast is not None
+            and broadcast[0] is True
+            and read_at >= broadcast[1] + ART_BROADCAST_GRACE
+            and getattr(art_api, "art_mode", None) is True
+        ):
+            self._ip_art_contradictions = 0
+            return
+        self._ip_art_contradictions += 1
+        if self._ip_art_contradictions < IP_ART_CONTRADICTION_READS:
+            return
+        try:
+            mode = await client.async_get_picture_mode()
+        except SamsungIPControlUnsupportedError as ex:
+            corroborated = ex.code == ERROR_METHOD_NOT_FOUND
+        except SamsungIPControlError:
+            # No answer either way: decide on a later read.
+            return
+        else:
+            corroborated = mode == "Ambient"
+        if not corroborated:
+            # pictureModeControl reports a real input: IP Control is right and
+            # the broadcast was the odd one out.
+            self._ip_art_contradictions = 0
+            return
+        data = self.hass.data.setdefault(DOMAIN, {}).setdefault(self._entry_id, {})
+        data[DATA_IP_ART_UNRELIABLE] = True
+        self._log.warning(
+            "IP Control on %s reports Art Mode off while the TV announced it is "
+            "on and refuses picture-mode reads as it does in Art Mode; reading "
+            "Art Mode from the Art channel for this TV from now on (IP Control "
+            "stays in use for everything else). This lasts until the "
+            "integration is reloaded",
+            self._host,
+        )
+        self.async_write_ha_state()
 
     def _shared_ip_art_reading(self) -> tuple[bool, float] | None:
         if self.hass is None:
@@ -2946,6 +3054,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         safe from a sync property. Independent of the art-mode option — this is
         getTVStates, not the wedge-prone artModeControl flag.
         """
+        if self._ip_art_reading_unreliable():
+            # This TV's getTVStates does not show art (#466).
+            return None
         coordinator = self._get_ip_control_state_coordinator()
         data = getattr(coordinator, "data", None)
         if not isinstance(data, dict) or data.get("powered_off"):
@@ -3384,6 +3495,10 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         ws_connected = self._ws.is_connected
         wake_edge = ws_connected and not self._ws_was_connected
         self._ws_was_connected = ws_connected
+        if st_backoff_active(self.hass, self._entry_id):
+            # Quota used up, client blocked or rate limited: the next call
+            # would get the same answer and count against the quota again.
+            return False
         if wake_edge:
             self._st_last_poll = now
             return True
@@ -3405,15 +3520,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     def _st_error_is_authorization(exc: Exception) -> bool:
         """True when SmartThings refused the device rather than merely failing.
 
-        pysmartthings does not expose a stable exception class for this, so the
-        check is deliberately loose: the class name and the message are both
-        inspected. A false positive only slows polling down and shows a notice
-        the user can dismiss; a false negative just keeps today's behaviour.
+        A 401 or 403, from pysmartthings or a raw HTTP call; see st_errors for
+        how older pysmartthings releases without the exception classes are
+        read. A false positive only slows polling down and shows a notice the
+        user can dismiss; a false negative just keeps today's behaviour.
         """
-        text = f"{type(exc).__name__} {exc}".lower()
-        return any(
-            marker in text for marker in ("forbidden", "unauthorized", "401", "403")
-        )
+        return classify_st_error(exc) is StErrorKind.REFUSED
 
     def _allow_st_refresh(self) -> bool:
         """Return whether the active SmartThings refresh command should run.
@@ -3456,11 +3568,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     self._use_channel_info,
                     allow_refresh=self._allow_st_refresh(),
                 )
-        except (
-            asyncio.TimeoutError,
-            ClientConnectionError,
-            ClientResponseError,
-        ) as exc:
+        except (asyncio.TimeoutError, ClientConnectionError) as exc:
             self._log.debug("%s - SmartThings error: [%s]", self.entity_id, exc)
             self._st_last_exc = exc
             return False
@@ -3470,7 +3578,16 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             # the whole entity unavailable, and dependent entities (art mode
             # switch, frame art sensor) would wrongly report the TV as off.
             # Local WebSocket control keeps working without SmartThings.
-            if type(exc) is not type(self._st_last_exc):
+            kind = classify_st_error(exc)
+            if kind in _ST_QUIET_KINDS or (
+                isinstance(exc, ClientResponseError) and kind is StErrorKind.OTHER
+            ):
+                # Transient, a raw HTTP error with nothing to act on, or a quota
+                # / blocked client that _note_st_account_error reports itself.
+                self._log.debug(
+                    "%s - SmartThings error (%s): [%s]", self.entity_id, kind, exc
+                )
+            elif type(exc) is not type(self._st_last_exc):
                 self._log.warning(
                     "%s - SmartThings update failed, continuing with local"
                     " control only: %s",
@@ -3481,10 +3598,12 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     exc,
                 )
             self._st_last_exc = exc
+            self._note_st_account_error(kind, exc)
             self._note_st_auth_error(exc)
             return False
 
         self._st_last_exc = None
+        self._clear_st_account_error()
         # When this cloud reading was taken. Like the IP Control snapshots and
         # device_info, the SmartThings state describes the TV as of the moment
         # the cloud answered, so _art_mode_is_on() can weigh an art_mode_changed
@@ -3502,6 +3621,52 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # a missing API plan.
         report_smartthings_access(self.hass, self._entry_id, self._name, False)
         return True
+
+    def _note_st_account_error(self, kind: StErrorKind, exc: Exception) -> None:
+        """Hold the cloud off after a quota, blocked-client or rate-limit answer.
+
+        Unlike a 403, these are not about this TV's device id and do not need
+        three in a row to be sure: the next call gets the same answer and, for
+        a used-up quota, only counts against it again. A quota or blocked
+        client also raises its own notification, once.
+        """
+        if (seconds := backoff_for(kind)) is None:
+            return
+        set_st_backoff(self.hass, self._entry_id, seconds)
+        method = {
+            StErrorKind.QUOTA: METHOD_SMARTTHINGS_QUOTA,
+            StErrorKind.BLOCKED: METHOD_SMARTTHINGS_BLOCKED,
+        }.get(kind)
+        if method is None or getattr(self, "_st_account_error", None) is kind:
+            return
+        self._st_account_error = kind
+        self._log.warning(
+            "%s - SmartThings refused the request (%s): %s. Holding SmartThings "
+            "off for %ds; see the notification",
+            self.entity_id or self._name,
+            kind,
+            exc,
+            seconds,
+        )
+        notify_token_problem(self.hass, self._entry_id, method, self._name)
+
+    def _clear_st_account_error(self) -> None:
+        """SmartThings answered: lift the hold and its notification.
+
+        A hold that simply ran out (a rate limit) needs no clearing: an
+        expired one holds nothing off.
+        """
+        if getattr(self, "_st_account_error", None) is None:
+            return
+        clear_st_backoff(self.hass, self._entry_id)
+        self._log.info(
+            "%s - SmartThings is answering again after %s",
+            self.entity_id or self._name,
+            self._st_account_error,
+        )
+        self._st_account_error = None
+        for method in (METHOD_SMARTTHINGS_QUOTA, METHOD_SMARTTHINGS_BLOCKED):
+            clear_token_problem(self.hass, self._entry_id, method)
 
     def _note_st_auth_error(self, exc: Exception) -> None:
         """Count an authorization refusal and, past the threshold, act on it."""
@@ -4197,7 +4362,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
             or self._running_app not in (None, DEFAULT_APP)
         ):
             return False
-        if self._ip_art_mode is not None:
+        if self._ip_art_mode is not None and not self._ip_art_reading_unreliable():
             override = self._art_broadcast_overrides(self._ip_art_mode_at)
             return self._ip_art_mode if override is None else override
         # Without an IP reading (not paired, the read failing — or, until

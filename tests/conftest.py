@@ -75,7 +75,13 @@ if "pysmartthings" not in sys.modules and find_spec("pysmartthings") is None:
 @pytest.fixture(autouse=True)
 def reset_ip_control_breaker():
     """Start every test with no IP Control endpoint marked unreachable."""
-    from custom_components.samsungtv_smart.api import ipcontrol
+    try:
+        from custom_components.samsungtv_smart.api import ipcontrol
+    except ModuleNotFoundError:
+        # A test module that stands in for the package (the AST-loaded switch
+        # tests) runs without it: nothing to reset.
+        yield
+        return
 
     ipcontrol._UNREACHABLE_UNTIL.clear()
     yield

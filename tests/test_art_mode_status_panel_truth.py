@@ -51,8 +51,9 @@ class TriStateReaderTest(unittest.TestCase):
     def test_unreadable_states_return_none_not_false(self):
         # No coordinator / no snapshot / powered off / no pictureMode -> None,
         # so _art_mode_is_on falls through instead of asserting "off".
+        # The first one: this TV's IP Art Mode reading was set aside (#466).
         head = self.block[: self.block.index('return mode == "Ambient"')]
-        self.assertEqual(head.count("return None"), 3)
+        self.assertEqual(head.count("return None"), 4)
 
     def test_ambient_is_the_only_true(self):
         self.assertIn('return mode == "Ambient"', self.block)
@@ -79,7 +80,7 @@ class ArtModeIsOnTest(unittest.TestCase):
         )
 
     def test_the_panel_is_consulted_after_the_ip_flag_cache(self):
-        flag = self.block.index("if self._ip_art_mode is not None:")
+        flag = self.block.index("if self._ip_art_mode is not None")
         panel = self.block.index("panel_art = self._ip_control_panel_art_cached()")
         self.assertLess(flag, panel)
 

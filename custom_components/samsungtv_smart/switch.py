@@ -53,6 +53,7 @@ from .const import (
     CONF_WS_NAME,
     DATA_ART_API,
     DATA_CFG,
+    DATA_IP_ART_UNRELIABLE,
     DEFAULT_PORT,
     DOMAIN,
     SIGNAL_ART_EXITED,
@@ -648,9 +649,20 @@ class FrameArtModeSwitch(SwitchEntity):
             await asyncio.sleep(0.25)
 
     async def _panel_shows_art(self) -> bool | None:
-        """getTVStates.pictureMode == "Ambient", or None when unreadable."""
+        """getTVStates.pictureMode == "Ambient", or None when unreadable.
+
+        None as well once this TV's IP Control Art Mode reading has been set
+        aside (#466): its getTVStates does not show art, so writes are
+        confirmed by the TV's broadcast instead.
+        """
         client = self._get_ip_control()
         if client is None:
+            return None
+        if (
+            self._hass.data.get(DOMAIN, {})
+            .get(self._entry.entry_id, {})
+            .get(DATA_IP_ART_UNRELIABLE)
+        ):
             return None
         try:
             return await client.async_panel_shows_art()

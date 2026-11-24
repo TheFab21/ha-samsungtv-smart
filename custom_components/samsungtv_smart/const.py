@@ -40,6 +40,10 @@ DATA_CFG_YAML = "cfg_yaml"
 DATA_OPTIONS = "options"
 DATA_ENTRY_DATA = "entry_data"  # Snapshot of entry.data to detect data changes
 DATA_ART_API = "art_api"  # Shared Frame Art API instance
+# Set once IP Control's Art Mode reading has been seen contradicting the TV's
+# own art_mode_changed broadcast (#466): Art Mode is then read from the Art
+# channel for this TV until the entry reloads. See media_player.
+DATA_IP_ART_UNRELIABLE = "ip_art_unreliable"
 DATA_MOBILEBFF = "mobilebff"  # Shared quick-settings channel (api/mobilebff.py)
 DATA_ST_POWER = "st_power"  # SmartThings power coordinator, for diagnostics
 DATA_ART_CACHE = "art_cache"  # Shared ArtIdentifyCache instance (per entry)
