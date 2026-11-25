@@ -14,7 +14,6 @@ import time
 from weakref import WeakValueDictionary
 
 from aiohttp import ClientConnectionError, ClientResponseError, ClientSession
-import async_timeout
 import voluptuous as vol
 from websocket import WebSocketException
 
@@ -1007,7 +1006,7 @@ async def _register_bundled_card(hass: HomeAssistant, filename: str) -> None:
 async def get_device_info(hostname: str, session: ClientSession) -> dict:
     """Try retrieve device information"""
     try:
-        async with async_timeout.timeout(2):
+        async with asyncio.timeout(2):
             async with session.get(
                 tv_url(host=hostname), raise_for_status=True
             ) as resp:
@@ -1155,7 +1154,7 @@ class SamsungTVInfo:
         """Try to connect to ST device"""
 
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 _LOGGER.info("Try connection to SmartThings TV with id [%s]", device_id)
                 st_tv = SmartThingsTV(
                     api_key=api_key,
@@ -1182,7 +1181,7 @@ class SamsungTVInfo:
         """Get list of available ST devices"""
 
         try:
-            async with async_timeout.timeout(4):
+            async with asyncio.timeout(4):
                 devices = await SmartThingsTV.get_devices_list(
                     api_key, session, st_device_label
                 )

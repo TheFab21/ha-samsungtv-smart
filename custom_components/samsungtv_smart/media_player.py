@@ -16,7 +16,6 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from aiohttp import ClientConnectionError, ClientResponseError, ClientSession
-import async_timeout
 import voluptuous as vol
 from wakeonlan import send_magic_packet
 from websocket import WebSocketTimeoutException
@@ -3563,7 +3562,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
     async def _async_st_update(self, **kwargs) -> bool | None:
         """Update SmartThings state of device."""
         try:
-            async with async_timeout.timeout(ST_UPDATE_TIMEOUT):
+            async with asyncio.timeout(ST_UPDATE_TIMEOUT):
                 await self._st.async_device_update(
                     self._use_channel_info,
                     allow_refresh=self._allow_st_refresh(),

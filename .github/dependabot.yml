@@ -15,9 +15,9 @@ updates:
           - "*"
     # homeassistant, its test helper (pytest-homeassistant-custom-component)
     # and pytest are a coupled set: the helper pins homeassistant and pytest to
-    # exact versions, and the homeassistant line past 2026.2.3 needs Python
-    # 3.14 while CI runs 3.13. Dependabot bumps each independently, which only
-    # yields unresolvable PRs, so we bump these three together by hand.
+    # exact versions. Dependabot bumps each independently, which only yields
+    # unresolvable PRs, so we bump these three together by hand (CI runs
+    # Python 3.14, which the current helper requires).
     ignore:
       - dependency-name: "homeassistant"
       - dependency-name: "pytest"
