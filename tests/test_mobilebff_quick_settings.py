@@ -959,3 +959,65 @@ def test_probe_without_confirm_ok_presses_nothing(capsys):
     _sent, out = _run_probe_toggle(tv, False, capsys)
     assert tv.presses == []
     assert "No variant moved the setting" in out
+
+
+# --- the input re-read is paced (#470 follow-up) -----------------------------
+
+
+def _pacing_device(monkeypatch, *, interval=10, ip_input=None, running=None):
+    from unittest.mock import AsyncMock
+
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(mp, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    client = SimpleNamespace(
+        sources=[SimpleNamespace(current=True)],
+        async_refresh_sources=AsyncMock(),
+    )
+    device = object.__new__(mp.SamsungTVDevice)
+    device._quick_settings = lambda: client
+    device._running_app = running or mp.DEFAULT_APP
+    device._get_ip_control_input_source = lambda: ip_input
+    device._source_list = {"Console": "IP_HDMI1"}
+    device._get_option = lambda key, default=None: (
+        interval if key == mp.CONF_IP_CONTROL_POLL_INTERVAL else default
+    )
+    return device, client, clock
+
+
+def test_the_input_list_is_re_read_at_the_ip_control_interval(monkeypatch):
+    # Every media-player poll (5 s) used to send get.extsources.
+    device, client, clock = _pacing_device(monkeypatch, interval=10)
+    asyncio.run(device._refresh_quick_settings_sources())
+    clock["now"] += 5
+    asyncio.run(device._refresh_quick_settings_sources())
+    assert client.async_refresh_sources.await_count == 1
+    clock["now"] += 5
+    asyncio.run(device._refresh_quick_settings_sources())
+    assert client.async_refresh_sources.await_count == 2
+
+
+def test_a_longer_setting_spaces_it_out(monkeypatch):
+    device, client, clock = _pacing_device(monkeypatch, interval=60)
+    for _ in range(11):  # 50 s of 5 s polls
+        asyncio.run(device._refresh_quick_settings_sources())
+        clock["now"] += 5
+    assert client.async_refresh_sources.await_count == 1
+
+
+def test_no_re_read_while_an_app_is_in_front(monkeypatch):
+    device, client, _ = _pacing_device(monkeypatch, running="Netflix")
+    asyncio.run(device._refresh_quick_settings_sources())
+    client.async_refresh_sources.assert_not_awaited()
+
+
+def test_no_re_read_when_ip_control_already_names_the_input(monkeypatch):
+    device, client, _ = _pacing_device(monkeypatch, ip_input="HDMI1")
+    asyncio.run(device._refresh_quick_settings_sources())
+    client.async_refresh_sources.assert_not_awaited()
+
+
+def test_an_ip_input_the_list_does_not_map_still_lets_it_read(monkeypatch):
+    # _get_source falls through to quick settings then, so it must stay fresh.
+    device, client, _ = _pacing_device(monkeypatch, ip_input="HDMI4")
+    asyncio.run(device._refresh_quick_settings_sources())
+    client.async_refresh_sources.assert_awaited_once()
