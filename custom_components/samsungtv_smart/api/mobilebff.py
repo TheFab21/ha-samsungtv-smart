@@ -197,7 +197,11 @@ class ExtSource:
     @property
     def short_id(self) -> str:
         """``HDMI3`` for ``s/source.layer.hdmi@HDMI3``."""
-        return self.source_id.rpartition("@")[2]
+        short_id = self.source_id.rpartition("@")[2]
+        port, _, suffix = short_id.partition("/")
+        if port.startswith("HDMI") and suffix.isdecimal():
+            return port
+        return short_id
 
 
 @dataclass(frozen=True)
@@ -817,7 +821,7 @@ class SamsungMobileBFF:
         a bare ensure_future and never stored can be garbage-collected before
         it finishes.
         """
-        task = asyncio.get_running_loop().create_task(self._refresh_sources())
+        task = asyncio.get_running_loop().create_task(self.async_refresh_sources())
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
 
@@ -870,7 +874,8 @@ class SamsungMobileBFF:
                 return tile
         return None
 
-    async def _refresh_sources(self) -> None:
+    async def async_refresh_sources(self) -> None:
+        """Request a fresh input list; changes arrive on the channel."""
         try:
             await self._send("get.extsources")
         except (ConnectionError, aiohttp.ClientError, RuntimeError):

@@ -3180,6 +3180,24 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         return None
 
+    def _quick_settings_input(self) -> str | None:
+        """Map the active external input to its configured display name."""
+        client = self._quick_settings()
+        if client is None:
+            return None
+        for item in client.sources:
+            if item.current:
+                keys = (
+                    f"KEY_{item.short_id}",
+                    f"ST_{item.short_id}",
+                    f"IP_{item.short_id}",
+                )
+                for name, key in (self._source_list or {}).items():
+                    if key in keys:
+                        return name
+                return item.title
+        return None
+
     def _get_source(self):
         """Return the current input source."""
         if self.state != MediaPlayerState.ON:
@@ -3205,7 +3223,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         use_st: bool = self._st is not None and self._st.state == STStatus.STATE_ON
         if not use_st:
-            self._source = self._running_app
+            self._source = self._quick_settings_input() or self._running_app
             return self._source
 
         if self._st.source in ["digitalTv", "TV", "dtv"]:
@@ -3221,6 +3239,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 found_source = attr
                 break
         else:
+            if local_input := self._quick_settings_input():
+                self._source = local_input
+                return self._source
             # SmartThings knows which input the TV is on, but no entry in the
             # source list maps to it, so the reported source silently stays at
             # the generic running-app value and looks like "it never updates"
@@ -3821,6 +3842,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     self._delayed_set_source = None
                 else:
                     await self._async_select_source_delayed(self._delayed_set_source)
+            if (client := self._quick_settings()) and client.sources:
+                await client.async_refresh_sources()
             await self._async_load_device_info()
             await self._async_update_rest_app_status()
             await self._update_volume_info()
