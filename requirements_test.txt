@@ -1,15 +1,15 @@
 # Strictly for tests
-# pytest is held at what pytest-homeassistant-custom-component pins (9.0.0).
-# CVE-2025-71176 (predictable /tmp dir on UNIX) is fixed in 9.0.3, but the
-# helper pins pytest exactly, so that one Dependabot alert stays open until a
-# helper release pins >= 9.0.3.
-pytest==9.0.0
+# pytest, homeassistant (requirements.txt) and the helper below are a coupled
+# set: the helper pins the other two exactly. 0.13.375 pins pytest 9.0.3 (fixes
+# CVE-2025-71176, predictable /tmp dir) and homeassistant 2026.10.4, and needs
+# Python 3.14 (the CI workflows run it). Bump the three together.
+pytest==9.0.3
 # The Tests workflow passes --timeout: pytest-timeout is not listed here
 # because pytest-homeassistant-custom-component already pins it, and asking
 # for any other version is an unsolvable conflict.
 #pytest-cov==2.9.0
 #pytest-homeassistant
-pytest-homeassistant-custom-component==0.13.316
+pytest-homeassistant-custom-component==0.13.375
 # From our manifest.json for our custom component
 websocket-client!=1.4.0,>=1.9.2
 wakeonlan>=4.0.0

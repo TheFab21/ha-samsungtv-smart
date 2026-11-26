@@ -8,7 +8,11 @@
 
 A custom integration for Home Assistant to control Samsung Smart TVs (Tizen OS), based on the excellent work of [ollo69/ha-samsungtv-smart](https://github.com/ollo69/ha-samsungtv-smart).
 
-Installed through the Home Assistant **Marketplace** as a **custom repository** (it is not in the default catalogue) — see [Installation](#installation) for the setup. (The Marketplace replaced HACS in Home Assistant 2026.11; on older versions it is still HACS.)
+Installed through the Home Assistant **Marketplace** as a **custom repository** (it is not in the default catalogue) — see [Installation](#installation) for the setup, or use this button:
+
+[![Open your Home Assistant instance and open this repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=TheFab21&repository=ha-samsungtv-smart&category=integration)
+
+(The Marketplace replaced HACS in Home Assistant 2026.11; on older versions it is still HACS.)
 
 If this project is useful to you, you can support its development:
 
@@ -168,14 +172,22 @@ This fork is a drop-in replacement for ollo69's integration. Migration is straig
 
 ### Marketplace (recommended)
 
-Home Assistant **2026.11** folded HACS into the core as the built-in **Marketplace** (Settings → Marketplace). This integration is a **custom repository** — it is not in the default catalogue, so it has to be added once by hand:
+Home Assistant **2026.11** folded HACS into the core as the built-in **Marketplace** (Settings → Marketplace). This integration is a **custom repository** — it is not in the default catalogue, so it has to be added once.
+
+The quickest way is this button: it opens this repository in your own Home Assistant's Marketplace, through [My Home Assistant](https://my.home-assistant.io/).
+
+[![Open your Home Assistant instance and open this repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=TheFab21&repository=ha-samsungtv-smart&category=integration)
+
+Or by hand:
 
 1. Go to **Settings → Marketplace**
 2. Top right: **Add from link** (the ⋮ menu is for *Download source* / *Dismiss new repositories*, not for adding)
 3. Enter `TheFab21/ha-samsungtv-smart` (or the full `https://github.com/TheFab21/ha-samsungtv-smart`) and select **Add**. The first time, you'll approve a GitHub device sign-in — custom repositories need it (the catalogue does not).
 4. Open the **SamsungTV Smart** entry, **Download** it, and restart Home Assistant
 
-> On Home Assistant **before 2026.11**, HACS is still used: **HACS → Integrations → ⋮ (top right) → Custom repositories**, add `https://github.com/TheFab21/ha-samsungtv-smart` as category **Integration**, install, and restart. Existing HACS installs migrate to the Marketplace automatically on first start after updating to 2026.11.
+> On Home Assistant **before 2026.11**, HACS is still used: **HACS → Integrations → ⋮ (top right) → Custom repositories**, add `https://github.com/TheFab21/ha-samsungtv-smart` as category **Integration**, install, and restart. Existing HACS installs migrate to the Marketplace automatically on first start after updating to 2026.11. With HACS, this button does the adding for you:
+>
+> [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=TheFab21&repository=ha-samsungtv-smart&category=integration)
 
 
 ### Manual

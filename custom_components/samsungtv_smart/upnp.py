@@ -1,11 +1,11 @@
 """Smartthings TV integration UPnP implementation."""
 
+import asyncio
 import logging
 from typing import Optional
 import xml.etree.ElementTree as ET
 
 from aiohttp import ClientSession
-import async_timeout
 
 DEFAULT_TIMEOUT = 0.2
 
@@ -44,7 +44,7 @@ class SamsungUPnP:
                     </s:Body>
                 </s:Envelope>"""
         try:
-            async with async_timeout.timeout(timeout):
+            async with asyncio.timeout(timeout):
                 async with self._session.post(
                     f"http://{self._host}:9197/upnp/control/{protocole}1",
                     headers=headers,
