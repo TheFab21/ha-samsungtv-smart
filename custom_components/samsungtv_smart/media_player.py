@@ -1070,6 +1070,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # Last SmartThings input that matched nothing in the source list,
         # so the warning above is logged once per change, not per poll.
         self._last_unmapped_source: str | None = None
+        # When the TV's input list was last re-read over quick settings.
+        self._qs_sources_refreshed_at = 0.0
         self._ip_art_mode: bool | None = None
         # Consecutive IP Control reads contradicting the art broadcast (#466).
         self._ip_art_contradictions = 0
@@ -3180,6 +3182,39 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         return None
 
+    async def _refresh_quick_settings_sources(self) -> None:
+        """Re-read the TV's input list when the active input is read from it.
+
+        The quick-settings channel has no change broadcast for inputs, so an
+        input switched with the remote only shows by asking again. Asking on
+        every media-player poll sent get.extsources every 5 s while the TV was
+        on, Art Mode included. It is paced by the IP Control poll interval
+        instead: the same piece of state, read locally by another path, so the
+        two follow a change at the same speed and one setting governs both.
+
+        Skipped while it cannot matter: an app in front, or IP Control already
+        reporting an input that maps to the source list. _get_source takes
+        those first and never reaches the quick-settings reading.
+        """
+        client = self._quick_settings()
+        if client is None or not client.sources:
+            return
+        if self._running_app != DEFAULT_APP:
+            return
+        if (ip_input := self._get_ip_control_input_source()) and (
+            self._resolve_source_by_id(ip_input)
+            or (self._source_list and ip_input in self._source_list)
+        ):
+            return
+        interval = self._get_option(
+            CONF_IP_CONTROL_POLL_INTERVAL, DEFAULT_IP_CONTROL_POLL_INTERVAL
+        )
+        now = time.monotonic()
+        if now - getattr(self, "_qs_sources_refreshed_at", 0.0) < interval:
+            return
+        self._qs_sources_refreshed_at = now
+        await client.async_refresh_sources()
+
     def _quick_settings_input(self) -> str | None:
         """Map the active external input to its configured display name."""
         client = self._quick_settings()
@@ -3842,8 +3877,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     self._delayed_set_source = None
                 else:
                     await self._async_select_source_delayed(self._delayed_set_source)
-            if (client := self._quick_settings()) and client.sources:
-                await client.async_refresh_sources()
+            await self._refresh_quick_settings_sources()
             await self._async_load_device_info()
             await self._async_update_rest_app_status()
             await self._update_volume_info()
