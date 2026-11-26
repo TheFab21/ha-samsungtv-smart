@@ -505,6 +505,39 @@ def _device(client):
     return device
 
 
+def test_current_external_input_tracks_the_tv_without_smartthings():
+    client = _client()
+    device = _device(client)
+    device._power_off_in_progress = lambda: False
+    device._report_art_mode_as_off = False
+    device._state = mp.MediaPlayerState.ON
+    device._running_app = mp.DEFAULT_APP
+    device._get_ip_control_input_source = lambda: None
+    device._source_list = {"Console": "KEY_HDMI1", "Tuner": "KEY_TV"}
+    source_id = "s/source.layer.hdmi@HDMI1/0"
+    hdmi = {"sourceId": source_id, "title": "HDMI 1", "currentSource": "true"}
+    client._handle(_msg("get.extsources", [hdmi]))
+    assert device.source == "Console"
+    assert client.find_source("HDMI1").source_id == source_id
+    client._handle(_msg("get.extsources", SOURCES))
+    assert device.source == "Tuner"
+    device._source_list["Receiver"] = "IP_HDMI3"
+    device._get_ip_control_input_source = lambda: "HDMI3"
+    assert device.source == "Receiver"
+    device._get_ip_control_input_source = lambda: None
+    device._source_list["Game"] = "ST_HDMI2"
+    device._st = SimpleNamespace(state=mp.STStatus.STATE_ON, source="HDMI2")
+    assert device.source == "Game"
+    device._st = None
+    device._source_list = {}
+    assert device.source == "TV"
+    device._running_app = "Netflix"
+    assert device.source == "Netflix"
+    device._running_app = mp.DEFAULT_APP
+    client._handle(_msg("get.extsources", [{**hdmi, "currentSource": "false"}]))
+    assert device.source == mp.DEFAULT_APP
+
+
 def test_media_player_switches_input_locally_by_its_id():
     client = _client()
     client._handle(_msg("get.extsources", SOURCES))
