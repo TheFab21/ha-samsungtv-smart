@@ -268,6 +268,10 @@
     "legacy_art_camera": {
       "title": "Kamera a(z) {device_name} régi Frame Art képén",
       "description": "Ezek a kamerák még az aktuális műalkotás régi, `www` alatti helyére mutatnak, amely már nincs használatban: **{cameras}**.\n\nA 9.6.0 óta a Frame Art képek nincsenek a `www` mappában, ahonnan a Home Assistant bárkinek bejelentkezés nélkül kiszolgálta őket. Ha meg szeretnéd tartani az aktuális műalkotás kameráját:\n\n- használd az **Aktuális műalkotás** kamerát, amelyet a(z) {device_name} most biztosít, majd töröld a régit; vagy\n- Local File kamera esetén módosítsd a fájl útvonalát erre: `{new_path}`.\n\nEgy Generic Camera nem irányítható át egyszerűen (az új cím minden újraindításkor változó tokent tartalmaz): használd helyette az **Aktuális műalkotás** kamerát.\n\nEz a javítás eltűnik, amint egyetlen kamera sem mutat a régi helyre (az integráció indulásakor ellenőrizve)."
+    },
+    "legacy_art_folder_watcher": {
+      "title": "Folder Watcher a régi Frame Art mappán",
+      "description": "Ezek a Folder Watcher bejegyzések még a régi, `www` alatti Frame Art mappát figyelik, amely már nincs használatban: **{watchers}**.\n\nA 9.6.0 óta a Frame Art képek nincsenek a `www` mappában, ahonnan a Home Assistant bárkinek bejelentkezés nélkül kiszolgálta őket. Egy Folder Watcher mappája létrehozás után nem módosítható, ezért:\n\n- ha csak egy galériát frissített új bélyegképek érkezésekor, **töröld**: az integráció mappa szenzorai (`…_personal`, `…_store`, `…_other`) maguktól követik az új mappát;\n- ha egy automatizálásnak szüksége van rá, töröld, majd add hozzá újra az új mappára, a `{new_root}` alatt. Előbb add hozzá a `{new_root}` útvonalat az `allowlist_external_dirs` listához a `configuration.yaml`-ban, különben a Folder Watcher elutasítja a mappát.\n\nNe hozd létre újra a régi `www/frame_art` mappát, és ne kösd össze az újjal: a fotóid ismét letölthetők lennének bejelentkezés nélkül.\n\nEz a javítás eltűnik, amint egyetlen Folder Watcher sem figyeli a régi mappát (az integráció indulásakor ellenőrizve)."
     }
   },
   "entity": {

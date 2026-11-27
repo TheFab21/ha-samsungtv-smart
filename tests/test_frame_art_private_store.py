@@ -362,3 +362,95 @@ def test_every_translated_repair_keeps_its_placeholders():
         text = issue["title"] + issue["description"]
         assert set(re.findall(r"{(\w+)}", text)) <= wanted, path
         assert {"cameras", "new_path"} <= set(re.findall(r"{(\w+)}", text)), path
+
+
+# --- the repair for Folder Watchers on the old folder (9.6.2) ---------------------
+
+from custom_components.samsungtv_smart.art_files import (  # noqa: E402
+    art_root,
+    async_check_legacy_art_folder_watchers,
+)
+
+
+def _watcher(folder):
+    # Folder Watcher keeps its folder in the options, and titles the entry
+    # after it.
+    return MockConfigEntry(
+        domain="folder_watcher",
+        title=f"Folder Watcher {folder}",
+        options={"folder": folder, "patterns": ["*.jpg"]},
+    )
+
+
+def _watcher_issue(hass):
+    return ir.async_get(hass).async_get_issue(DOMAIN, "legacy_art_folder_watcher")
+
+
+async def test_folder_watchers_on_the_old_folder_raise_one_repair(hass):
+    _watcher("/config/www/frame_art").add_to_hass(hass)  # the parent itself
+    _watcher(f"/config/www/frame_art/{ENTRY}/personal").add_to_hass(hass)
+    _watcher(f"/config/www/frame_art/{ENTRY}/store/").add_to_hass(hass)
+    # Not ours, or already moved: left alone.
+    _watcher("/config/www/photos").add_to_hass(hass)
+    _watcher(art_dir(hass, ENTRY, "personal")).add_to_hass(hass)
+
+    async_check_legacy_art_folder_watchers(hass)
+    issue = _watcher_issue(hass)
+    assert issue is not None
+    assert issue.translation_key == "legacy_art_folder_watcher"
+    assert issue.translation_placeholders["watchers"] == ", ".join(
+        [
+            "Folder Watcher /config/www/frame_art",
+            f"Folder Watcher /config/www/frame_art/{ENTRY}/personal",
+            f"Folder Watcher /config/www/frame_art/{ENTRY}/store/",
+        ]
+    )
+    assert issue.translation_placeholders["new_root"] == art_root(hass)
+    assert "www" not in issue.translation_placeholders["new_root"]
+
+
+async def test_the_folder_watcher_repair_goes_once_none_is_left(hass):
+    old = _watcher("/config/www/frame_art")
+    old.add_to_hass(hass)
+    async_check_legacy_art_folder_watchers(hass)
+    assert _watcher_issue(hass) is not None
+
+    # Replaced by one on the new folder (an update stands in for delete +
+    # add: removing the entry would load Folder Watcher and its watchdog).
+    hass.config_entries.async_update_entry(
+        old, options={"folder": art_root(hass), "patterns": ["*.jpg"]}
+    )
+    async_check_legacy_art_folder_watchers(hass)
+    assert _watcher_issue(hass) is None
+
+
+async def test_no_folder_watcher_no_repair(hass):
+    async_check_legacy_art_folder_watchers(hass)
+    assert _watcher_issue(hass) is None
+
+
+def test_every_translated_folder_watcher_repair_keeps_its_placeholders():
+    import glob
+    import json
+    import re
+
+    base = os.path.dirname(art_files.__file__)
+    paths = [os.path.join(base, "strings.json")] + glob.glob(
+        os.path.join(base, "translations", "*.json")
+    )
+    seen = 0
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            issue = json.load(f).get("issues", {}).get("legacy_art_folder_watcher")
+        if issue is None:
+            continue
+        seen += 1
+        found = set(re.findall(r"{(\w+)}", issue["title"] + issue["description"]))
+        assert found == {"watchers", "new_root"}, path
+    assert seen >= 2  # strings.json and at least en.json
+
+
+def test_setup_checks_the_folder_watchers_after_moving_the_files():
+    init = open(os.path.join(os.path.dirname(art_files.__file__), "__init__.py")).read()
+    moved = init.index("migrate_legacy_art, hass, entry.entry_id")
+    assert moved < init.index("async_check_legacy_art_folder_watchers(hass)")

@@ -268,6 +268,10 @@
     "legacy_art_camera": {
       "title": "Telecamera sulla vecchia immagine Frame Art di {device_name}",
       "description": "Queste telecamere puntano ancora alla vecchia posizione dell'opera attuale in `www`, che non è più usata: **{cameras}**.\n\nDalla 9.6.0 le immagini Frame Art non sono più in `www`, dove Home Assistant le serviva a chiunque senza accesso. Per mantenere una telecamera dell'opera attuale:\n\n- usa la telecamera **Opera attuale** che {device_name} ora fornisce, poi elimina quella vecchia; oppure\n- per una telecamera Local File, cambia il percorso in `{new_path}`.\n\nUna Generic Camera non può semplicemente puntare altrove (il nuovo indirizzo contiene un token che cambia a ogni riavvio): usa invece la telecamera **Opera attuale**.\n\nQuesta riparazione scompare quando nessuna telecamera punta più alla vecchia posizione (verificato all'avvio dell'integrazione)."
+    },
+    "legacy_art_folder_watcher": {
+      "title": "Folder Watcher sulla vecchia cartella Frame Art",
+      "description": "Queste voci di Folder Watcher sorvegliano ancora la vecchia cartella Frame Art in `www`, che non è più usata: **{watchers}**.\n\nDalla 9.6.0 le immagini Frame Art non sono più in `www`, dove Home Assistant le serviva a chiunque senza accesso. La cartella di un Folder Watcher non si può cambiare dopo averlo creato, quindi:\n\n- se aggiornava solo una galleria all'arrivo delle miniature, **eliminalo**: i sensori di cartella dell'integrazione (`…_personal`, `…_store`, `…_other`) seguono da soli la nuova cartella;\n- se un'automazione ne ha bisogno, eliminalo e aggiungilo di nuovo sulla nuova cartella, sotto `{new_root}`. Aggiungi prima `{new_root}` ad `allowlist_external_dirs` in `configuration.yaml`, altrimenti Folder Watcher rifiuta la cartella.\n\nNon ricreare la vecchia cartella `www/frame_art` e non collegarla alla nuova: le tue foto tornerebbero scaricabili senza accesso.\n\nQuesta riparazione scompare quando nessun Folder Watcher sorveglia più la vecchia cartella (verificato all'avvio dell'integrazione)."
     }
   },
   "entity": {

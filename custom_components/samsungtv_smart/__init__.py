@@ -50,7 +50,11 @@ from homeassistant.helpers.typing import ConfigType
 from .api.art import SamsungTVAsyncArt
 from .api.samsungws import ConnectionFailure, Ping, SamsungTVWS
 from .api.smartthings import SmartThingsTV
-from .art_files import async_check_legacy_art_cameras, migrate_legacy_art
+from .art_files import (
+    async_check_legacy_art_cameras,
+    async_check_legacy_art_folder_watchers,
+    migrate_legacy_art,
+)
 from .const import (
     ATTR_DEVICE_MAC,
     ATTR_DEVICE_MODEL,
@@ -1345,8 +1349,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.async_add_executor_job(migrate_legacy_art, hass, entry.entry_id)
     except OSError as exc:
         _LOGGER.warning("Could not move Frame Art files out of www: %s", exc)
-    # Cameras set up by hand on the old www path no longer find the picture.
+    # Cameras and Folder Watchers set up by hand on the old www path no longer
+    # find anything there.
     async_check_legacy_art_cameras(hass, entry)
+    async_check_legacy_art_folder_watchers(hass)
 
     # Dismiss any stale "local connection not authorized" / "IP Control
     # token problem" notifications left over from a previous session. Both

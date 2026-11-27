@@ -268,6 +268,10 @@
     "legacy_art_camera": {
       "title": "Camera on the old Frame Art picture of {device_name}",
       "description": "These cameras still point at the old location of the current artwork in `www`, which is no longer used: **{cameras}**.\n\nSince 9.6.0 the Frame Art pictures are kept out of `www`, where Home Assistant served them to anyone without logging in. To keep a camera of the current artwork, either:\n\n- use the **Current artwork** camera that {device_name} now provides, then delete the old camera; or\n- for a Local File camera, change its file path to `{new_path}`.\n\nA Generic Camera cannot simply be pointed elsewhere (the new address carries a token that changes at each restart): use the **Current artwork** camera instead.\n\nThis repair goes away once no camera points at the old location (checked when the integration starts)."
+    },
+    "legacy_art_folder_watcher": {
+      "title": "Folder Watcher on the old Frame Art folder",
+      "description": "These Folder Watcher entries still watch the old Frame Art folder in `www`, which is no longer used: **{watchers}**.\n\nSince 9.6.0 the Frame Art pictures are kept out of `www`, where Home Assistant served them to anyone without logging in. A Folder Watcher's folder cannot be changed after it is created, so:\n\n- if it only refreshed a gallery when thumbnails arrived, **delete it**: the integration's folder sensors (`…_personal`, `…_store`, `…_other`) follow the new folder on their own;\n- if an automation needs it, delete it and add it again on the new folder, under `{new_root}`. Add `{new_root}` to `allowlist_external_dirs` in `configuration.yaml` first, or Folder Watcher refuses the folder.\n\nDo not recreate the old `www/frame_art` folder or link it to the new one: your photos would be downloadable without login again.\n\nThis repair goes away once no Folder Watcher watches the old folder (checked when the integration starts)."
     }
   },
   "entity": {
