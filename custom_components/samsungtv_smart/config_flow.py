@@ -244,6 +244,8 @@ class SamsungTVSmartOAuth2FlowHandler(
         self._ping_port = None
         self._error: str | None = None
         self._auth_method = AUTH_METHOD_PAT
+        # True while on the local-only form, so an error shows it again.
+        self._local_form = False
         self._oauth_data: dict | None = None
         self._reauth_entry: ConfigEntry | None = None
 
@@ -412,19 +414,26 @@ class SamsungTVSmartOAuth2FlowHandler(
                     return self.async_abort(reason="no_smartthings_integration")
                 return await self.async_step_st_integration()
 
+            elif self._auth_method == AUTH_METHOD_NONE:
+                return await self.async_step_local()
+
             else:  # PAT
                 return await self.async_step_manual()
 
-        # Build auth method options
-        auth_options = {}
+        # Build auth method options. Local only comes first: SmartThings is
+        # optional (WebSocket, IP Control and the quick-settings channel work
+        # without it) and its API now needs a paid plan, yet the first screen
+        # only offered SmartThings methods, so a new user believed a PAT was
+        # required. Local only was offered on reconfigure alone (#258).
+        auth_options = {AUTH_METHOD_NONE: "🏠 Local only (no SmartThings)"}
         if oauth_available:
-            auth_options[AUTH_METHOD_OAUTH] = "🔐 OAuth2 (Recommended)"
-        auth_options[AUTH_METHOD_PAT] = "🔑 Personal Access Token (PAT)"
+            auth_options[AUTH_METHOD_OAUTH] = "🔐 SmartThings OAuth2"
+        auth_options[AUTH_METHOD_PAT] = "🔑 SmartThings Personal Access Token (PAT)"
         if st_entries:
             auth_options[AUTH_METHOD_ST_ENTRY] = "🔗 Use SmartThings Integration"
 
-        # Default to OAuth if available, otherwise PAT
-        default_method = AUTH_METHOD_OAUTH if oauth_available else AUTH_METHOD_PAT
+        # Default to OAuth when the user set it up, otherwise local only.
+        default_method = AUTH_METHOD_OAUTH if oauth_available else AUTH_METHOD_NONE
 
         return self.async_show_form(
             step_id="user",
@@ -518,6 +527,39 @@ class SamsungTVSmartOAuth2FlowHandler(
             errors=errors if errors else None,
         )
 
+    async def async_step_local(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Set up a TV without SmartThings: local channels only."""
+        self._auth_method = AUTH_METHOD_NONE
+        self._local_form = True
+        if user_input is None:
+            return self._show_local_form()
+
+        self._user_data = user_input
+        ip_address = await self.hass.async_add_executor_job(
+            _get_ip, user_input[CONF_HOST]
+        )
+        if not ip_address:
+            return self._show_local_form(errors="invalid_host")
+
+        self._async_abort_entries_match({CONF_HOST: ip_address})
+
+        self._host = ip_address
+        self._name = user_input[CONF_NAME]
+        self._api_key = None
+        self._st_entry_unique_id = None
+
+        if user_input.get(CONF_USE_HA_NAME, False):
+            ha_conf = self.hass.config
+            if hasattr(ha_conf, "location_name"):
+                self._ws_name = ha_conf.location_name
+        if not self._ws_name:
+            self._ws_name = self._name
+
+        result = await self._try_connect()
+        return await self._manage_result(result, True)
+
     async def async_step_manual(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -553,9 +595,11 @@ class SamsungTVSmartOAuth2FlowHandler(
             self._st_entry_unique_id = st_entry_unique_id
 
         self._api_key = api_key
-        self._auth_method = (
-            AUTH_METHOD_ST_ENTRY if st_entry_unique_id else AUTH_METHOD_PAT
-        )
+        if st_entry_unique_id:
+            self._auth_method = AUTH_METHOD_ST_ENTRY
+        else:
+            # A PAT form left blank is a local-only entry, and is stored as one.
+            self._auth_method = AUTH_METHOD_PAT if api_key else AUTH_METHOD_NONE
 
         use_ha_name = user_input.get(CONF_USE_HA_NAME, False)
         if use_ha_name:
@@ -1124,6 +1168,8 @@ class SamsungTVSmartOAuth2FlowHandler(
             if is_user_step:
                 if self._auth_method == AUTH_METHOD_OAUTH:
                     return await self.async_step_host()
+                if self._local_form:
+                    return self._show_local_form()
                 return self._show_manual_form()
             return await self.async_step_user()
 
@@ -1277,6 +1323,26 @@ class SamsungTVSmartOAuth2FlowHandler(
     # =========================================================================
     # Form helpers
     # =========================================================================
+
+    @callback
+    def _show_local_form(self, errors: str | None = None) -> ConfigFlowResult:
+        """Show the local-only configuration form (no SmartThings fields)."""
+        base_err = errors or self._error
+        self._error = None
+        data = self._user_data or {}
+        return self.async_show_form(
+            step_id="local",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST, default=data.get(CONF_HOST, "")): str,
+                    vol.Required(CONF_NAME, default=data.get(CONF_NAME, "")): str,
+                    vol.Optional(
+                        CONF_USE_HA_NAME, default=data.get(CONF_USE_HA_NAME, False)
+                    ): bool,
+                }
+            ),
+            errors={CONF_BASE: base_err} if base_err else None,
+        )
 
     @callback
     def _show_manual_form(self, errors: str | None = None) -> ConfigFlowResult:

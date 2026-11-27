@@ -335,7 +335,8 @@ redirect at all.
 > Without one, the CLI stops with *"Creating or modifying a Smart App requires
 > a paid plan"*, and nothing in this integration can get around it (see
 > [SmartThings Authentication](#smartthings-authentication)). If you don't want
-> a plan, skip SmartThings entirely: choose **No SmartThings (local only)** and
+> a plan, skip SmartThings entirely: choose **Local only (no SmartThings)** when
+> you add the TV (or **No SmartThings (local only)** under Reconfigure) and
 > pair IP Control. Everything except power metering and the light sensor works
 > locally.
 
@@ -406,7 +407,14 @@ Click the badge above to open the config flow directly, or follow these steps ma
 
 1. Go to **Settings → Devices & Services → + Add Integration**.
 2. Search for **SamsungTV Smart** and select it.
-3. Choose your authentication method (see above).
+3. Choose how to connect. **Local only (no SmartThings)** is the first choice,
+   and the default unless OAuth2 is set up: it needs no account, and covers
+   power, volume, inputs, apps, picture and sound settings and Art Mode. Pick a
+   SmartThings method (see above) only if you have a SmartThings API plan and
+   want power metering or the ambient light sensor; you can also add it later
+   with **Reconfigure → Authentication**. (Before 9.7.0 this screen listed
+   SmartThings methods only, so it looked as if a PAT were required; leaving
+   the PAT field blank already gave a local-only entry.)
 4. Enter your **TV's IP address** (a static IP or DHCP reservation is strongly recommended).
 5. Follow the on-screen steps. Your TV may prompt you to accept the pairing request — accept it.
 

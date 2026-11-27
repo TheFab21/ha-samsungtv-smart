@@ -2,10 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Samsung TV Smart - Authentication",
-        "description": "Scegli come autenticarti con SmartThings.\n\nStato OAuth: {oauth_status}",
+        "title": "Samsung TV Smart - Connessione",
+        "description": "Scegli come collegare il televisore.\n\n**Solo locale** non richiede alcun account: accensione, volume, ingressi, app, impostazioni di immagine e audio e modalità Arte funzionano sulla tua rete. SmartThings aggiunge la misura dei consumi, il sensore di luce ambientale e alcune funzioni solo cloud; la sua API richiede un piano SmartThings, e puoi aggiungerlo in seguito con Riconfigura.\n\nStato OAuth: {oauth_status}",
         "data": {
-          "auth_method": "Authentication Method"
+          "auth_method": "Connessione"
         }
       },
       "pick_implementation": {
@@ -106,6 +106,15 @@
       "reconfigure_ip_pair": {
         "title": "Associa IP Control",
         "description": "Associa l'interfaccia IP Control del televisore.\n\nPrima di continuare:\n1. Il televisore deve essere ACCESO e in visione NORMALE, non in modalità Arte.\n2. Abilita il telecomando IP: Impostazioni → Tutte le impostazioni → Connessione → Rete → Impostazioni avanzate → Abilita telecomando IP.\n\nAccetta la richiesta di autorizzazione sul televisore quando compare. Stato attuale: {status}."
+      },
+      "local": {
+        "title": "Connessione locale",
+        "description": "Inserisci l'indirizzo IP del televisore e un nome. Non serve un account SmartThings. La prima volta, accetta la richiesta di connessione sullo schermo del televisore.",
+        "data": {
+          "host": "TV IP Address",
+          "name": "Device Name",
+          "use_ha_name_for_ws": "Use Home Assistant location name for WebSocket"
+        }
       }
     },
     "error": {
