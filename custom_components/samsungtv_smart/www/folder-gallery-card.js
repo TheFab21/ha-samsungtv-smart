@@ -13,7 +13,7 @@
  * Usage Example:
  * type: custom:folder-gallery-card
  * title: My Art Gallery
- * folder: /local/frame_art/{entry_id}/personal
+ * folder_sensor: sensor.<tv>_personal   (the integration's Frame Art folder sensor)
  * columns: 4
  * image_height: 150px
  * action:
@@ -612,7 +612,7 @@ class FolderGalleryCard extends HTMLElement {
           sensorEntities.map((e) => {
             const a = states[e]?.attributes;
             return a
-              ? [a.file_list, a.images, a.thumbnails, a.items, a.path]
+              ? [a.file_list, a.file_urls, a.images, a.thumbnails, a.items, a.path]
               : null;
           })
         );
@@ -679,17 +679,23 @@ class FolderGalleryCard extends HTMLElement {
   _imagesForSource(src) {
     const folder = this._folderUrlBase(src);
     const base = this._sensorBasePath(src);
-    const fromFileList = (fileList) => {
+    // fileUrls: the integration's own Frame Art folder sensors give each
+    // file's URL (files outside www have no /local/ address, #472).
+    const fromFileList = (fileList, fileUrls) => {
       if (typeof fileList === 'string') {
         fileList = fileList.split(',').map((f) => f.trim()).filter(Boolean);
       }
       if (!Array.isArray(fileList) || fileList.length === 0) return null;
-      return fileList.map((f) => {
+      const urls =
+        Array.isArray(fileUrls) && fileUrls.length === fileList.length
+          ? fileUrls
+          : null;
+      return fileList.map((f, i) => {
         const rel = fgcRelPath(f, base); // "/sub/file.jpg" or "/file.jpg"
         const filename = fgcBasename(rel);
         const content_id = filename.replace(/\.[^/.]+$/, '');
         return {
-          path: `${folder}${rel}`,
+          path: urls ? urls[i] : `${folder}${rel}`,
           filename,
           name: content_id,
           content_id,
@@ -700,14 +706,20 @@ class FolderGalleryCard extends HTMLElement {
 
     if (src.folder_sensor) {
       const st = this._hass.states[src.folder_sensor];
-      const imgs = st && st.attributes ? fromFileList(st.attributes.file_list) : null;
+      const imgs =
+        st && st.attributes
+          ? fromFileList(st.attributes.file_list, st.attributes.file_urls)
+          : null;
       if (imgs) return imgs;
     }
     if (src.sensor) {
       const st = this._hass.states[src.sensor];
       if (st && st.attributes) {
         if (st.attributes.file_list !== undefined) {
-          const imgs = fromFileList(st.attributes.file_list);
+          const imgs = fromFileList(
+            st.attributes.file_list,
+            st.attributes.file_urls
+          );
           if (imgs) return imgs;
         }
         const generic =
@@ -730,7 +742,10 @@ class FolderGalleryCard extends HTMLElement {
         const filename = fgcBasename(img);
         const content_id = filename.replace(/\.[^/.]+$/, '');
         return {
-          path: img.startsWith('/local') ? img : `${folder}/${filename}`,
+          path:
+            img.startsWith('/local') || img.startsWith('/api/')
+              ? img
+              : `${folder}/${filename}`,
           filename,
           name: content_id,
           content_id,

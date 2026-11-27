@@ -102,6 +102,7 @@ from .api.samsungws import (
 )
 from .api.smartthings import SmartThingsCapabilityUnsupported, SmartThingsTV, STStatus
 from .api.upnp import SamsungUPnP
+from .art_files import art_dir, art_file_url, art_url
 from .art_mode_guard import (
     ArtModeWriteSuppressed,
     guard_for,
@@ -4032,7 +4033,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         remote_access = False
         if new_media_title == ART_MODE_MEDIA_TITLE:
             # Use the currently displayed artwork as the media image, maintained
-            # by the Frame Art coordinator at www/frame_art/<entry>/current.jpg.
+            # by the Frame Art coordinator to its private current.jpg (art_files).
             media_image_url = self._art_mode_media_image()
         elif (
             media_image_url := await self._local_media_image(new_media_title)
@@ -4064,21 +4065,15 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Return the local URL of the current artwork, if available.
 
         The Frame Art coordinator downloads the currently displayed artwork to
-        ``www/frame_art/<entry_id>/current.jpg`` and exposes it at the matching
-        ``/local/...`` URL. We reuse it as the media image while in Art Mode so
-        the media_player card shows the artwork instead of a generic logo.
-
-        The file is overwritten in place when the artwork changes, so the URL
-        never changes — the browser would keep showing a stale cached image.
-        Append the file's mtime as a cache-busting query parameter.
+        the TV's private Frame Art folder (art_files, #472) and serves it
+        through the integration's art view. We reuse it as the media image
+        while in Art Mode so the media_player card shows the artwork instead
+        of a generic logo. The URL carries the file's mtime, so it changes
+        with the artwork and the browser does not keep a stale copy.
         """
-        rel_path = os.path.join("frame_art", self._entry_id, "current.jpg")
-        abs_path = self.hass.config.path("www", rel_path)
-        try:
-            mtime = int(os.path.getmtime(abs_path))
-        except OSError:
-            return None
-        return f"/local/{rel_path.replace(os.sep, '/')}?v={mtime}"
+        return art_file_url(
+            self.hass, self._entry_id, art_dir(self.hass, self._entry_id, "current.jpg")
+        )
 
     def _get_new_media_title(self):
         """Get the current media title."""
@@ -7213,9 +7208,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         # Reference = the personal thumbnails already downloaded from the TV.
         dedup_dir = None
         if dedup:
-            dedup_dir = self.hass.config.path(
-                "www", "frame_art", self._entry_id, "personal"
-            )
+            dedup_dir = art_dir(self.hass, self._entry_id, "personal")
 
         result = await self._art_api.upload_batch(
             files,
@@ -7307,9 +7300,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         """Get thumbnail for a specific piece of artwork.
 
         If save_to_file is True, saves the thumbnail to:
-        - /config/www/frame_art/personal/ for user-uploaded images (MY_F*)
-        - /config/www/frame_art/store/ for Samsung Art Store images (SAM-*)
-        - /config/www/frame_art/other/ for other content types
+        - <private Frame Art folder>/personal/ for user-uploaded images (MY_F*)
+        - <private Frame Art folder>/store/ for Samsung Art Store images (SAM-*)
+        - <private Frame Art folder>/other/ for other content types
 
         If force_download is False, checks if file already exists before downloading.
         """
@@ -7331,7 +7324,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                 subdir = "other"
 
             # Create directory path
-            www_path = self.hass.config.path("www", "frame_art", self._entry_id, subdir)
+            www_path = art_dir(self.hass, self._entry_id, subdir)
             file_name = f"{content_id.replace(':', '_')}.jpg"
             file_path = os.path.join(www_path, file_name)
 
@@ -7350,7 +7343,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                     result = {
                         "service": "art_get_thumbnail",
                         "content_id": content_id,
-                        "thumbnail_url": f"/local/frame_art/{self._entry_id}/{subdir}/{file_name}",
+                        "thumbnail_url": art_url(
+                            self.hass, self._entry_id, f"{subdir}/{file_name}"
+                        ),
                         "thumbnail_path": file_path,
                         "subdirectory": subdir,
                         "cached": True,
@@ -7427,8 +7422,8 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
                         )
 
                         # Add URL to result
-                        result["thumbnail_url"] = (
-                            f"/local/frame_art/{self._entry_id}/{subdir}/{file_name}"
+                        result["thumbnail_url"] = art_url(
+                            self.hass, self._entry_id, f"{subdir}/{file_name}"
                         )
                         result["thumbnail_path"] = file_path
                         result["subdirectory"] = subdir
@@ -7486,7 +7481,7 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
 
         # Determine which directories to clean
         dirs_to_clean = []
-        base_path = self.hass.config.path("www", "frame_art", self._entry_id)
+        base_path = art_dir(self.hass, self._entry_id)
 
         if favorites_only:
             # Favorites are typically SAM-* (store) images
@@ -7582,9 +7577,9 @@ class SamsungTVDevice(SamsungTVEntity, MediaPlayerEntity):
         - All artworks (if no filters specified)
 
         Saves thumbnails to organized subdirectories:
-        - /config/www/frame_art/personal/ for user-uploaded images (MY_F*)
-        - /config/www/frame_art/store/ for Samsung Art Store images (SAM-*)
-        - /config/www/frame_art/other/ for other content types
+        - <private Frame Art folder>/personal/ for user-uploaded images (MY_F*)
+        - <private Frame Art folder>/store/ for Samsung Art Store images (SAM-*)
+        - <private Frame Art folder>/other/ for other content types
 
         If force_download=False, skips files that already exist.
         If cleanup_orphans=True, removes local files not in the current artwork list.

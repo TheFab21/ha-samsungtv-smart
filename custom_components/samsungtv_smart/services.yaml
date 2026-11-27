@@ -273,7 +273,7 @@ art_delete:
 
 art_get_thumbnail:
   name: Get Artwork Thumbnail
-  description: Download the thumbnail image for a specific piece of artwork. Thumbnails are saved to /config/www/frame_art/ in organized subdirectories (personal/, store/, other/). Skips if file already exists unless Force Download is enabled. Works with all image types including Samsung Art Store.
+  description: Download the thumbnail image for a specific piece of artwork. Thumbnails are saved to /config/.storage/samsungtv_smart/frame_art/ in organized subdirectories (personal/, store/, other/). Skips if file already exists unless Force Download is enabled. Works with all image types including Samsung Art Store.
   target:
     entity:
       integration: samsungtv_smart
@@ -295,7 +295,7 @@ art_get_thumbnail:
 
 art_get_thumbnails_batch:
   name: Batch Download Artwork Thumbnails
-  description: Download thumbnails for multiple artworks at once. Automatically organizes into /config/www/frame_art/personal/, /store/, /other/. Skips files that already exist (unless Force Download is enabled). All image types supported equally - NO DRM assumptions! Perfect for Lovelace galleries.
+  description: Download thumbnails for multiple artworks at once. Automatically organizes into /config/.storage/samsungtv_smart/frame_art/personal/, /store/, /other/. Skips files that already exist (unless Force Download is enabled). All image types supported equally - NO DRM assumptions! Perfect for Lovelace galleries.
   target:
     entity:
       integration: samsungtv_smart

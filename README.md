@@ -818,7 +818,7 @@ delete them. A Frame's own confirmation is never touched. Off by default.
 - `art_mode` — current Art Mode state
 - `content_id` — artwork content ID
 - `content_type` — artwork category
-- `thumbnail_url` — local URL to the thumbnail (if downloaded)
+- `thumbnail_url` — URL of the thumbnail (if downloaded), served privately by the integration
 - `art_rotation` — `landscape` / `portrait`
 - `art_picture_mode` — Art Mode picture type (raw value from the TV, see `art_set_picture_mode`)
 - `art_device_info` — the art app's capability flags (`support_motion_sensor`, `support_brightness_sensor`, `support_color_tone`, `resolution_type`, `tv_flash_size`…)
@@ -1154,22 +1154,38 @@ is added to the Frame's library, exactly as the SmartThings app does it.
 ### Thumbnail Downloads
 
 Thumbnails are automatically organized and saved to a **per-TV** directory keyed
-by the config-entry ID (new in v7 — see the v7 changelog for migration notes):
+by the config-entry ID:
 
 ```
-config/www/frame_art/{entry_id}/
+config/.storage/samsungtv_smart/frame_art/{entry_id}/
 ├── current.jpg  ← currently displayed artwork
 ├── personal/    ← user-uploaded photos (MY_F*)
 ├── store/       ← Samsung Art Store (SAM-*)
 └── other/       ← everything else
 ```
 
-Find your `{entry_id}` on the `sensor.<tv_name>_frame_art` entity (Developer
-Tools → States) — it's exposed as the `entry_id` attribute, and the ready-to-use
-URL base is in `thumbnail_folder`.
+**They are private.** Up to 9.5.20 they were written under `config/www/frame_art/`,
+which Home Assistant serves at `/local/` **without asking anyone to log in**: anyone
+who could reach your Home Assistant and knew the path could download your own
+photos (Spook 5.12 flags this as *"Files anyone can download"*). Since 9.6.0 they
+live outside `www`, and existing files are moved there automatically on the first
+start; the old `www/frame_art` folder is removed once empty.
 
-These are accessible via Home Assistant's `/local/` URL path, making them
-directly usable in Lovelace dashboards and galleries.
+Dashboards reach them through the integration's own endpoint,
+`/api/samsungtv_smart/art/{entry_id}/<file>?token=…`. The token is random, one
+per TV, and made anew at each Home Assistant restart, the same way the camera
+and media player image proxies work: a plain `<img>` loads the picture, and a
+URL that leaks stops working at the next restart. Use the URLs the integration
+gives you rather than building them:
+
+- `current_thumbnail_url` on `sensor.<tv_name>_frame_art` — the artwork on screen;
+- `file_urls` on the Frame Art folder sensors (`…_personal`, `…_store`, `…_other`)
+  — one URL per file, in the order of `file_list`. The bundled
+  `folder-gallery-card` uses it automatically with `folder_sensor:`;
+- `thumbnail_url` in the result of `art_get_thumbnail`.
+
+A hard-coded `/local/frame_art/...` URL in a dashboard stops working: switch it
+to one of the above.
 
 **Smart caching**: thumbnails are only downloaded once. Subsequent calls to
 `art_get_thumbnail` or `art_get_thumbnails_batch` skip files that already exist,
