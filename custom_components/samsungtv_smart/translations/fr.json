@@ -268,6 +268,10 @@
     "legacy_art_camera": {
       "title": "Caméra sur l'ancienne image Frame Art de {device_name}",
       "description": "Ces caméras pointent encore vers l'ancien emplacement de l'œuvre affichée dans `www`, qui n'est plus utilisé : **{cameras}**.\n\nDepuis la 9.6.0, les images Frame Art ne sont plus dans `www`, où Home Assistant les servait à n'importe qui sans connexion. Pour garder une caméra de l'œuvre affichée :\n\n- utilisez la caméra **Œuvre affichée** que {device_name} fournit désormais, puis supprimez l'ancienne ; ou\n- pour une caméra Local File, remplacez son chemin par `{new_path}`.\n\nUne caméra Generic Camera ne peut pas simplement être redirigée (la nouvelle adresse contient un jeton qui change à chaque redémarrage) : utilisez plutôt la caméra **Œuvre affichée**.\n\nCette réparation disparaît dès qu'aucune caméra ne pointe plus vers l'ancien emplacement (vérifié au démarrage de l'intégration)."
+    },
+    "legacy_art_folder_watcher": {
+      "title": "Folder Watcher sur l'ancien dossier Frame Art",
+      "description": "Ces entrées Folder Watcher surveillent encore l'ancien dossier Frame Art dans `www`, qui n'est plus utilisé : **{watchers}**.\n\nDepuis la 9.6.0, les images Frame Art ne sont plus dans `www`, où Home Assistant les servait à n'importe qui sans connexion. Le dossier d'un Folder Watcher ne peut pas être modifié après sa création, donc :\n\n- s'il servait seulement à rafraîchir une galerie à l'arrivée des miniatures, **supprimez-le** : les capteurs de dossier de l'intégration (`…_personal`, `…_store`, `…_other`) suivent le nouveau dossier tout seuls ;\n- si une automatisation en a besoin, supprimez-le puis ajoutez-le à nouveau sur le nouveau dossier, sous `{new_root}`. Ajoutez d'abord `{new_root}` à `allowlist_external_dirs` dans `configuration.yaml`, sinon Folder Watcher refuse le dossier.\n\nNe recréez pas l'ancien dossier `www/frame_art` et ne le liez pas au nouveau : vos photos redeviendraient téléchargeables sans connexion.\n\nCette réparation disparaît dès qu'aucun Folder Watcher ne surveille plus l'ancien dossier (vérifié au démarrage de l'intégration)."
     }
   },
   "entity": {

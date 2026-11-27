@@ -549,6 +549,10 @@
     "legacy_art_camera": {
       "title": "Kamera auf dem alten Frame-Art-Bild von {device_name}",
       "description": "Diese Kameras verweisen noch auf den alten Speicherort des aktuellen Kunstwerks in `www`, der nicht mehr verwendet wird: **{cameras}**.\n\nSeit 9.6.0 liegen die Frame-Art-Bilder nicht mehr in `www`, wo Home Assistant sie jedem ohne Anmeldung ausgeliefert hat. Um eine Kamera des aktuellen Kunstwerks zu behalten:\n\n- verwende die Kamera **Aktuelles Kunstwerk**, die {device_name} jetzt bereitstellt, und lösche die alte; oder\n- ändere bei einer Local-File-Kamera den Dateipfad auf `{new_path}`.\n\nEine Generic Camera lässt sich nicht einfach umstellen (die neue Adresse enthält ein Token, das sich bei jedem Neustart ändert): verwende stattdessen die Kamera **Aktuelles Kunstwerk**.\n\nDiese Reparatur verschwindet, sobald keine Kamera mehr auf den alten Speicherort verweist (geprüft beim Start der Integration)."
+    },
+    "legacy_art_folder_watcher": {
+      "title": "Folder Watcher auf dem alten Frame-Art-Ordner",
+      "description": "Diese Folder-Watcher-Einträge überwachen noch den alten Frame-Art-Ordner in `www`, der nicht mehr verwendet wird: **{watchers}**.\n\nSeit 9.6.0 liegen die Frame-Art-Bilder nicht mehr in `www`, wo Home Assistant sie jedem ohne Anmeldung ausgeliefert hat. Der Ordner eines Folder Watchers lässt sich nach dem Anlegen nicht ändern, daher:\n\n- hat er nur eine Galerie beim Eintreffen von Miniaturen aktualisiert, **lösche ihn**: Die Ordnersensoren der Integration (`…_personal`, `…_store`, `…_other`) folgen dem neuen Ordner von selbst;\n- braucht eine Automatisierung ihn, lösche ihn und lege ihn auf dem neuen Ordner unter `{new_root}` neu an. Füge zuerst `{new_root}` zu `allowlist_external_dirs` in `configuration.yaml` hinzu, sonst lehnt Folder Watcher den Ordner ab.\n\nLege den alten Ordner `www/frame_art` nicht neu an und verlinke ihn nicht mit dem neuen: Deine Fotos wären wieder ohne Anmeldung herunterladbar.\n\nDiese Reparatur verschwindet, sobald kein Folder Watcher mehr den alten Ordner überwacht (geprüft beim Start der Integration)."
     }
   }
 }

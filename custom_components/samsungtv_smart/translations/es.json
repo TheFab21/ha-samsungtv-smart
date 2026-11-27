@@ -268,6 +268,10 @@
     "legacy_art_camera": {
       "title": "Cámara sobre la antigua imagen Frame Art de {device_name}",
       "description": "Estas cámaras siguen apuntando a la antigua ubicación de la obra actual en `www`, que ya no se usa: **{cameras}**.\n\nDesde la 9.6.0 las imágenes Frame Art ya no están en `www`, donde Home Assistant las servía a cualquiera sin iniciar sesión. Para mantener una cámara de la obra actual:\n\n- usa la cámara **Obra actual** que {device_name} ofrece ahora y elimina la antigua; o\n- en una cámara Local File, cambia su ruta a `{new_path}`.\n\nUna Generic Camera no puede simplemente apuntar a otro sitio (la nueva dirección lleva un token que cambia en cada reinicio): usa la cámara **Obra actual**.\n\nEsta reparación desaparece cuando ninguna cámara apunta ya a la antigua ubicación (se comprueba al iniciar la integración)."
+    },
+    "legacy_art_folder_watcher": {
+      "title": "Folder Watcher en la antigua carpeta Frame Art",
+      "description": "Estas entradas de Folder Watcher siguen vigilando la antigua carpeta Frame Art en `www`, que ya no se usa: **{watchers}**.\n\nDesde la 9.6.0 las imágenes Frame Art ya no están en `www`, donde Home Assistant las servía a cualquiera sin iniciar sesión. La carpeta de un Folder Watcher no se puede cambiar después de crearlo, así que:\n\n- si solo actualizaba una galería al llegar miniaturas, **elimínalo**: los sensores de carpeta de la integración (`…_personal`, `…_store`, `…_other`) siguen la nueva carpeta por sí solos;\n- si una automatización lo necesita, elimínalo y vuelve a añadirlo en la nueva carpeta, dentro de `{new_root}`. Añade antes `{new_root}` a `allowlist_external_dirs` en `configuration.yaml`, o Folder Watcher rechazará la carpeta.\n\nNo vuelvas a crear la antigua carpeta `www/frame_art` ni la enlaces con la nueva: tus fotos volverían a poder descargarse sin iniciar sesión.\n\nEsta reparación desaparece cuando ningún Folder Watcher vigila ya la antigua carpeta (se comprueba al iniciar la integración)."
     }
   },
   "entity": {

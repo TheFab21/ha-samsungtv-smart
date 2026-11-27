@@ -1210,6 +1210,14 @@ no longer find it:
 Home Assistant raises a repair (Settings → Repairs) naming any such camera, and
 clears it once none is left.
 
+**A Folder Watcher on the old folder** (`/config/www/frame_art/...`) watches a
+folder that is gone, and its folder cannot be changed after it is created.
+Since 9.6.2 a repair names it too. If it only refreshed a gallery, delete it: the
+integration's folder sensors follow the new folder on their own. If an
+automation needs it, delete it and add it again under
+`/config/.storage/samsungtv_smart/frame_art/`, after adding that path to
+`allowlist_external_dirs`.
+
 **Smart caching**: thumbnails are only downloaded once. Subsequent calls to
 `art_get_thumbnail` or `art_get_thumbnails_batch` skip files that already exist,
 making batch operations fast on repeat runs. Use `force_download: true` to

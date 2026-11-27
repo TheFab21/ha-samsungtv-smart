@@ -186,3 +186,50 @@ def async_check_legacy_art_cameras(hass: HomeAssistant, entry: ConfigEntry) -> N
             "new_path": art_dir(hass, entry.entry_id, "current.jpg"),
         },
     )
+
+
+def _legacy_folder_watcher_titles(hass: HomeAssistant) -> list[str]:
+    """Titles of the Folder Watcher entries still watching the old www folder.
+
+    Any TV's: a watcher may be on ``/config/www/frame_art`` itself, or on one
+    TV's folder, with or without a trailing slash.
+    """
+    titles = []
+    for watcher in hass.config_entries.async_entries("folder_watcher"):
+        values = (*watcher.data.values(), *watcher.options.values())
+        if any(
+            isinstance(v, str) and "/www/frame_art/" in v.rstrip("/") + "/"
+            for v in values
+        ):
+            titles.append(watcher.title or "folder_watcher")
+    return titles
+
+
+@callback
+def async_check_legacy_art_folder_watchers(hass: HomeAssistant) -> None:
+    """Raise a repair for Folder Watcher entries on the old ``www`` folder.
+
+    Folder Watcher is set up in the UI and its folder cannot be changed
+    afterwards (its options hold only the patterns), so a watcher on
+    ``/config/www/frame_art/...`` keeps watching a folder that is gone. The
+    repair names them and says how to replace them. One issue for every TV:
+    the watchers are not tied to one. Cleared once none is left.
+    """
+    issue_id = "legacy_art_folder_watcher"
+    titles = _legacy_folder_watcher_titles(hass)
+    if not titles:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        is_persistent=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="legacy_art_folder_watcher",
+        translation_placeholders={
+            "watchers": ", ".join(titles),
+            "new_root": art_root(hass),
+        },
+    )

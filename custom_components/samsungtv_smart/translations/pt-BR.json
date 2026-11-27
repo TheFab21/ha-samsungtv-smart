@@ -268,6 +268,10 @@
     "legacy_art_camera": {
       "title": "Câmera na antiga imagem Frame Art de {device_name}",
       "description": "Estas câmeras ainda apontam para o antigo local da obra atual em `www`, que não é mais usado: **{cameras}**.\n\nDesde a 9.6.0 as imagens Frame Art não ficam mais em `www`, onde o Home Assistant as servia a qualquer pessoa sem login. Para manter uma câmera da obra atual:\n\n- use a câmera **Obra atual** que {device_name} agora oferece e exclua a antiga; ou\n- em uma câmera Local File, altere o caminho para `{new_path}`.\n\nUma Generic Camera não pode simplesmente apontar para outro lugar (o novo endereço tem um token que muda a cada reinício): use a câmera **Obra atual**.\n\nEste reparo desaparece quando nenhuma câmera aponta mais para o antigo local (verificado quando a integração inicia)."
+    },
+    "legacy_art_folder_watcher": {
+      "title": "Folder Watcher na antiga pasta Frame Art",
+      "description": "Estas entradas do Folder Watcher ainda vigiam a antiga pasta Frame Art em `www`, que não é mais usada: **{watchers}**.\n\nDesde a 9.6.0 as imagens Frame Art não ficam mais em `www`, onde o Home Assistant as servia a qualquer pessoa sem login. A pasta de um Folder Watcher não pode ser alterada depois de criado, então:\n\n- se ele só atualizava uma galeria quando chegavam miniaturas, **exclua-o**: os sensores de pasta da integração (`…_personal`, `…_store`, `…_other`) seguem a nova pasta sozinhos;\n- se uma automação precisa dele, exclua-o e adicione-o novamente na nova pasta, dentro de `{new_root}`. Adicione antes `{new_root}` a `allowlist_external_dirs` no `configuration.yaml`, ou o Folder Watcher recusará a pasta.\n\nNão recrie a antiga pasta `www/frame_art` nem a ligue à nova: suas fotos voltariam a poder ser baixadas sem login.\n\nEste reparo desaparece quando nenhum Folder Watcher vigia mais a antiga pasta (verificado quando a integração inicia)."
     }
   },
   "entity": {

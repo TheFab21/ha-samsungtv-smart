@@ -549,6 +549,10 @@
     "legacy_art_camera": {
       "title": "Camera op de oude Frame Art-afbeelding van {device_name}",
       "description": "Deze camera's verwijzen nog naar de oude locatie van het huidige kunstwerk in `www`, die niet meer wordt gebruikt: **{cameras}**.\n\nSinds 9.6.0 staan de Frame Art-afbeeldingen niet meer in `www`, waar Home Assistant ze zonder inloggen aan iedereen aanbood. Om een camera van het huidige kunstwerk te houden:\n\n- gebruik de camera **Huidig kunstwerk** die {device_name} nu biedt en verwijder de oude; of\n- wijzig bij een Local File-camera het bestandspad in `{new_path}`.\n\nEen Generic Camera kan niet zomaar worden omgezet (het nieuwe adres bevat een token dat bij elke herstart verandert): gebruik in plaats daarvan de camera **Huidig kunstwerk**.\n\nDeze melding verdwijnt zodra geen camera meer naar de oude locatie verwijst (gecontroleerd bij het starten van de integratie)."
+    },
+    "legacy_art_folder_watcher": {
+      "title": "Folder Watcher op de oude Frame Art-map",
+      "description": "Deze Folder Watcher-items bewaken nog de oude Frame Art-map in `www`, die niet meer wordt gebruikt: **{watchers}**.\n\nSinds 9.6.0 staan de Frame Art-afbeeldingen niet meer in `www`, waar Home Assistant ze zonder inloggen aan iedereen aanbood. De map van een Folder Watcher kan na het aanmaken niet worden gewijzigd, dus:\n\n- als hij alleen een galerij vernieuwde bij nieuwe miniaturen, **verwijder hem**: de mapsensoren van de integratie (`…_personal`, `…_store`, `…_other`) volgen de nieuwe map vanzelf;\n- als een automatisering hem nodig heeft, verwijder hem en voeg hem opnieuw toe op de nieuwe map, onder `{new_root}`. Voeg eerst `{new_root}` toe aan `allowlist_external_dirs` in `configuration.yaml`, anders weigert Folder Watcher de map.\n\nMaak de oude map `www/frame_art` niet opnieuw aan en koppel hem niet aan de nieuwe: je foto's zouden weer zonder inloggen te downloaden zijn.\n\nDeze melding verdwijnt zodra geen Folder Watcher de oude map nog bewaakt (gecontroleerd bij het starten van de integratie)."
     }
   }
 }

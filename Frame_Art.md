@@ -680,6 +680,12 @@ point the gallery card's `folder_sensor` at one of those.
 > (`platform: folder`) on `/config/www/frame_art/<entry_id>/...`. That folder is
 > gone. Remove them and use the integration's sensors, which have the same
 > attributes plus `file_urls`.
+>
+> A **Folder Watcher** (set up in the UI) on that folder cannot be pointed
+> elsewhere: delete it, and add it again under
+> `/config/.storage/samsungtv_smart/frame_art/` only if an automation needs it
+> (that path must be in `allowlist_external_dirs`). **Settings → Repairs** names
+> such watchers since 9.6.2.
 
 ---
 
