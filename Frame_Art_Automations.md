@@ -490,22 +490,28 @@ recomputed rather than stored.
 
 ```yaml
 template:
-  # The selection itself: one event toggles one content id.
+  # The selection itself: one event toggles one content id. `selection:`
+  # names the list, so each TV (or each list) only reacts to its own events.
+  # `clear: true` empties it.
   - triggers:
       - trigger: event
         event_type: frame_art_selection_toggle
+        event_data:
+          selection: <tv>
     sensor:
       - name: Frame selection <tv>
         unique_id: frame_art_selection_<tv>
         state: >-
-          {% set ids = this.attributes.get('content_ids', []) | list %}
-          {% set cid = trigger.event.data.content_id %}
-          {{ (ids | reject('eq', cid) | list if cid in ids else ids + [cid]) | count }}
+          {% set d = trigger.event.data %}
+          {% set ids = [] if d.get('clear') else this.attributes.get('content_ids', []) | list %}
+          {% set cid = d.get('content_id') %}
+          {{ (ids if not cid else (ids | reject('eq', cid) | list if cid in ids else ids + [cid])) | count }}
         attributes:
           content_ids: >-
-            {% set ids = this.attributes.get('content_ids', []) | list %}
-            {% set cid = trigger.event.data.content_id %}
-            {{ ids | reject('eq', cid) | list if cid in ids else ids + [cid] }}
+            {% set d = trigger.event.data %}
+            {% set ids = [] if d.get('clear') else this.attributes.get('content_ids', []) | list %}
+            {% set cid = d.get('content_id') %}
+            {{ ids if not cid else (ids | reject('eq', cid) | list if cid in ids else ids + [cid]) }}
 
   # The same list as gallery images, rebuilt whenever a folder sensor changes.
   - sensor:
@@ -534,6 +540,11 @@ The two `name:`s give `sensor.frame_selection_<tv>` and
 `sensor.frame_selection_images_<tv>`. Check the entity ids Home Assistant
 actually gave them, and adjust the references if they differ.
 
+**Two Frames?** Repeat both blocks for each one, with its own `selection:`
+value in the trigger and its own `sensor.<tv>_personal` / `_store` /
+`_other` in the images sensor. Without the `event_data` filter every
+selection would react to every long-press.
+
 ### The toggle script
 
 ```yaml
@@ -546,14 +557,26 @@ script:
     max: 25
     fields:
       content_id: {name: Content ID, required: true, selector: {text: }}
+      selection: {name: Selection, required: true, selector: {text: }}
     sequence:
       - event: frame_art_selection_toggle
         event_data:
           content_id: '{{ content_id }}'
+          selection: '{{ selection }}'
       - action: logbook.log
         data:
           name: Frame Art selection
-          message: '{{ content_id }} toggled in the selection'
+          message: '{{ content_id }} toggled in the {{ selection }} selection'
+```
+
+To empty a selection, fire the event with `clear: true` (Developer tools →
+Events, or an `event:` step):
+
+```yaml
+event_type: frame_art_selection_toggle
+event_data:
+  selection: <tv>
+  clear: true
 ```
 
 ### Wiring it to the galleries
@@ -580,6 +603,7 @@ recursively, including inside `data.variables`.
     data:
       variables:
         content_id: '{{content_id}}'
+        selection: <tv>
 
 - type: custom:folder-gallery-card
   title: My selection
@@ -598,6 +622,7 @@ recursively, including inside `data.variables`.
     data:
       variables:
         content_id: '{{content_id}}'
+        selection: <tv>
 ```
 
 `Selection` then works as a slideshow source (see
