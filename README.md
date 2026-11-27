@@ -14,6 +14,13 @@ Installed through the Home Assistant **Marketplace** as a **custom repository** 
 
 (The Marketplace replaced HACS in Home Assistant 2026.11; on older versions it is still HACS.)
 
+> [!WARNING]
+> **9.6.0 — breaking change for Frame owners.** Frame Art pictures moved out of
+> `/config/www/frame_art/`, which Home Assistant served to anyone without login.
+> Cameras, cards, `folder` sensors or automations you set up on the old path or
+> on `/local/frame_art/...` must be updated. See
+> [RELEASE_NOTES_9.6.0.md](RELEASE_NOTES_9.6.0.md) for the checklist.
+
 If this project is useful to you, you can support its development:
 
 <a href="https://buymeacoffee.com/thefab21" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-black.png" alt="Buy Me A Coffee" height="41" width="174"></a>
