@@ -61,7 +61,7 @@ const TRANSLATIONS = {
     g_unfavourite: 'Unfavourite',
     ed_title: 'Title',
     ed_sensor: 'Sensor (provides the image list)',
-    ed_sensor_hint: 'Required — a <code>platform: folder</code> sensor (e.g. <code>sensor.&lt;tv&gt;_store</code>). This is what lists the images.',
+    ed_sensor_hint: 'Required — a folder sensor (e.g. <code>sensor.&lt;tv&gt;_store</code>) or a sensor with an <code>images</code> attribute. This is what lists the images.',
     ed_folder: 'Folder Path (optional)',
     ed_folder_ph: 'auto-detected from the sensor',
     ed_folder_hint_auto: 'Auto-detected from the sensor — leave empty unless your files are outside <code>/config/www/</code>.',
@@ -121,7 +121,7 @@ const TRANSLATIONS = {
     g_unfavourite: 'Retirer des favoris',
     ed_title: 'Titre',
     ed_sensor: 'Capteur (fournit la liste des images)',
-    ed_sensor_hint: 'Requis — un capteur <code>platform: folder</code> (ex. <code>sensor.&lt;tv&gt;_store</code>). C\'est lui qui liste les images.',
+    ed_sensor_hint: 'Requis — un capteur de dossier (ex. <code>sensor.&lt;tv&gt;_store</code>) ou un capteur avec un attribut <code>images</code>. C\'est lui qui liste les images.',
     ed_folder: 'Chemin du dossier (facultatif)',
     ed_folder_ph: 'détecté automatiquement depuis le capteur',
     ed_folder_hint_auto: 'Détecté automatiquement depuis le capteur — laissez vide sauf si vos fichiers sont hors de <code>/config/www/</code>.',
@@ -181,7 +181,7 @@ const TRANSLATIONS = {
     g_unfavourite: 'Quitar de favoritos',
     ed_title: 'Título',
     ed_sensor: 'Sensor (proporciona la lista de imágenes)',
-    ed_sensor_hint: 'Obligatorio — un sensor <code>platform: folder</code> (p. ej. <code>sensor.&lt;tv&gt;_store</code>). Es lo que lista las imágenes.',
+    ed_sensor_hint: 'Obligatorio — un sensor de carpeta (p. ej. <code>sensor.&lt;tv&gt;_store</code>) o un sensor con un atributo <code>images</code>. Es lo que lista las imágenes.',
     ed_folder: 'Ruta de carpeta (opcional)',
     ed_folder_ph: 'detectado automáticamente desde el sensor',
     ed_folder_hint_auto: 'Detectado automáticamente desde el sensor — déjalo vacío salvo que tus archivos estén fuera de <code>/config/www/</code>.',
@@ -241,7 +241,7 @@ const TRANSLATIONS = {
     g_unfavourite: 'Rimuovi dai preferiti',
     ed_title: 'Titolo',
     ed_sensor: 'Sensore (fornisce l\'elenco delle immagini)',
-    ed_sensor_hint: 'Obbligatorio — un sensore <code>platform: folder</code> (es. <code>sensor.&lt;tv&gt;_store</code>). È ciò che elenca le immagini.',
+    ed_sensor_hint: 'Obbligatorio — un sensore di cartella (es. <code>sensor.&lt;tv&gt;_store</code>) o un sensore con un attributo <code>images</code>. È ciò che elenca le immagini.',
     ed_folder: 'Percorso cartella (facoltativo)',
     ed_folder_ph: 'rilevato automaticamente dal sensore',
     ed_folder_hint_auto: 'Rilevato automaticamente dal sensore — lascia vuoto a meno che i file non siano fuori da <code>/config/www/</code>.',
@@ -301,7 +301,7 @@ const TRANSLATIONS = {
     g_unfavourite: 'Remover dos favoritos',
     ed_title: 'Título',
     ed_sensor: 'Sensor (fornece a lista de imagens)',
-    ed_sensor_hint: 'Obrigatório — um sensor <code>platform: folder</code> (ex. <code>sensor.&lt;tv&gt;_store</code>). É o que lista as imagens.',
+    ed_sensor_hint: 'Obrigatório — um sensor de pasta (ex. <code>sensor.&lt;tv&gt;_store</code>) ou um sensor com um atributo <code>images</code>. É o que lista as imagens.',
     ed_folder: 'Caminho da pasta (opcional)',
     ed_folder_ph: 'detectado automaticamente pelo sensor',
     ed_folder_hint_auto: 'Detectado automaticamente pelo sensor — deixe vazio a menos que seus arquivos estejam fora de <code>/config/www/</code>.',
@@ -361,7 +361,7 @@ const TRANSLATIONS = {
     g_unfavourite: 'Eltávolítás a kedvencekből',
     ed_title: 'Cím',
     ed_sensor: 'Szenzor (a képek listáját adja)',
-    ed_sensor_hint: 'Kötelező — egy <code>platform: folder</code> szenzor (pl. <code>sensor.&lt;tv&gt;_store</code>). Ez sorolja fel a képeket.',
+    ed_sensor_hint: 'Kötelező — egy mappa szenzor (pl. <code>sensor.&lt;tv&gt;_store</code>) vagy egy <code>images</code> attribútummal rendelkező szenzor. Ez sorolja fel a képeket.',
     ed_folder: 'Mappa útvonala (opcionális)',
     ed_folder_ph: 'automatikusan a szenzorból',
     ed_folder_hint_auto: 'Automatikusan a szenzorból — hagyd üresen, hacsak a fájljaid nem a <code>/config/www/</code> mappán kívül vannak.',
@@ -707,31 +707,26 @@ class FolderGalleryCard extends HTMLElement {
       });
     };
 
-    if (src.folder_sensor) {
-      const st = this._hass.states[src.folder_sensor];
-      const imgs =
-        st && st.attributes
-          ? fromFileList(st.attributes.file_list, st.attributes.file_urls)
-          : null;
-      if (imgs) return imgs;
-    }
-    if (src.sensor) {
-      const st = this._hass.states[src.sensor];
-      if (st && st.attributes) {
-        if (st.attributes.file_list !== undefined) {
-          const imgs = fromFileList(
-            st.attributes.file_list,
-            st.attributes.file_urls
-          );
-          if (imgs) return imgs;
-        }
-        const generic =
-          st.attributes.images ||
-          st.attributes.thumbnails ||
-          st.attributes.items ||
-          [];
-        if (generic.length) return this._normalizeGeneric(generic, folder);
+    // `folder_sensor` and `sensor` read the same attributes: a folder
+    // sensor's file_list (+ file_urls), else a ready-made images /
+    // thumbnails / items list (a template sensor, e.g. the curated selection
+    // of Frame_Art_Automations.md). The visual editor writes `folder_sensor`,
+    // so a sensor with `images` picked there used to show nothing.
+    const fromSensor = (entityId) => {
+      const st = this._hass.states[entityId];
+      if (!st || !st.attributes) return null;
+      const a = st.attributes;
+      if (a.file_list !== undefined) {
+        const imgs = fromFileList(a.file_list, a.file_urls);
+        if (imgs) return imgs;
       }
+      const generic = a.images || a.thumbnails || a.items || [];
+      return generic.length ? this._normalizeGeneric(generic, folder) : null;
+    };
+    for (const entityId of [src.folder_sensor, src.sensor]) {
+      if (!entityId) continue;
+      const imgs = fromSensor(entityId);
+      if (imgs) return imgs;
     }
     if (src.image_list && src.image_list.length > 0) {
       return this._normalizeGeneric(src.image_list, folder);

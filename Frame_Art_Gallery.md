@@ -325,7 +325,7 @@ falls back to **All**.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `title` | string | - | Card title |
-| `folder_sensor` | string | - | Folder sensor entity ID |
+| `folder_sensor` | string | - | Sensor that lists the images: a folder sensor (`file_list`, plus `file_urls` for the integration's), or, since 9.6.1, a sensor with an `images` / `thumbnails` / `items` attribute, as `sensor` accepts |
 | `folder` | string | *(auto)* | Base **URL** for thumbnails (e.g., `/local/media/Monet`). Optional — not needed with the integration's folder sensors (they give `file_urls`), and auto-derived from a core folder sensor's `path` when under `/config/www/`. Does **not** provide the image list (a sensor or `image_list` does). A `/config/www/...` value is accepted and mapped to `/local/...`. |
 | `folders` | list | - | A list of selectable folders, shown as a dropdown. Each entry has a `name` (the label) and the same source keys as the card (`folder_sensor` / `sensor` / `folder` / `image_list`). |
 | `group_by_subfolder` | boolean | `false` | With a single (recursive) `folder_sensor`, show a dropdown of its sub-folders (**All** + one per sub-folder) instead of a flat list. |
