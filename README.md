@@ -125,6 +125,15 @@ you can tune.
 - Python packages (installed automatically): `websocket-client`, `wakeonlan`, `aiofiles`, `casttube`, `Pillow`, `pysmartthings>=6.0`
 - For Artwork Identification (optional): a Google Cloud Vision API key and an LLM API key (Anthropic, OpenAI or Gemini)
 - A Samsung Smart TV running **Tizen OS** (2016+), reachable on the local network
+- **Not supported: 2014 H-series and 2015 J-series TVs, and anything older**
+  (the series letter follows the size in the model name, e.g. UE40**H**7000,
+  UE55**J**6200). They have no WebSocket API on ports 8001/8002: their remote
+  protocol is an older, encrypted one, paired with a PIN shown on screen,
+  which this integration does not speak (some J models already run Tizen, but
+  use that same protocol). SmartThings does not cover them either. Use Home
+  Assistant's built-in
+  [Samsung Smart TV](https://www.home-assistant.io/integrations/samsungtv/)
+  integration instead, which supports their encrypted pairing.
 - **Home Assistant and the TV on the same subnet / VLAN.** Samsung's local WebSocket pairing (ports **8001/8002**) generally does **not** work across subnets or VLANs, *even when the ports are reachable and routed*. If HA and the TV must stay on separate networks, you need SNAT / IP masquerading so the TV sees the traffic as coming from a local address — see [Troubleshooting](#setup-wizard-loops-forever--mschanneltimeout-on-8002--mschannelunauthorized-on-8001).
 - For SmartThings features (optional): a Samsung account, a SmartThings-registered TV, and — from 4 November 2026, with keys deactivated on 15 December 2026 without one — a paid SmartThings **API plan**. Everything local works without it; see [SmartThings Authentication](#smartthings-authentication)
 
