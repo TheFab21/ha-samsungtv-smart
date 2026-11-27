@@ -33,23 +33,30 @@ Frame Art Gallery transforms your Home Assistant dashboard into an interactive a
 - 🖱️ Lightbox preview with smart context actions
 - 🧹 Automatic cleanup of orphaned thumbnails
 
-> ### ⚠️ v7 path change — read this first
+> ### ⚠️ 9.6.0: the thumbnails are private — read this first
 >
-> As of **v7**, thumbnails live in a **per-TV** folder keyed by the config-entry
-> ID, not the old flat `/local/frame_art/...` path:
+> Up to 9.5.x the thumbnails were in `/config/www/frame_art/<entry_id>/`, which
+> Home Assistant serves at `/local/` **without login**: your own photos could be
+> downloaded by anyone who reached your Home Assistant. Since **9.6.0** they live
+> in `/config/.storage/samsungtv_smart/frame_art/<entry_id>/` (moved
+> automatically) and reach dashboards through the integration's own endpoint,
+> with a token that changes at each restart.
 >
-> ```
-> /local/frame_art/{entry_id}/personal   (was: /local/frame_art/personal)
-> /local/frame_art/{entry_id}/store       (was: /local/frame_art/store)
-> /local/frame_art/{entry_id}/other       (was: /local/frame_art/other)
-> ```
+> What that means for galleries:
 >
-> The examples below use the **old flat paths** for readability. When you copy
-> them, insert your TV's `{entry_id}` after `frame_art/`. Find it on the
-> `sensor.<tv_name>_frame_art` entity (Developer Tools → States): the `entry_id`
-> attribute is the value, and `thumbnail_folder` gives you the ready-to-use
-> `/local/...` base. The same applies to the `folder:` paths in the `folder`
-> sensors below and any `allowlist_external_dirs` entry.
+> - **Use `folder_sensor:` with the integration's sensors**
+>   (`sensor.<tv_name>_personal`, `_store`, `_other`). They publish a
+>   `file_urls` attribute, which the card uses. **Do not set `folder:` to a
+>   `/local/frame_art/...` URL**: there is nothing there any more.
+> - **Remove core `folder` sensors** (`platform: folder`) you declared on
+>   `/config/www/frame_art/...`, and any `allowlist_external_dirs` entry for it.
+> - **Template sensors that built `/local/frame_art/...` paths** must take the
+>   URL from `file_urls` instead — see [Template Sensors](#template-sensors).
+>
+> The examples below use `media_player.samsung_frame`, so its sensors are
+> `sensor.samsung_frame_store`, `sensor.samsung_frame_personal` and
+> `sensor.samsung_frame_other`. Check yours in **Developer Tools → States**.
+> See [RELEASE_NOTES_9.6.0.md](RELEASE_NOTES_9.6.0.md) for the full checklist.
 
 ---
 
@@ -63,18 +70,9 @@ Frame Art Gallery transforms your Home Assistant dashboard into an interactive a
 
 3. **Folder sensor** for gallery updates — **auto-created in v7**. The
    integration registers `sensor.<tv_name>_personal`, `…_store`, and `…_other`
-   for each Frame TV (folder size in MB, with a `file_list` attribute). Point the
-   gallery card's `folder_sensor` at the relevant one. You only need to declare a
-   manual `folder` sensor if you want to watch a directory the integration
-   doesn't manage:
-   ```yaml
-   # configuration.yaml — optional / legacy only
-   sensor:
-     - platform: folder
-       folder: /config/www/frame_art/YOUR_ENTRY_ID/store
-       filter: "*.jpg"
-       scan_interval: 30
-   ```
+   for each Frame TV (folder size in MB, with `file_list` and `file_urls`
+   attributes). Point the gallery card's `folder_sensor` at the relevant one.
+   Nothing to declare in `configuration.yaml`.
 
 4. **Gallery Card** (choose one):
 
@@ -99,15 +97,15 @@ Frame Art Gallery transforms your Home Assistant dashboard into an interactive a
 
 ### Step 1: Directory Structure (created for you)
 
-Since v7 the integration creates its per-TV directory
-(`/config/www/frame_art/<entry_id>/` with `personal/`, `store/`, `other/`)
-automatically on startup — **you do not need to `mkdir` anything.** Just make
-sure the thumbnail download in Step 2 has run at least once so the folders are
-populated.
+The integration creates its per-TV directory
+(`/config/.storage/samsungtv_smart/frame_art/<entry_id>/` with `personal/`,
+`store/`, `other/`) automatically on startup — **you do not need to `mkdir`
+anything.** Just make sure the thumbnail download in Step 2 has run at least
+once so the folders are populated.
 
-*(Creating a flat `/config/www/frame_art/personal` by hand is the old pre-v7
-layout and will leave your gallery empty — the real files live under the
-`<entry_id>` subfolder. See the path note at the top of this guide.)*
+*(Creating folders under `/config/www/frame_art/` by hand leaves your gallery
+empty: the integration no longer reads or writes there. See the note at the
+top of this guide.)*
 
 ### Step 2: Download Thumbnails
 
@@ -146,17 +144,9 @@ folder_sensor: sensor.mastertv_store
 (No `folder:` line needed — see [the note below](#basic-configuration) on what
 `folder:` is actually for.)
 
-**Legacy / optional:** if you prefer the built-in Home Assistant `folder`
-platform (for example to watch a custom directory the integration doesn't
-manage), you can still declare one manually — it also exposes `file_list`:
-
-```yaml
-sensor:
-  - platform: folder
-    folder: /config/www/frame_art/YOUR_ENTRY_ID/store
-    filter: "*.jpg"
-    scan_interval: 30
-```
+A core `folder` sensor (`platform: folder`) still works for a directory of
+your own under `/config/www/` (see [Media Gallery](#media-gallery-upload-from-ha)),
+but not for the Frame Art thumbnails: they are no longer under `www`.
 
 ### Step 4: Use the Gallery Card
 
@@ -197,7 +187,7 @@ When you click an image and open the lightbox, the card automatically shows cont
 ```yaml
 type: custom:folder-gallery-card
 title: Frame TV Favorites
-folder_sensor: sensor.store
+folder_sensor: sensor.samsung_frame_store
 columns: 4
 image_height: 160px
 aspect_ratio: "1"
@@ -218,9 +208,12 @@ action:
 > filename to build the thumbnail `<img>` src — it never produces the list
 > itself.
 >
-> - **Folder sensor under `/config/www/`** (the normal case): the card derives
->   the `/local/...` URL automatically from the sensor's `path`, so you **don't
->   need `folder:` at all**. That's why the examples omit it.
+>
+> - **The integration's folder sensors** (the normal case): they give each
+>   file's URL in `file_urls`, so you **don't need `folder:` at all**. That's
+>   why the examples omit it.
+> - **A core `folder` sensor under `/config/www/`** (your own photos): the card
+>   derives the `/local/...` URL from the sensor's `path`; no `folder:` either.
 > - **Set `folder:` only when the card can't derive the URL** — files served
 >   from outside `/config/www/`, or a custom/template sensor whose `file_list`
 >   has bare filenames and no `path`. Give a `/local/...` URL (a
@@ -265,8 +258,11 @@ thumbnail_width: 500        # sharper tiles; lower for less bandwidth
 # server_thumbnails: false  # load full originals instead
 ```
 
-Thumbnails are cached on disk under `/config/www/frame_art/.thumb_cache/` and
-regenerated only when the source file changes (keyed by path + width + mtime).
+Thumbnails are cached on disk under
+`/config/.storage/samsungtv_smart/thumb_cache/` and regenerated only when the
+source file changes (keyed by path + width + mtime). This applies to images
+under `/config/www/` (`/local/...` URLs). The Frame Art thumbnails are
+already small, so the card loads them as they are.
 Requires Pillow (bundled with Home Assistant); if it's unavailable the endpoint
 transparently falls back to the original image.
 
@@ -330,7 +326,7 @@ falls back to **All**.
 |--------|------|---------|-------------|
 | `title` | string | - | Card title |
 | `folder_sensor` | string | - | Folder sensor entity ID |
-| `folder` | string | *(auto)* | Base **URL** for thumbnails (e.g., `/local/frame_art/store`). Optional — auto-derived from `folder_sensor`'s `path` when under `/config/www/`. Does **not** provide the image list (a sensor or `image_list` does). A `/config/www/...` value is accepted and mapped to `/local/...`. |
+| `folder` | string | *(auto)* | Base **URL** for thumbnails (e.g., `/local/media/Monet`). Optional — not needed with the integration's folder sensors (they give `file_urls`), and auto-derived from a core folder sensor's `path` when under `/config/www/`. Does **not** provide the image list (a sensor or `image_list` does). A `/config/www/...` value is accepted and mapped to `/local/...`. |
 | `folders` | list | - | A list of selectable folders, shown as a dropdown. Each entry has a `name` (the label) and the same source keys as the card (`folder_sensor` / `sensor` / `folder` / `image_list`). |
 | `group_by_subfolder` | boolean | `false` | With a single (recursive) `folder_sensor`, show a dropdown of its sub-folders (**All** + one per sub-folder) instead of a flat list. |
 | `default_folder` | string | *(All)* | Which folder/sub-folder the card opens on, by name (case-insensitive; a nested path like `nature/trees` also works). Requires `group_by_subfolder` or a `folders:` list. The dropdown still switches freely and **All** stays available. No match → opens on **All**. |
@@ -418,20 +414,19 @@ Use these in your action data:
 |----------|-------------|
 | `{{content_id}}` | Artwork content ID (extracted from filename, e.g. `SAM-S1234`, `MY_F0001`) |
 | `{{filename}}` | Full filename with extension |
-| `{{image_path}}` | Web path to the image (e.g. `/local/frame_art/store/SAM-S1234.jpg`) |
-| `{{file_path}}` | Filesystem path to the image (e.g. `/config/www/frame_art/store/SAM-S1234.jpg`) — use this for upload actions |
+| `{{image_path}}` | Web path to the image (e.g. `/local/media/Monet/water_lilies.jpg`, or the integration's `/api/samsungtv_smart/art/...` URL for Frame Art thumbnails) |
+| `{{file_path}}` | Filesystem path to the image (e.g. `/config/www/media/Monet/water_lilies.jpg`) — use this for upload actions |
 | `{{name}}` | Artwork name (filename without extension) |
 | `{{index}}` | Image index in gallery |
 
-> **Note:** `{{file_path}}` is automatically derived from `{{image_path}}` by replacing `/local/` with `/config/www/`. Use it whenever a service needs the actual file path on disk rather than the web URL.
+> **Note:** `{{file_path}}` is the path from the sensor's `file_list` when it has one, otherwise it is derived from `{{image_path}}` by replacing `/local/` with `/config/www/`. Use it whenever a service needs the actual file path on disk rather than the web URL.
 
 ### Example: Favorites Gallery (Art Store + Personal)
 
 ```yaml
 type: custom:folder-gallery-card
 title: ⭐ Favorites
-folder_sensor: sensor.store
-folder: /local/frame_art/store
+folder_sensor: sensor.samsung_frame_store
 columns: 4
 aspect_ratio: "1"
 gap: 10px
@@ -447,23 +442,10 @@ action:
 
 ### Example: Personal Photos Gallery
 
-First, create folder sensor:
-
-```yaml
-sensor:
-  - platform: folder
-    folder: /config/www/frame_art/personal
-    filter: "*.jpg"
-    scan_interval: 30
-```
-
-Then add card:
-
 ```yaml
 type: custom:folder-gallery-card
 title: 📷 Personal Photos
-folder_sensor: sensor.personal
-folder: /local/frame_art/personal
+folder_sensor: sensor.samsung_frame_personal
 columns: 3
 aspect_ratio: "4/3"
 tap_action: lightbox
@@ -480,8 +462,7 @@ action:
 ```yaml
 type: custom:folder-gallery-card
 title: Quick Select
-folder_sensor: sensor.store
-folder: /local/frame_art/store
+folder_sensor: sensor.samsung_frame_store
 columns: 5
 aspect_ratio: "1"
 tap_action: action
@@ -563,6 +544,7 @@ One sensor per subfolder. With many subfolders, use a dedicated `sensors/` direc
 ```
 
 > **Note:** Images must also be accessible via the web server, so copy or symlink them to `/config/www/media/` in addition to `/config/media/`.
+> Anything under `/config/www/` can be downloaded **without login** by anyone who reaches your Home Assistant: only put pictures there that you are happy to share.
 
 For many subfolders, generate sensors automatically with a script — see the [automation section](#automate-with-a-script) below.
 
@@ -803,15 +785,21 @@ template:
           {{ personal | length }}
         attributes:
           images: >
+            {% set urls = (state_attr('sensor.samsung_frame_personal', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_store', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_other', 'file_urls') or []) %}
             {% set ns = namespace(images=[]) %}
             {% for item in state_attr('sensor.samsung_frame_art_list', 'content_list') or [] %}
               {% if item.category_id == 'MY-C0002' %}
+                {% set url = urls | select('search', '/' ~ item.content_id ~ '\\.jpg\\?') | first | default('') %}
+                {% if url %}
                 {% set ns.images = ns.images + [{
-                  'path': '/local/frame_art/personal/' ~ item.content_id ~ '.jpg',
+                  'path': url,
                   'filename': item.content_id ~ '.jpg',
                   'name': item.content_id,
                   'content_id': item.content_id
                 }] %}
+                {% endif %}
               {% endif %}
             {% endfor %}
             {{ ns.images }}
@@ -825,15 +813,21 @@ template:
           {{ store | length }}
         attributes:
           images: >
+            {% set urls = (state_attr('sensor.samsung_frame_personal', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_store', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_other', 'file_urls') or []) %}
             {% set ns = namespace(images=[]) %}
             {% for item in state_attr('sensor.samsung_frame_art_list', 'content_list') or [] %}
               {% if item.content_id.startswith('SAM-') %}
+                {% set url = urls | select('search', '/' ~ item.content_id ~ '\\.jpg\\?') | first | default('') %}
+                {% if url %}
                 {% set ns.images = ns.images + [{
-                  'path': '/local/frame_art/store/' ~ item.content_id ~ '.jpg',
+                  'path': url,
                   'filename': item.content_id ~ '.jpg',
                   'name': item.content_id,
                   'content_id': item.content_id
                 }] %}
+                {% endif %}
               {% endif %}
             {% endfor %}
             {{ ns.images }}
@@ -847,17 +841,23 @@ template:
           {{ favorites | length }}
         attributes:
           images: >
+            {% set urls = (state_attr('sensor.samsung_frame_personal', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_store', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_other', 'file_urls') or []) %}
             {% set ns = namespace(images=[]) %}
             {% for item in state_attr('sensor.samsung_frame_art_list', 'content_list') or [] %}
               {% if item.category_id == 'MY-C0004' %}
                 {% set subdir = 'personal' if item.content_id.startswith('MY_F') else ('store' if item.content_id.startswith('SAM-') else 'other') %}
+                {% set url = urls | select('search', '/' ~ item.content_id ~ '\\.jpg\\?') | first | default('') %}
+                {% if url %}
                 {% set ns.images = ns.images + [{
-                  'path': '/local/frame_art/' ~ subdir ~ '/' ~ item.content_id ~ '.jpg',
+                  'path': url,
                   'filename': item.content_id ~ '.jpg',
                   'name': item.content_id,
                   'content_id': item.content_id,
                   'subdirectory': subdir
                 }] %}
+                {% endif %}
               {% endif %}
             {% endfor %}
             {{ ns.images }}
@@ -899,8 +899,7 @@ image_height: 200px
 ```yaml
 type: custom:folder-gallery-card
 title: Styled Gallery
-folder_sensor: sensor.store
-folder: /local/frame_art/store
+folder_sensor: sensor.samsung_frame_store
 columns: 4
 aspect_ratio: "1"
 card_mod:
@@ -927,8 +926,7 @@ type: vertical-stack
 cards:
   - type: custom:folder-gallery-card
     title: ⭐ Favorites
-    folder_sensor: sensor.store
-    folder: /local/frame_art/store
+    folder_sensor: sensor.samsung_frame_store
     columns: 4
     aspect_ratio: "1"
     tap_action: lightbox
@@ -941,8 +939,7 @@ cards:
   
   - type: custom:folder-gallery-card
     title: 📷 Personal
-    folder_sensor: sensor.personal
-    folder: /local/frame_art/personal
+    folder_sensor: sensor.samsung_frame_personal
     columns: 4
     aspect_ratio: "1"
     tap_action: lightbox
@@ -986,8 +983,7 @@ cards:
   # Gallery
   - type: custom:folder-gallery-card
     title: Gallery
-    folder_sensor: sensor.store
-    folder: /local/frame_art/store
+    folder_sensor: sensor.samsung_frame_store
     columns: 4
     aspect_ratio: "1"
     tap_action: lightbox
@@ -1021,32 +1017,32 @@ data:
   favorites_only: true
 
 # 2. Check folder sensor in Developer Tools > States
-# Look for: sensor.store (or your sensor name)
-# Verify file_list attribute contains files
+# Look for: sensor.samsung_frame_store (or your sensor name)
+# Verify file_list and file_urls contain files
 
 # 3. Verify files exist
-# Check: /config/www/frame_art/store/
+# Check: /config/.storage/samsungtv_smart/frame_art/<entry_id>/store/
 ```
 
 ### Thumbnails Not Loading
 
 **Causes:**
-1. Wrong file paths
+1. A hard-coded `/local/frame_art/...` URL or `folder:` (gone since 9.6.0)
 2. Files don't exist
-3. Permission issues
+3. A URL copied before the last restart (its token changed)
 
 **Solutions:**
 
 ```bash
 # Check files exist
-ls -lh /config/www/frame_art/store/
-
-# Check permissions
-chmod -R 755 /config/www/frame_art/
-
-# Test URL in browser
-http://YOUR_HA_IP:8123/local/frame_art/store/SAM-S1234567.jpg
+ls -lh /config/.storage/samsungtv_smart/frame_art/<entry_id>/store/
 ```
+
+- Use `folder_sensor: sensor.<tv_name>_store` (or `_personal`, `_other`) and
+  remove any `folder: /local/frame_art/...` line.
+- To test one picture, open a URL from the sensor's `file_urls` attribute
+  (Developer Tools → States) in a browser. Typed by hand, an
+  `/api/samsungtv_smart/art/...` URL without this run's token answers 404.
 
 ### Upload Fails — File Not Found
 
@@ -1105,7 +1101,7 @@ data:
     seconds: 2
 - action: homeassistant.update_entity
   target:
-    entity_id: sensor.store
+    entity_id: sensor.samsung_frame_store
 ```
 
 ### Slow Loading with Many Images
@@ -1130,7 +1126,7 @@ data:
    ```bash
    # Resize all thumbnails
    apt-get install imagemagick
-   cd /config/www/frame_art/store
+   cd /config/.storage/samsungtv_smart/frame_art/<entry_id>/store
    mogrify -resize 400x400 -quality 85 *.jpg
    ```
 
@@ -1154,7 +1150,7 @@ actions:
       seconds: 2
   - action: homeassistant.update_entity
     target:
-      entity_id: sensor.store
+      entity_id: sensor.samsung_frame_store
   - action: persistent_notification.create
     data:
       title: Frame Art

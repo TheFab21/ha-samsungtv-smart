@@ -74,11 +74,9 @@ Main Frame Art sensor with current status and artwork information.
 |-----------|-------------|
 | `current_content_id` | Currently displayed artwork ID |
 | `current_matte_id` | Current matte style (e.g., `shadowbox_polar`) |
-| `current_thumbnail_url` | URL to current artwork thumbnail |
+| `current_thumbnail_url` | URL of the current artwork's thumbnail, served privately by the integration (changes with the picture) |
 | `artwork_count` | Total number of available artworks |
 | `slideshow_status` | Slideshow active status |
-| `entry_id` | This TV's config-entry ID (used in the per-TV thumbnail path) |
-| `thumbnail_folder` | Ready-to-use `/local/frame_art/{entry_id}` base path |
 
 ### Sensors: `sensor.samsung_*_personal` / `_store` / `_other`
 
@@ -87,11 +85,20 @@ subdirectory under the per-TV folder. No manual configuration needed.
 
 **State:** folder size in MB (icon `mdi:folder-image`)
 
-**Attributes:** `path`, `filter`, `number_of_files`, `bytes`, `file_list`
+**Attributes:** `path`, `filter`, `number_of_files`, `bytes`, `file_list`,
+`file_urls`
 
-The `file_list` attribute is consumed directly by the bundled gallery card's
-`folder_sensor` option, so you can build galleries without declaring any manual
-`folder` platform sensor. See the [Frame Art Gallery guide](Frame_Art_Gallery.md).
+`file_list` holds the file paths, as a core `folder` sensor does; `file_urls`
+(9.6.0+) gives the URL of each file, in the same order. The bundled gallery
+card's `folder_sensor` option uses both, so you can build galleries without
+declaring any `folder` platform sensor. See the
+[Frame Art Gallery guide](Frame_Art_Gallery.md).
+
+### Camera: `camera.samsung_*_current_artwork`
+
+**Auto-created in 9.6.0** for each Frame TV: the artwork on screen, served by
+Home Assistant's camera proxy. Use it in picture cards, notifications and
+HomeKit — see [Show the current artwork on a dashboard](#show-the-current-artwork-on-a-dashboard).
 
 ### Sensor: `sensor.samsung_*_illuminance`
 
@@ -592,11 +599,11 @@ data:
 
 ### Storage Locations
 
-Thumbnails are saved to a **per-TV** directory keyed by the config-entry ID
-(since v7), which the integration creates for you:
+Thumbnails are saved to a **per-TV** directory keyed by the config-entry ID,
+which the integration creates for you:
 
 ```
-/config/www/frame_art/<entry_id>/
+/config/.storage/samsungtv_smart/frame_art/<entry_id>/
 ├── current.jpg          # Currently displayed artwork
 ├── personal/            # User-uploaded images (MY_F*)
 │   ├── MY_F0001.jpg
@@ -607,78 +614,72 @@ Thumbnails are saved to a **per-TV** directory keyed by the config-entry ID
 └── other/               # Other content types
 ```
 
-**Finding your `<entry_id>`:** open the `sensor.<tv_name>_frame_art` entity
-(Developer Tools → States). Its `entry_id` attribute is the value, and
-`thumbnail_folder` gives you the ready-to-use `/local/...` base — so you rarely
-need to type the path by hand. (It looks like `01KVZ1PYM5B1K2Q1YJWC22K929`.)
+> **Changed in 9.6.0.** Up to 9.5.x this was `/config/www/frame_art/<entry_id>/`.
+> Home Assistant serves `www` at `/local/` **without login**, so anyone who
+> reached your Home Assistant could download your own photos. Existing files are
+> moved on the first start of 9.6.0. `/local/frame_art/...` URLs no longer work.
+> See [RELEASE_NOTES_9.6.0.md](RELEASE_NOTES_9.6.0.md) for what to update.
 
-**Access URLs** (replace `<entry_id>` with yours):
-- Current: `/local/frame_art/<entry_id>/current.jpg`
-- Store: `/local/frame_art/<entry_id>/store/SAM-S1234567.jpg`
-- Personal: `/local/frame_art/<entry_id>/personal/MY_F0001.jpg`
+**Finding your `<entry_id>`:** in **Developer Tools → Template**, enter
+`{{ state_attr('sensor.<tv_name>_store', 'path') }}`. The id is the folder name
+after `frame_art/`, and looks like `01KVZ1PYM5B1K2Q1YJWC22K929`. You rarely need
+it: the integration publishes ready-to-use URLs.
 
-### Show the current artwork on a dashboard (Local File camera)
+**Access URLs.** Dashboards reach the files through the integration's endpoint,
+`/api/samsungtv_smart/art/<entry_id>/<file>?token=…`. The token is random, one
+per TV, and changes at each restart, so **do not type these URLs by hand**: use
+the ones the integration gives you.
+- The artwork on screen: `current_thumbnail_url` on `sensor.<tv_name>_frame_art`.
+- Each thumbnail: `file_urls` on `sensor.<tv_name>_personal`, `_store`,
+  `_other`, in the same order as `file_list`.
+- One artwork: `thumbnail_url` in the response of `art_get_thumbnail`.
 
-A plain Picture card pointed at `current.jpg` will look stuck: browsers cache
-the URL, so it won't refresh when the artwork changes. The reliable way to show
-what's on the Frame right now is Home Assistant's built-in **Local File**
-integration, which wraps the file as a `camera` entity that updates on its own.
+A request that is logged in to Home Assistant needs no token.
 
-**Local File is an integration you add, not a YAML sensor.** Set it up in the UI:
+### Show the current artwork on a dashboard
 
-1. **Settings → Devices & Services → Add Integration**, search for **Local File**.
-2. Give it a name (e.g. *Frame art current*).
-3. For **File path**, enter your per-TV `current.jpg`:
+Use the integration's camera, `camera.<tv_name>_current_artwork`. It is created
+for every Frame, and it refreshes on its own when the artwork changes. A plain
+Picture card on a fixed URL would look stuck.
 
-   ```
-   /config/www/frame_art/<entry_id>/current.jpg
-   ```
+```yaml
+type: picture-entity
+entity: camera.<tv_name>_current_artwork
+camera_view: auto
+show_name: false
+show_state: false
+```
 
-   Replace `<entry_id>` with your TV's — see **Finding your `<entry_id>`** under
-   [Storage Locations](#storage-locations) above. The full path looks like
-   `/config/www/frame_art/01KVZ1PYM5B1K2Q1YJWC22K929/current.jpg`.
-
-That creates a camera entity (e.g. `camera.frame_art_current`, the name is
-yours) that always shows the current artwork. Use it in any card that takes a
-camera — for example a `picture-glance`:
+or, with buttons over it:
 
 ```yaml
 type: picture-glance
 title: Currently displayed
-camera_image: camera.frame_art_current
+camera_image: camera.<tv_name>_current_artwork
 camera_view: auto
 fit_mode: cover
 entities: []
 ```
 
-> **Notes**
-> - The file must exist before the Local File integration will accept the path.
->   Run `art_get_thumbnails_batch` once first (or let your sync automation run),
->   so `current.jpg` is present.
-> - `/config/www/...` may need to be in `allowlist_external_dirs` for the Local
->   File integration to read it.
+The camera works in notifications too
+(`image: /api/camera_proxy/camera.<tv_name>_current_artwork`) and in HomeKit.
 
-### Folder Sensor Setup
+> **A Local File or Generic Camera you made before 9.6.0** points at the old
+> `www` file and shows nothing now. **Settings → Repairs** names it. Switch to
+> `camera.<tv_name>_current_artwork`, or, for a Local File camera, change its
+> file path to
+> `/config/.storage/samsungtv_smart/frame_art/<entry_id>/current.jpg`.
 
-The integration already registers `sensor.<tv_name>_personal`, `…_store` and
-`…_other` for each Frame (since v7), so you usually don't need to declare any
-folder sensor yourself — point the gallery card's `folder_sensor` at one of
-those. Only add a manual one to watch a directory the integration doesn't
-manage, and use your per-TV `<entry_id>` path:
+### Folder Sensors
 
-```yaml
-# configuration.yaml — optional / legacy only
-sensor:
-  - platform: folder
-    folder: /config/www/frame_art/<entry_id>/personal
-    filter: "*.jpg"
-    scan_interval: 30
+The integration registers `sensor.<tv_name>_personal`, `…_store` and `…_other`
+for each Frame, so you do not need to declare any `folder` sensor yourself:
+point the gallery card's `folder_sensor` at one of those.
 
-  - platform: folder
-    folder: /config/www/frame_art/<entry_id>/store
-    filter: "*.jpg"
-    scan_interval: 30
-```
+> **Before 9.6.0** some setups declared core `folder` sensors
+> (`platform: folder`) on `/config/www/frame_art/<entry_id>/...`. That folder is
+> gone. Remove them and use the integration's sensors, which have the same
+> attributes plus `file_urls`.
 
 ---
 

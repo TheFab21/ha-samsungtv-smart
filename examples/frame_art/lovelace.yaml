@@ -12,12 +12,12 @@
 #
 # v7 NOTES:
 #  - Folder sensors are auto-created per TV: sensor.<tv_name>_personal /
-#    _store / _other. The `sensor.www_frame_art_*` entities referenced below
-#    are the old manual `platform: folder` names — replace them with the
-#    auto-created ones (e.g. sensor.samsung_frame_personal) if you rely on the
-#    integration's sensors.
-#  - Thumbnail URLs are now per-TV: /local/frame_art/{entry_id}/...
-#    Insert your {entry_id} (from sensor.<tv_name>_frame_art) in any path below.
+#    _store / _other (with `file_list` and `file_urls`). Replace
+#    `samsung_frame` below with your TV's entity prefix.
+#  - 9.6.0: thumbnails are no longer under www, so there is no
+#    /local/frame_art/... URL any more. Take URLs from the sensors' attributes
+#    (`current_thumbnail_url`, `file_urls`) or use
+#    camera.<tv_name>_current_artwork for the artwork on screen.
 # ============================================
 
 title: Frame Art Gallery
@@ -216,11 +216,11 @@ cards:
   - type: entities
     title: Thumbnail Management
     entities:
-      - entity: sensor.www_frame_art_personal
+      - entity: sensor.samsung_frame_personal
         name: Personal Photos Downloaded
         icon: mdi:folder-image
       
-      - entity: sensor.www_frame_art_store
+      - entity: sensor.samsung_frame_store
         name: Art Store Images Downloaded
         icon: mdi:folder-image
       
