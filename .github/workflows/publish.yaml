@@ -67,9 +67,19 @@ jobs:
           set -euo pipefail
           in_manifest="$(jq -r '.version' "$MANIFEST")"
           version="${GIVEN:-$in_manifest}"
-          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)*$'; then
-            echo "::error::'$version' is not a version like 9.0.10"
+          # PEP 440 pre-releases (9.6.0b1, 9.6.0rc1), the form Home Assistant
+          # and HACS compare, have no separator before the suffix: they were
+          # rejected here as "not a version".
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?([-.][0-9A-Za-z.]+)*$'; then
+            echo "::error::'$version' is not a version like 9.0.10 or 9.6.0b1"
             exit 1
+          fi
+          # A beta is published as a pre-release even if the box was left
+          # unticked, so HACS only offers it to users who opted into betas.
+          if printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+|-)'; then
+            prerelease=true
+          else
+            prerelease=false
           fi
           if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
             echo "::error::$version is already released. Bump $MANIFEST in a PR first (it says $in_manifest)."
@@ -77,6 +87,7 @@ jobs:
           fi
           echo "manifest=$in_manifest" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
           echo "Publishing $version (manifest says $in_manifest)."
 
       - name: "Align the manifest when a version was typed in"
@@ -111,7 +122,7 @@ jobs:
           target_commitish: ${{ steps.commit.outputs.sha }}
           body: ${{ inputs.notes }}
           generate_release_notes: true
-          prerelease: ${{ inputs.prerelease }}
+          prerelease: ${{ inputs.prerelease || steps.version.outputs.prerelease == 'true' }}
           files: ${{ github.workspace }}/custom_components/samsungtv_smart/samsungtv_smart.zip
 
       - name: "Say where it went"
