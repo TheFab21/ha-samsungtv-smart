@@ -273,6 +273,11 @@
       "art_color_temperature": {
         "name": "Art-Modus-Farbtemperatur"
       }
+    },
+    "camera": {
+      "art_current": {
+        "name": "Aktuelles Kunstwerk"
+      }
     }
   },
   "config": {
@@ -540,6 +545,10 @@
     "oauth_auth_failed": {
       "title": "SmartThings-Authentifizierung für {device_name} fehlgeschlagen",
       "description": "Home Assistant konnte das SmartThings-Zugriffstoken für **{device_name}** nicht aktualisieren. Das Aktualisierungstoken ist nicht mehr gültig – das kann passieren, wenn das Token widerrufen wird, abläuft oder von SmartThings rotiert wird.\n\nSmartThings-basierte Funktionen (Einschaltzustand, Bildmodus, Quellenauswahl) funktionieren nicht, bis du die Verbindung wiederherstellst.\n\nUm dies zu beheben, gehe zu **Einstellungen → Geräte & Dienste → Samsung TV Smart**, wähle den betroffenen Eintrag, wähle **Neu konfigurieren** und melde dich erneut mit Samsung an."
+    },
+    "legacy_art_camera": {
+      "title": "Kamera auf dem alten Frame-Art-Bild von {device_name}",
+      "description": "Diese Kameras verweisen noch auf den alten Speicherort des aktuellen Kunstwerks in `www`, der nicht mehr verwendet wird: **{cameras}**.\n\nSeit 9.6.0 liegen die Frame-Art-Bilder nicht mehr in `www`, wo Home Assistant sie jedem ohne Anmeldung ausgeliefert hat. Um eine Kamera des aktuellen Kunstwerks zu behalten:\n\n- verwende die Kamera **Aktuelles Kunstwerk**, die {device_name} jetzt bereitstellt, und lösche die alte; oder\n- ändere bei einer Local-File-Kamera den Dateipfad auf `{new_path}`.\n\nEine Generic Camera lässt sich nicht einfach umstellen (die neue Adresse enthält ein Token, das sich bei jedem Neustart ändert): verwende stattdessen die Kamera **Aktuelles Kunstwerk**.\n\nDiese Reparatur verschwindet, sobald keine Kamera mehr auf den alten Speicherort verweist (geprüft beim Start der Integration)."
     }
   }
 }

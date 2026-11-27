@@ -264,6 +264,10 @@
     "oauth_auth_failed": {
       "title": "Falha na autenticação do SmartThings para {device_name}",
       "description": "O Home Assistant não conseguiu atualizar o token de acesso do SmartThings para **{device_name}**. O token de atualização não é mais válido — isso pode acontecer quando o token é revogado, expira ou é alternado pelo SmartThings.\n\nOs recursos baseados no SmartThings (estado de energia, modo de imagem, seleção de fonte) não funcionarão até você reconectar.\n\nPara corrigir, vá em **Configurações → Dispositivos e serviços → Samsung TV Smart**, selecione a entrada afetada, escolha **Reconfigurar** e entre novamente com a Samsung."
+    },
+    "legacy_art_camera": {
+      "title": "Câmera na antiga imagem Frame Art de {device_name}",
+      "description": "Estas câmeras ainda apontam para o antigo local da obra atual em `www`, que não é mais usado: **{cameras}**.\n\nDesde a 9.6.0 as imagens Frame Art não ficam mais em `www`, onde o Home Assistant as servia a qualquer pessoa sem login. Para manter uma câmera da obra atual:\n\n- use a câmera **Obra atual** que {device_name} agora oferece e exclua a antiga; ou\n- em uma câmera Local File, altere o caminho para `{new_path}`.\n\nUma Generic Camera não pode simplesmente apontar para outro lugar (o novo endereço tem um token que muda a cada reinício): use a câmera **Obra atual**.\n\nEste reparo desaparece quando nenhuma câmera aponta mais para o antigo local (verificado quando a integração inicia)."
     }
   },
   "entity": {
@@ -539,6 +543,11 @@
       },
       "art_color_temperature": {
         "name": "Temperatura de cor do Modo Arte"
+      }
+    },
+    "camera": {
+      "art_current": {
+        "name": "Obra atual"
       }
     }
   }

@@ -264,6 +264,10 @@
     "oauth_auth_failed": {
       "title": "A SmartThings hitelesítése sikertelen: {device_name}",
       "description": "A Home Assistant nem tudta frissíteni a SmartThings hozzáférési tokent ehhez: **{device_name}**. A frissítési token már nem érvényes — ez akkor fordulhat elő, ha a tokent visszavonták, lejárt, vagy a SmartThings lecserélte.\n\nA SmartThings-alapú funkciók (bekapcsolási állapot, képmód, forrásválasztás) nem működnek, amíg újra nem csatlakozik.\n\nA javításhoz lépjen a **Beállítások → Eszközök és szolgáltatások → Samsung TV Smart** menübe, válassza ki az érintett bejegyzést, válassza az **Újrakonfigurálás** lehetőséget, és jelentkezzen be ismét a Samsung-fiókkal."
+    },
+    "legacy_art_camera": {
+      "title": "Kamera a(z) {device_name} régi Frame Art képén",
+      "description": "Ezek a kamerák még az aktuális műalkotás régi, `www` alatti helyére mutatnak, amely már nincs használatban: **{cameras}**.\n\nA 9.6.0 óta a Frame Art képek nincsenek a `www` mappában, ahonnan a Home Assistant bárkinek bejelentkezés nélkül kiszolgálta őket. Ha meg szeretnéd tartani az aktuális műalkotás kameráját:\n\n- használd az **Aktuális műalkotás** kamerát, amelyet a(z) {device_name} most biztosít, majd töröld a régit; vagy\n- Local File kamera esetén módosítsd a fájl útvonalát erre: `{new_path}`.\n\nEgy Generic Camera nem irányítható át egyszerűen (az új cím minden újraindításkor változó tokent tartalmaz): használd helyette az **Aktuális műalkotás** kamerát.\n\nEz a javítás eltűnik, amint egyetlen kamera sem mutat a régi helyre (az integráció indulásakor ellenőrizve)."
     }
   },
   "entity": {
@@ -539,6 +543,11 @@
       },
       "art_color_temperature": {
         "name": "Art mód színhőmérséklete"
+      }
+    },
+    "camera": {
+      "art_current": {
+        "name": "Aktuális műalkotás"
       }
     }
   }
