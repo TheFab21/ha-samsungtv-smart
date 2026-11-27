@@ -2,10 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Samsung TV Smart - Authentication",
-        "description": "Escolha como autenticar com o SmartThings.\n\nStatus OAuth: {oauth_status}",
+        "title": "Samsung TV Smart - Conexão",
+        "description": "Escolha como conectar a TV.\n\n**Somente local** não precisa de conta: liga/desliga, volume, entradas, aplicativos, ajustes de imagem e som e o modo Arte funcionam pela sua rede. O SmartThings adiciona a medição de consumo, o sensor de luz ambiente e algumas funções só na nuvem; sua API exige um plano do SmartThings, e você pode adicioná-lo depois em Reconfigurar.\n\nStatus OAuth: {oauth_status}",
         "data": {
-          "auth_method": "Authentication Method"
+          "auth_method": "Conexão"
         }
       },
       "pick_implementation": {
@@ -106,6 +106,15 @@
       "reconfigure_ip_pair": {
         "title": "Emparelhar IP Control",
         "description": "Emparelha a interface IP Control da TV.\n\nAntes de continuar:\n1. A TV deve estar LIGADA e em visualização NORMAL — não no Modo Arte.\n2. Habilite o controle IP: Configurações → Todas as configurações → Conexão → Rede → Configurações de especialista → Habilitar controle IP.\n\nAceite a solicitação de autorização na TV quando ela aparecer. Status atual: {status}."
+      },
+      "local": {
+        "title": "Conexão local",
+        "description": "Informe o endereço IP da TV e um nome. Nenhuma conta SmartThings é necessária. Na primeira vez, aceite o pedido de conexão na tela da TV.",
+        "data": {
+          "host": "TV IP Address",
+          "name": "Device Name",
+          "use_ha_name_for_ws": "Use Home Assistant location name for WebSocket"
+        }
       }
     },
     "error": {

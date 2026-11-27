@@ -2,10 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Samsung TV Smart - Authentication",
-        "description": "Choose how to authenticate with SmartThings.\n\nOAuth Status: {oauth_status}",
+        "title": "Samsung TV Smart - Connection",
+        "description": "Choose how to connect the TV.\n\n**Local only** needs no account: power, volume, inputs, apps, picture and sound settings and Art Mode work over your network. SmartThings adds power metering, the ambient light sensor and a few cloud-only features; its API needs a SmartThings plan, and you can add it later with Reconfigure.\n\nOAuth Status: {oauth_status}",
         "data": {
-          "auth_method": "Authentication Method"
+          "auth_method": "Connection"
         }
       },
       "pick_implementation": {
@@ -105,6 +105,15 @@
         "data": {
           "st_devices": "SmartThings device",
           "device_id": "SmartThings device ID"
+        }
+      },
+      "local": {
+        "title": "Local connection",
+        "description": "Enter your TV's IP address and a name. No SmartThings account is needed. The first time, accept the connection request on the TV screen.",
+        "data": {
+          "host": "TV IP Address",
+          "name": "Device Name",
+          "use_ha_name_for_ws": "Use Home Assistant location name for WebSocket"
         }
       }
     },

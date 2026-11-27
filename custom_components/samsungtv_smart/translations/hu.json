@@ -2,10 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Samsung TV Smart - Authentication",
-        "description": "Válassza ki, hogyan hitelesítsen a SmartThings-szel.\n\nOAuth állapot: {oauth_status}",
+        "title": "Samsung TV Smart - Kapcsolat",
+        "description": "Válaszd ki, hogyan csatlakozzon a TV.\n\n**Csak helyi** módhoz nem kell fiók: a be- és kikapcsolás, hangerő, források, alkalmazások, kép- és hangbeállítások és az Art mód a hálózatodon működnek. A SmartThings fogyasztásmérést, környezeti fényérzékelőt és néhány csak felhős funkciót ad hozzá; az API-jához SmartThings előfizetés kell, és később az Újrakonfigurálással is hozzáadhatod.\n\nOAuth állapot: {oauth_status}",
         "data": {
-          "auth_method": "Authentication Method"
+          "auth_method": "Kapcsolat"
         }
       },
       "pick_implementation": {
@@ -106,6 +106,15 @@
       "reconfigure_ip_pair": {
         "title": "IP Control párosítása",
         "description": "Párosítja a tévé IP Control felületét.\n\nMielőtt folytatnád:\n1. A tévének BEKAPCSOLVA és NORMÁL nézetben kell lennie — nem Art módban.\n2. Engedélyezd az IP-távvezérlést: Beállítások → Összes beállítás → Kapcsolat → Hálózat → Speciális beállítások → IP-távvezérlés engedélyezése.\n\nFogadd el a tévén megjelenő engedélyezési kérést. Jelenlegi állapot: {status}."
+      },
+      "local": {
+        "title": "Helyi kapcsolat",
+        "description": "Add meg a TV IP-címét és egy nevet. Nincs szükség SmartThings fiókra. Első alkalommal fogadd el a kapcsolódási kérést a TV képernyőjén.",
+        "data": {
+          "host": "TV IP Address",
+          "name": "Device Name",
+          "use_ha_name_for_ws": "Use Home Assistant location name for WebSocket"
+        }
       }
     },
     "error": {

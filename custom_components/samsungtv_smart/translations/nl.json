@@ -283,10 +283,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Samsung TV Smart – Authenticatie",
-        "description": "Kies hoe je je bij SmartThings authenticeert.\n\nOAuth-status: {oauth_status}",
+        "title": "Samsung TV Smart - Verbinding",
+        "description": "Kies hoe de tv wordt verbonden.\n\n**Alleen lokaal** heeft geen account nodig: aan/uit, volume, bronnen, apps, beeld- en geluidsinstellingen en de Art-modus werken via je netwerk. SmartThings voegt verbruiksmeting, de omgevingslichtsensor en enkele cloudfuncties toe; de API vereist een SmartThings-abonnement, en je kunt het later toevoegen met Opnieuw configureren.\n\nOAuth-status: {oauth_status}",
         "data": {
-          "auth_method": "Authenticatiemethode"
+          "auth_method": "Verbinding"
         }
       },
       "pick_implementation": {
@@ -386,6 +386,15 @@
         "data": {
           "st_devices": "SmartThings-apparaat",
           "device_id": "SmartThings-apparaat-id"
+        }
+      },
+      "local": {
+        "title": "Lokale verbinding",
+        "description": "Voer het IP-adres van de tv en een naam in. Er is geen SmartThings-account nodig. Accepteer de eerste keer het verbindingsverzoek op het tv-scherm.",
+        "data": {
+          "host": "IP-adres van tv",
+          "name": "Apparaatnaam",
+          "use_ha_name_for_ws": "Home Assistant-locatienaam gebruiken voor WebSocket"
         }
       }
     },
