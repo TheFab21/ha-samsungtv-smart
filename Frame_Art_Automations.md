@@ -583,7 +583,8 @@ recursively, including inside `data.variables`.
 
 - type: custom:folder-gallery-card
   title: My selection
-  # `sensor:` (not `folder_sensor:`): the card reads the `images` attribute.
+  # The card reads the `images` attribute. Since 9.6.1 `folder_sensor:` (what
+  # the visual editor writes) works too; on 9.6.0 it must be `sensor:`.
   sensor: sensor.frame_selection_images_<tv>
   frame_tv_entity: <media_player>
   tap_action: lightbox

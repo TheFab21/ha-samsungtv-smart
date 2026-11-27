@@ -36,6 +36,12 @@ const imagesForSource = new Function(
   `${helpers}\n${method('_imagesForSource(src)')}`
 );
 
+const normalizeGeneric = new Function(
+  'images',
+  'folder',
+  `${helpers}\n${method('_normalizeGeneric(images, folder)')}`
+);
+
 const BASE = '/config/.storage/samsungtv_smart/frame_art/E1/personal';
 const URLS = [
   '/api/samsungtv_smart/art/E1/personal/MY_F0001.jpg?token=t&v=1',
@@ -51,6 +57,11 @@ const card = {
           file_urls: URLS,
         },
       },
+      'sensor.frame_selection_images_salon': {
+        attributes: {
+          images: [{ path: URLS[1], content_id: 'MY_F0002', name: 'MY_F0002' }],
+        },
+      },
       'sensor.www_photos': {
         attributes: {
           path: '/config/www/photos/',
@@ -63,8 +74,10 @@ const card = {
     return s.folder_sensor === 'sensor.www_photos' ? '/local/photos' : '';
   },
   _sensorBasePath(s) {
-    return this._hass.states[s.folder_sensor].attributes.path;
+    const st = this._hass.states[s.folder_sensor || s.sensor];
+    return st ? st.attributes.path : undefined;
   },
+  _normalizeGeneric: normalizeGeneric,
 };
 
 // The private files: each image takes its URL from file_urls, its file from file_list.
@@ -77,6 +90,25 @@ assert.deepEqual(priv.map((i) => i.content_id), ['MY_F0001', 'MY_F0002']);
 const www = imagesForSource.call(card, { folder_sensor: 'sensor.www_photos' });
 assert.equal(www[0].path, '/local/photos/a.jpg');
 assert.equal(www[0].file, '/config/www/photos/a.jpg');
+
+// 9.6.1: a sensor with an `images` attribute works under `folder_sensor:` too
+// (the visual editor writes that key), not only under `sensor:`.
+for (const src of [
+  { folder_sensor: 'sensor.frame_selection_images_salon' },
+  { sensor: 'sensor.frame_selection_images_salon' },
+  // The old folder sensor, removed from YAML, then the new one under sensor:.
+  { folder_sensor: 'sensor.selection_salon', sensor: 'sensor.frame_selection_images_salon' },
+]) {
+  const sel = imagesForSource.call(card, src);
+  assert.deepEqual(sel.map((i) => [i.path, i.content_id]), [[URLS[1], 'MY_F0002']], JSON.stringify(src));
+}
+// A folder sensor under `sensor:` still reads file_list / file_urls.
+assert.deepEqual(
+  imagesForSource.call(card, { sensor: 'sensor.tv_personal' }).map((i) => i.path),
+  URLS
+);
+// Nothing configured that exists: empty, not an error.
+assert.deepEqual(imagesForSource.call(card, { folder_sensor: 'sensor.nope' }), []);
 
 // {{file_path}} uses the file when there is one (template substitution in the
 // action dispatcher).
