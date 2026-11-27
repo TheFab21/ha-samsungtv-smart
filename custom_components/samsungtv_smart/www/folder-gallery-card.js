@@ -696,6 +696,9 @@ class FolderGalleryCard extends HTMLElement {
         const content_id = filename.replace(/\.[^/.]+$/, '');
         return {
           path: urls ? urls[i] : `${folder}${rel}`,
+          // The file on disk, for {{file_path}}: a private file's URL has no
+          // /local/ part to map back to /config/www/ (#472).
+          file: typeof f === 'string' && f.startsWith('/') ? f : null,
           filename,
           name: content_id,
           content_id,
@@ -1647,7 +1650,10 @@ class FolderGalleryCard extends HTMLElement {
       if (typeof obj === 'string') {
         return obj
           .replace(/\{\{image_path\}\}/g, imageData.path)
-          .replace(/\{\{file_path\}\}/g, imageData.path.replace('/local/', '/config/www/'))
+          .replace(
+            /\{\{file_path\}\}/g,
+            imageData.file || imageData.path.replace('/local/', '/config/www/')
+          )
           .replace(/\{\{filename\}\}/g, imageData.filename)
           .replace(/\{\{name\}\}/g, imageData.name)
           .replace(/\{\{content_id\}\}/g, imageData.content_id || '')

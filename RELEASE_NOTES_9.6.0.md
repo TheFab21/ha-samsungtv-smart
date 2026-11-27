@@ -64,7 +64,7 @@ On the first start of 9.6.0, for each Frame:
 | `folder-gallery-card` with only `folder: /local/frame_art/...` | Empty or broken | Set `folder_sensor: sensor.<tv>_personal` (or `_store`, `_other`). The card then uses the sensor's `file_urls` |
 | A core **`folder`** sensor (`platform: folder`) on `/config/www/frame_art/...` | Folder gone | Use the integration's own folder sensors, `sensor.<tv>_personal`, `_store` and `_other`. They have the same attributes, plus `file_urls` |
 | An automation or script that reads a file path under `/config/www/frame_art/...`, for example an LLM Vision `image_file`, or a notification attachment | File not found | Point it at `/config/.storage/samsungtv_smart/frame_art/<entry_id>/...`. For pictures, prefer the camera: LLM Vision `image_entity: camera.<tv>_current_artwork`, or a notification `image: /api/camera_proxy/camera.<tv>_current_artwork` |
-| The **curated selection as a folder of symlinks** recipe from `Frame_Art_Automations.md` | Stops working: its folder is moved and its links point at the old path | No drop-in replacement yet. An updated recipe will follow; until then, keep the selection's content ids in a helper or a script instead of a symlink folder |
+| The **curated selection as a folder of symlinks** recipe from `Frame_Art_Automations.md` | Stops working: its folder is moved and its links point at the old path | Remove its `shell_command`, `folder` sensor and allowlist entries, and switch to the [new version of the recipe](Frame_Art_Automations.md#a-curated-selection). It keeps the list in a template sensor, with nothing on disk and no shell. Re-add your artworks to it |
 | `allowlist_external_dirs: /config/www/frame_art` | No longer needed | You can remove it |
 
 **Settings → Repairs helps you find the cameras.** At startup, the integration
@@ -86,6 +86,14 @@ after `frame_art/`.
 - **`file_urls`** on the folder sensors: one URL per file, in the order of
   `file_list`. Like `file_list`, it is kept out of the recorder.
 - **A repair** for cameras still pointing at the old file (see above).
+- **`{{file_path}}` in `folder-gallery-card` actions** is the file's real path
+  for the integration's folder sensors. It used to be derived from the URL,
+  which has no `/local/` part any more.
+- **The Frame Art guides and examples are updated**:
+  [Frame_Art.md](Frame_Art.md), [Frame_Art_Gallery.md](Frame_Art_Gallery.md),
+  [Frame_Art_Automations.md](Frame_Art_Automations.md) and
+  [examples/frame_art](examples/frame_art/). Their template sensors take URLs
+  from `file_urls`, so if you copied one, compare it with the new version.
 
 ## Under the hood
 

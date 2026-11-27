@@ -15,9 +15,7 @@ ROOT = Path(__file__).parents[1]
 CARD = ROOT / "custom_components" / "samsungtv_smart" / "www" / "folder-gallery-card.js"
 JS_TEST = ROOT / "tests" / "js" / "folder_gallery_helpers.test.mjs"
 JS_OVERLAY_TEST = ROOT / "tests" / "js" / "folder_gallery_overlay.test.mjs"
-JS_RESPONSE_TEST = (
-    ROOT / "tests" / "js" / "folder_gallery_service_response.test.mjs"
-)
+JS_RESPONSE_TEST = ROOT / "tests" / "js" / "folder_gallery_service_response.test.mjs"
 JS_GESTURES_TEST = ROOT / "tests" / "js" / "folder_gallery_gestures.test.mjs"
 
 
@@ -105,6 +103,18 @@ def test_the_lightbox_finds_its_tv_and_any_gesture_can_open_it():
     # did nothing (tests/js/folder_gallery_gestures.test.mjs).
     result = subprocess.run(
         ["node", str(JS_GESTURES_TEST)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+def test_private_frame_art_files_use_their_urls_and_real_paths():
+    """file_urls give the image URLs, file_list the {{file_path}} (#472)."""
+    result = subprocess.run(
+        ["node", str(ROOT / "tests" / "js" / "folder_gallery_private_files.test.mjs")],
         capture_output=True,
         text=True,
         timeout=60,

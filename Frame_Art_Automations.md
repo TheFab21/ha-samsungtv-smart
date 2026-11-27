@@ -8,7 +8,7 @@ Every recipe uses placeholders you must replace:
 | Placeholder | Where to find it |
 |---|---|
 | `<tv>` | the slug of your Frame's entities, e.g. `samsung_hacs` in `switch.samsung_hacs_art_mode` |
-| `<ENTRY_ID>` | `{{ state_attr('sensor.<tv>_store', 'path') }}` in **Developer tools → Template** → `/config/www/frame_art/<ENTRY_ID>/store/` |
+| `<ENTRY_ID>` | `{{ state_attr('sensor.<tv>_store', 'path') }}` in **Developer tools → Template** → `/config/.storage/samsungtv_smart/frame_art/<ENTRY_ID>/store/` |
 | `<media_player>` | your Frame's `media_player` entity |
 
 > **Entity ids are not guessable.** Several entities are named from a
@@ -31,7 +31,7 @@ Every recipe uses placeholders you must replace:
 - [Slideshow with a selectable source](#slideshow-with-a-selectable-source)
 - [Random artwork from favourites and personal photos](#random-artwork-from-favourites-and-personal-photos)
 - [AI-chosen matte after every artwork change](#ai-chosen-matte-after-every-artwork-change)
-- [A curated selection, as a folder of symlinks](#a-curated-selection-as-a-folder-of-symlinks)
+- [A curated selection](#a-curated-selection)
 - [Platform pitfalls](#platform-pitfalls)
 
 ---
@@ -148,8 +148,9 @@ automation:
                   {% set src = states('input_select.slideshow_source') %}
                   {% set ns = namespace(files=[], ids=[]) %}
                   {% if src == 'Selection' %}
-                    {% set ns.files = ns.files
-                       + (state_attr('sensor.selection_<tv>', 'file_list') | default([], true)) %}
+                    {# content ids already: see "A curated selection" #}
+                    {% set ns.ids = state_attr('sensor.frame_selection_<tv>', 'content_ids')
+                       | default([], true) | list %}
                   {% endif %}
                   {% if src in ['Favourites', 'Both'] %}
                     {% set ns.files = ns.files
@@ -306,9 +307,15 @@ app — check whether it has a matte, and if not, let a vision model pick one
 from the TV's catalogue.
 
 This uses the [LLM Vision](https://github.com/valentinfrlch/ha-llmvision)
-custom integration, because its action takes a **file path**, while
-`ai_task` / `openai_conversation` expect a media-source attachment and the
-thumbnail lives under `www/`, which is not a media source.
+custom integration, because its action takes a **file path** or a camera,
+while `ai_task` / `openai_conversation` expect a media-source attachment and
+the thumbnail is not a media source.
+
+Since 9.6.0 the file is in the integration's private folder,
+`/config/.storage/samsungtv_smart/frame_art/<ENTRY_ID>/current.jpg` (it used to
+be under `www/`). You can also drop the path and give LLM Vision the camera
+instead: replace `image_file: '{{ thumbnail }}'` with
+`image_entity: [camera.<tv>_current_artwork]`.
 
 ```yaml
 script:
@@ -436,7 +443,7 @@ automation:
           variables:
             tv_entity: <media_player>
             art_sensor: sensor.<tv>_frame_art
-            thumbnail: /config/www/frame_art/<ENTRY_ID>/current.jpg
+            thumbnail: /config/.storage/samsungtv_smart/frame_art/<ENTRY_ID>/current.jpg
             provider: <LLM_VISION_PROVIDER_ID>
             model: gpt-4o-mini
 ```
@@ -458,45 +465,74 @@ to that.
 
 ---
 
-## A curated selection, as a folder of symlinks
+## A curated selection
 
-A hand-picked list of artworks, shown as thumbnails and usable as a slideshow
-source. The trick: **the selection is a real directory of symlinks**, so a core
-`folder` sensor exposes it with a `file_list` attribute in exactly the format
-`folder-gallery-card` and the slideshow already consume.
+A hand-picked list of artworks, shown in its own gallery and usable as a
+slideshow source. Long-press an artwork in the main gallery to add it,
+long-press it in the selection gallery to remove it.
+
+> **Changed in 9.6.0.** This recipe used to build a folder of symlinks under
+> `/config/www/frame_art/` and read it with a core `folder` sensor. The
+> pictures are no longer in `www`, which Home Assistant served without login
+> (see [RELEASE_NOTES_9.6.0.md](RELEASE_NOTES_9.6.0.md)). That folder is moved
+> on the first start of 9.6.0 and its links then point nowhere. Remove the old
+> `shell_command`, `folder` sensor and `allowlist_external_dirs` entries, and
+> use the version below. Nothing on disk, no shell, no allowlist.
+
+The selection is a list of content ids, kept in a trigger-based template
+sensor. Home Assistant restores its state and attributes at startup, so the
+list survives restarts. A second template sensor turns it into gallery images
+using the URLs the integration's folder sensors publish (`file_urls`). Those
+URLs carry a token that changes at each restart, which is why they are
+recomputed rather than stored.
 
 ### configuration.yaml
 
 ```yaml
-homeassistant:
-  # Required: the `folder` integration refuses any directory outside this list.
-  allowlist_external_dirs:
-    - /config/www/frame_art
+template:
+  # The selection itself: one event toggles one content id.
+  - triggers:
+      - trigger: event
+        event_type: frame_art_selection_toggle
+    sensor:
+      - name: Frame selection <tv>
+        unique_id: frame_art_selection_<tv>
+        state: >-
+          {% set ids = this.attributes.get('content_ids', []) | list %}
+          {% set cid = trigger.event.data.content_id %}
+          {{ (ids | reject('eq', cid) | list if cid in ids else ids + [cid]) | count }}
+        attributes:
+          content_ids: >-
+            {% set ids = this.attributes.get('content_ids', []) | list %}
+            {% set cid = trigger.event.data.content_id %}
+            {{ ids | reject('eq', cid) | list if cid in ids else ids + [cid] }}
 
-shell_command:
-  # Home Assistant does NOT run these through a shell: it splits the line and
-  # execs the binary. No redirections, no pipes — plain executables with
-  # arguments only.
-  art_selection_mkdir: mkdir -p {{ selection_dir }}
-  art_selection_add: >-
-    ln -sfn /config/www/frame_art/{{ entry_id }}/{{ subdir }}/{{ content_id }}.jpg
-    {{ selection_dir }}/{{ content_id }}.jpg
-  art_selection_remove: rm -f {{ selection_dir }}/{{ content_id }}.jpg
-  # A symlink whose target is deleted breaks the folder sensor: it sums
-  # os.path.getsize() over every file, which raises on a missing target and
-  # fails the whole update. -L is what makes find see a broken link as a link.
-  art_selection_prune: find -L {{ selection_dir }} -maxdepth 1 -type l -delete
-
-sensor:
-  # The last path component becomes the sensor name, so it MUST be unique
-  # across entries — see the pitfalls section.
-  - platform: folder
-    folder: /config/www/frame_art/<ENTRY_ID>/selection_<tv>
-    filter: '*.jpg'
+  # The same list as gallery images, rebuilt whenever a folder sensor changes.
+  - sensor:
+      - name: Frame selection images <tv>
+        unique_id: frame_art_selection_images_<tv>
+        state: >-
+          {{ state_attr('sensor.frame_selection_<tv>', 'content_ids')
+             | default([], true) | count }}
+        attributes:
+          images: >-
+            {% set ids = state_attr('sensor.frame_selection_<tv>', 'content_ids')
+               | default([], true) %}
+            {% set ns = namespace(out=[]) %}
+            {% for s in ['sensor.<tv>_personal', 'sensor.<tv>_store', 'sensor.<tv>_other'] %}
+              {% for url in state_attr(s, 'file_urls') | default([], true) %}
+                {% set cid = url.split('?')[0].split('/')[-1].rsplit('.', 1)[0] %}
+                {% if cid in ids %}
+                  {% set ns.out = ns.out + [{'path': url, 'content_id': cid, 'name': cid}] %}
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+            {{ ns.out }}
 ```
 
-Create the directory **before** restarting: the `folder` platform only creates
-its entity if the directory exists at startup.
+The two `name:`s give `sensor.frame_selection_<tv>` and
+`sensor.frame_selection_images_<tv>`. Check the entity ids Home Assistant
+actually gave them, and adjust the references if they differ.
 
 ### The toggle script
 
@@ -505,84 +541,27 @@ script:
   frame_art_selection_toggle:
     alias: 'Frame Art: add to / remove from my selection'
     icon: mdi:playlist-star
+    # Queued: two quick long-presses must both land, one after the other.
     mode: queued
     max: 25
     fields:
       content_id: {name: Content ID, required: true, selector: {text: }}
-      entry_id: {name: Entry ID, required: true, selector: {text: }}
-      selection_dir: {name: Selection directory, required: true, selector: {text: }}
-      selection_sensor: {name: Selection folder sensor, required: true, selector: {entity: {domain: sensor}}}
     sequence:
-      - variables:
-          files: "{{ state_attr(selection_sensor, 'file_list') | default([], true) }}"
-          # Compare the full file name, suffix included: without '.jpg',
-          # SAM-S2701 would also match SAM-S27011.
-          already: "{{ ('/' ~ content_id ~ '.jpg') in (files | join(' ')) }}"
-          # Same classification the integration uses when it files thumbnails.
-          subdir: >-
-            {{ 'store' if content_id.startswith('SAM-')
-               else ('personal' if content_id.startswith('MY') else 'other') }}
-
-      - if:
-          - condition: template
-            value_template: >-
-              {{ selection_dir is not string or not selection_dir.startswith('/config/') }}
-        then:
-          - stop: "invalid selection_dir: {{ selection_dir | default('(missing)') }}"
-            error: true
-
-      - if:
-          - condition: template
-            value_template: '{{ already }}'
-        then:
-          - action: shell_command.art_selection_remove
-            data: {selection_dir: '{{ selection_dir }}', content_id: '{{ content_id }}'}
-            response_variable: sh
-        else:
-          - action: shell_command.art_selection_mkdir
-            data: {selection_dir: '{{ selection_dir }}'}
-            response_variable: sh_mkdir
-          - if:
-              - condition: template
-                value_template: '{{ (sh_mkdir.returncode | default(1)) != 0 }}'
-            then:
-              - stop: "mkdir failed ({{ sh_mkdir.returncode }}): {{ sh_mkdir.stderr }}"
-                error: true
-          - action: shell_command.art_selection_add
-            data:
-              selection_dir: '{{ selection_dir }}'
-              entry_id: '{{ entry_id }}'
-              subdir: '{{ subdir }}'
-              content_id: '{{ content_id }}'
-            response_variable: sh
-
-      - action: shell_command.art_selection_prune
-        data: {selection_dir: '{{ selection_dir }}'}
-
-      # The folder sensor only polls: force a read so the gallery updates now.
-      - action: homeassistant.update_entity
-        target:
-          entity_id: '{{ selection_sensor }}'
-
+      - event: frame_art_selection_toggle
+        event_data:
+          content_id: '{{ content_id }}'
       - action: logbook.log
         data:
           name: Frame Art selection
-          message: >-
-            {{ content_id }} {{ 'removed from' if already else 'added to' }} the selection
-            — code {{ sh.returncode | default('?') }}
-            {{ '· stderr: ' ~ sh.stderr if (sh.stderr | default('')) else '' }}
+          message: '{{ content_id }} toggled in the selection'
 ```
-
-`selection_dir` is passed explicitly rather than read from the sensor's `path`
-attribute on purpose: on the very first press the directory does not exist, so
-neither does the sensor, and there would be no path to read.
 
 ### Wiring it to the galleries
 
 `hold_action` on the main gallery adds, `hold_action` on the selection gallery
-removes. Long-press was free because it duplicated double-tap in the default
-config. The card substitutes `{{content_id}}` recursively, including inside
-`data.variables`.
+removes: it is the same toggle. Long-press was free because it duplicated
+double-tap in the default config. The card substitutes `{{content_id}}`
+recursively, including inside `data.variables`.
 
 ```yaml
 - type: custom:folder-gallery-card
@@ -601,17 +580,34 @@ config. The card substitutes `{{content_id}}` recursively, including inside
     data:
       variables:
         content_id: '{{content_id}}'
-        entry_id: <ENTRY_ID>
-        selection_dir: /config/www/frame_art/<ENTRY_ID>/selection_<tv>
-        selection_sensor: sensor.selection_<tv>
+
+- type: custom:folder-gallery-card
+  title: My selection
+  # `sensor:` (not `folder_sensor:`): the card reads the `images` attribute.
+  sensor: sensor.frame_selection_images_<tv>
+  frame_tv_entity: <media_player>
+  tap_action: lightbox
+  double_tap_action:
+    perform_action: samsungtv_smart.art_select_image
+    target: {entity_id: <media_player>}
+    data: {content_id: '{{content_id}}'}
+  hold_action:
+    perform_action: script.turn_on
+    target: {entity_id: script.frame_art_selection_toggle}
+    data:
+      variables:
+        content_id: '{{content_id}}'
 ```
 
-Then a second gallery card with `folder_sensor: sensor.selection_<tv>` shows
-the selection, and `Selection` becomes a slideshow source.
+`Selection` then works as a slideshow source (see
+[Slideshow with a selectable source](#slideshow-with-a-selectable-source)),
+which reads `content_ids` directly.
 
-Symlinks over copies: no duplication on disk, and a thumbnail that gets
-re-downloaded updates the selection view for free. The cost is the broken-link
-case, which `art_selection_prune` handles.
+An artwork deleted from the TV disappears from the selection gallery on its
+own: it no longer has a thumbnail, so the second sensor skips it. Its id stays
+in `content_ids` until you toggle it again. The slideshow would still try to
+pick it, and the TV ignores an unknown id. To clean the list up, fire
+`frame_art_selection_toggle` with that id.
 
 ---
 
@@ -672,11 +668,17 @@ Everything below cost a debugging round while building these recipes.
   listed here are the integration's fallback catalogue; your model may accept
   fewer. Ask it with `art_get_matte_list`.
 - **Thumbnail layout.** The displayed artwork is written to
-  `www/frame_art/<ENTRY_ID>/current.jpg` and overwritten in place; per-artwork
-  thumbnails go to `<ENTRY_ID>/{store,personal,other}/<content_id>.jpg`, with
-  `SAM-*` in `store`, `MY_F*` in `personal`. No `camera` platform is provided —
-  make a *Local File* camera on `current.jpg` if you want the current artwork
-  as a camera entity.
+  `/config/.storage/samsungtv_smart/frame_art/<ENTRY_ID>/current.jpg` and
+  overwritten in place; per-artwork thumbnails go to
+  `<ENTRY_ID>/{store,personal,other}/<content_id>.jpg`, with `SAM-*` in
+  `store`, `MY_F*` in `personal`. Up to 9.5.x this was under `www/frame_art/`,
+  served without login; nothing there is used any more. Use the URLs the
+  integration publishes (`current_thumbnail_url`, `file_urls`), never a
+  `/local/frame_art/...` one.
+- **The current artwork is a camera**: `camera.<tv>_current_artwork` (9.6.0+),
+  for picture cards, notifications (`image: /api/camera_proxy/camera.<tv>_current_artwork`)
+  and LLM Vision (`image_entity`). A hand-made *Local File* or *Generic Camera*
+  on the old `www` file no longer finds it; **Settings → Repairs** names them.
 
 ---
 

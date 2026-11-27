@@ -14,31 +14,26 @@ Ready-to-use configuration files for Frame Art integration.
 
 ---
 
-> ### ⚠️ v7 note — per-TV paths & auto-created folder sensors
+> ### ⚠️ 9.6.0 — thumbnails moved out of `www`
 >
-> As of **v7**, thumbnails live under a **per-TV** folder keyed by the
-> config-entry ID: `/config/www/frame_art/{entry_id}/personal` (etc.), not the
-> old flat `/config/www/frame_art/personal`. Find your `{entry_id}` on the
-> `sensor.<tv_name>_frame_art` entity (Developer Tools → States).
+> The thumbnails now live in
+> `/config/.storage/samsungtv_smart/frame_art/{entry_id}/` (they were in
+> `/config/www/frame_art/{entry_id}/`, which Home Assistant serves without
+> login). They are moved automatically. `/local/frame_art/...` URLs and
+> `platform: folder` sensors on the old folder no longer work.
 >
-> Also, v7 **auto-creates** folder sensors per TV
-> (`sensor.<tv_name>_personal` / `_store` / `_other`, each with a `file_list`
-> attribute), so the manual `platform: folder` sensors and the directory
-> `mkdir` below are only needed for custom setups. The examples below keep the
-> flat paths for readability — insert your `{entry_id}` when copying.
+> The integration creates `sensor.<tv_name>_personal` / `_store` / `_other`
+> with `file_list` and `file_urls` attributes, and
+> `camera.<tv_name>_current_artwork` for the artwork on screen. The examples
+> here use them. See [RELEASE_NOTES_9.6.0.md](../../RELEASE_NOTES_9.6.0.md).
 
 ## Quick Start
 
-### 1. Create Directory Structure
+### 1. Directory Structure
 
-The integration creates these automatically per TV. Manual creation is only
-needed if you build galleries outside the integration's managed folder:
-
-```bash
-mkdir -p /config/www/frame_art/YOUR_ENTRY_ID/personal
-mkdir -p /config/www/frame_art/YOUR_ENTRY_ID/store
-mkdir -p /config/www/frame_art/YOUR_ENTRY_ID/other
-```
+Nothing to create: the integration makes its per-TV folder
+(`/config/.storage/samsungtv_smart/frame_art/{entry_id}/`, with `personal/`,
+`store/`, `other/`) on startup.
 
 ### 2. Add Configuration
 
@@ -232,7 +227,7 @@ After adding scripts:
 1. Go to Developer Tools > Services
 2. Search for `script.frame_art_download_all`
 3. Call the service
-4. Check thumbnails in `/config/www/frame_art/{entry_id}/`
+4. Check thumbnails in `/config/.storage/samsungtv_smart/frame_art/{entry_id}/`, or the `file_list` of `sensor.<tv_name>_store`
 
 ### Test Automations
 

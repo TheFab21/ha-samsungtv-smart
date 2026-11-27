@@ -6,25 +6,19 @@
 # This configuration provides:
 # - Template sensors for gallery management
 # - Input helpers for UI controls
-# - Folder sensors to track thumbnails
 # ============================================
 
-# ===== SENSORS WITH PLATFORM =====
-# NOTE (v7): the integration now AUTO-CREATES folder sensors per TV
+# ===== FOLDER SENSORS =====
+# Nothing to declare: the integration creates, for each Frame,
 #   sensor.<tv_name>_personal / _store / _other
-# each exposing a `file_list` attribute. The manual `platform: folder`
-# sensors below are OPTIONAL in v7 — keep them only for custom directories
-# the integration doesn't manage. Paths are now per-TV (include {entry_id}).
-sensor:
-  # Track thumbnail files in store directory
-  - platform: folder
-    folder: /config/www/frame_art/YOUR_ENTRY_ID/store
-    filter: "*.jpg"
-    
-  # Track thumbnail files in personal directory  
-  - platform: folder
-    folder: /config/www/frame_art/YOUR_ENTRY_ID/personal
-    filter: "*.jpg"
+# with `file_list` and `file_urls` attributes. Since 9.6.0 the thumbnails are
+# in /config/.storage/samsungtv_smart/frame_art/<entry_id>/, out of www (which
+# Home Assistant serves without login), so a `platform: folder` sensor on
+# /config/www/frame_art/... finds nothing: remove any you had.
+#
+# The template sensors below take each picture's URL from `file_urls`
+# (those URLs carry a token that changes at each restart, so never build them
+# by hand). Replace `samsung_frame` with your TV's entity prefix.
 
 # ===== TEMPLATE SENSORS =====
 template:
@@ -38,15 +32,21 @@ template:
           {{ personal | length }}
         attributes:
           images: >
+            {% set urls = (state_attr('sensor.samsung_frame_personal', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_store', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_other', 'file_urls') or []) %}
             {% set ns = namespace(images=[]) %}
             {% for item in state_attr('sensor.samsung_frame_art_list', 'content_list') or [] %}
               {% if item.category_id == 'MY-C0002' %}
+                {% set url = urls | select('search', '/' ~ item.content_id ~ '\\.jpg\\?') | first | default('') %}
+                {% if url %}
                 {% set ns.images = ns.images + [{
-                  'path': '/local/frame_art/YOUR_ENTRY_ID/personal/' ~ item.content_id ~ '.jpg',
+                  'path': url,
                   'filename': item.content_id ~ '.jpg',
                   'name': item.content_id,
                   'content_id': item.content_id
                 }] %}
+                {% endif %}
               {% endif %}
             {% endfor %}
             {{ ns.images }}
@@ -60,15 +60,21 @@ template:
           {{ store | length }}
         attributes:
           images: >
+            {% set urls = (state_attr('sensor.samsung_frame_personal', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_store', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_other', 'file_urls') or []) %}
             {% set ns = namespace(images=[]) %}
             {% for item in state_attr('sensor.samsung_frame_art_list', 'content_list') or [] %}
               {% if item.content_id.startswith('SAM-') %}
+                {% set url = urls | select('search', '/' ~ item.content_id ~ '\\.jpg\\?') | first | default('') %}
+                {% if url %}
                 {% set ns.images = ns.images + [{
-                  'path': '/local/frame_art/YOUR_ENTRY_ID/store/' ~ item.content_id ~ '.jpg',
+                  'path': url,
                   'filename': item.content_id ~ '.jpg',
                   'name': item.content_id,
                   'content_id': item.content_id
                 }] %}
+                {% endif %}
               {% endif %}
             {% endfor %}
             {{ ns.images }}
@@ -82,17 +88,23 @@ template:
           {{ favorites | length }}
         attributes:
           images: >
+            {% set urls = (state_attr('sensor.samsung_frame_personal', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_store', 'file_urls') or [])
+               + (state_attr('sensor.samsung_frame_other', 'file_urls') or []) %}
             {% set ns = namespace(images=[]) %}
             {% for item in state_attr('sensor.samsung_frame_art_list', 'content_list') or [] %}
               {% if item.category_id == 'MY-C0004' %}
                 {% set subdir = 'personal' if item.content_id.startswith('MY_F') else ('store' if item.content_id.startswith('SAM-') else 'other') %}
+                {% set url = urls | select('search', '/' ~ item.content_id ~ '\\.jpg\\?') | first | default('') %}
+                {% if url %}
                 {% set ns.images = ns.images + [{
-                  'path': '/local/frame_art/YOUR_ENTRY_ID/' ~ subdir ~ '/' ~ item.content_id ~ '.jpg',
+                  'path': url,
                   'filename': item.content_id ~ '.jpg',
                   'name': item.content_id,
                   'content_id': item.content_id,
                   'subdirectory': subdir
                 }] %}
+                {% endif %}
               {% endif %}
             {% endfor %}
             {{ ns.images }}
