@@ -264,6 +264,10 @@
     "oauth_auth_failed": {
       "title": "Échec de l'authentification SmartThings pour {device_name}",
       "description": "Home Assistant n'a pas pu rafraîchir le jeton d'accès SmartThings pour **{device_name}**. Le jeton de rafraîchissement n'est plus valide — cela peut arriver lorsque le jeton est révoqué, expire ou est renouvelé par SmartThings.\n\nLes fonctions basées sur SmartThings (état d'alimentation, mode d'image, sélection de source) ne fonctionneront pas tant que vous ne vous serez pas reconnecté.\n\nPour corriger : allez dans **Paramètres → Appareils et services → Samsung TV Smart**, sélectionnez l'entrée concernée, choisissez **Reconfigurer**, et reconnectez-vous avec Samsung."
+    },
+    "legacy_art_camera": {
+      "title": "Caméra sur l'ancienne image Frame Art de {device_name}",
+      "description": "Ces caméras pointent encore vers l'ancien emplacement de l'œuvre affichée dans `www`, qui n'est plus utilisé : **{cameras}**.\n\nDepuis la 9.6.0, les images Frame Art ne sont plus dans `www`, où Home Assistant les servait à n'importe qui sans connexion. Pour garder une caméra de l'œuvre affichée :\n\n- utilisez la caméra **Œuvre affichée** que {device_name} fournit désormais, puis supprimez l'ancienne ; ou\n- pour une caméra Local File, remplacez son chemin par `{new_path}`.\n\nUne caméra Generic Camera ne peut pas simplement être redirigée (la nouvelle adresse contient un jeton qui change à chaque redémarrage) : utilisez plutôt la caméra **Œuvre affichée**.\n\nCette réparation disparaît dès qu'aucune caméra ne pointe plus vers l'ancien emplacement (vérifié au démarrage de l'intégration)."
     }
   },
   "entity": {
@@ -539,6 +543,11 @@
       },
       "art_color_temperature": {
         "name": "Température de couleur de l'Art Mode"
+      }
+    },
+    "camera": {
+      "art_current": {
+        "name": "Œuvre affichée"
       }
     }
   }

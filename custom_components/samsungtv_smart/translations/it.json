@@ -264,6 +264,10 @@
     "oauth_auth_failed": {
       "title": "Autenticazione SmartThings non riuscita per {device_name}",
       "description": "Home Assistant non è riuscito ad aggiornare il token di accesso SmartThings per **{device_name}**. Il token di aggiornamento non è più valido: può accadere quando il token viene revocato, scade o viene ruotato da SmartThings.\n\nLe funzioni basate su SmartThings (stato di accensione, modalità immagine, selezione sorgente) non funzioneranno finché non ti riconnetterai.\n\nPer risolvere, vai su **Impostazioni → Dispositivi e servizi → Samsung TV Smart**, seleziona la voce interessata, scegli **Riconfigura** e accedi nuovamente con Samsung."
+    },
+    "legacy_art_camera": {
+      "title": "Telecamera sulla vecchia immagine Frame Art di {device_name}",
+      "description": "Queste telecamere puntano ancora alla vecchia posizione dell'opera attuale in `www`, che non è più usata: **{cameras}**.\n\nDalla 9.6.0 le immagini Frame Art non sono più in `www`, dove Home Assistant le serviva a chiunque senza accesso. Per mantenere una telecamera dell'opera attuale:\n\n- usa la telecamera **Opera attuale** che {device_name} ora fornisce, poi elimina quella vecchia; oppure\n- per una telecamera Local File, cambia il percorso in `{new_path}`.\n\nUna Generic Camera non può semplicemente puntare altrove (il nuovo indirizzo contiene un token che cambia a ogni riavvio): usa invece la telecamera **Opera attuale**.\n\nQuesta riparazione scompare quando nessuna telecamera punta più alla vecchia posizione (verificato all'avvio dell'integrazione)."
     }
   },
   "entity": {
@@ -539,6 +543,11 @@
       },
       "art_color_temperature": {
         "name": "Temperatura del colore della modalità Arte"
+      }
+    },
+    "camera": {
+      "art_current": {
+        "name": "Opera attuale"
       }
     }
   }

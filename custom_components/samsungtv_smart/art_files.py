@@ -27,7 +27,9 @@ import secrets
 import shutil
 from urllib.parse import quote
 
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import STORAGE_DIR
 
 from .const import DOMAIN
@@ -36,6 +38,9 @@ _LOGGER = logging.getLogger(__name__)
 
 ART_URL_PREFIX = f"/api/{DOMAIN}/art"
 _TOKENS = f"{DOMAIN}_art_tokens"
+# Integrations a camera on the old current.jpg was commonly set up with: Local
+# File (a path under /config/www) and Generic Camera (a /local/ URL).
+_CAMERA_DOMAINS = ("local_file", "generic")
 
 
 def art_root(hass: HomeAssistant) -> str:
@@ -136,3 +141,48 @@ def migrate_legacy_art(hass: HomeAssistant, entry_id: str) -> int:
             art_dir(hass, entry_id),
         )
     return moved
+
+
+def _legacy_camera_titles(hass: HomeAssistant, entry_id: str) -> list[str]:
+    """Titles of the camera entries still pointing at the old www files."""
+    # The old file path and the old URL; not "frame_art/<id>/" alone, which
+    # the new private path contains too.
+    needles = (f"www/frame_art/{entry_id}/", f"/local/frame_art/{entry_id}/")
+    titles = []
+    for domain in _CAMERA_DOMAINS:
+        for cam in hass.config_entries.async_entries(domain):
+            values = (*cam.data.values(), *cam.options.values())
+            if any(isinstance(v, str) and any(n in v for n in needles) for v in values):
+                titles.append(cam.title or domain)
+    return titles
+
+
+@callback
+def async_check_legacy_art_cameras(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Raise a repair for cameras set up on the old ``www`` current.jpg.
+
+    Those files moved (migrate_legacy_art), so a Local File camera on
+    ``/config/www/frame_art/<entry_id>/current.jpg`` or a Generic Camera on
+    ``/local/frame_art/<entry_id>/current.jpg`` shows nothing any more. The
+    repair names them and points at the integration's own camera. It is
+    cleared at the next setup once none is left.
+    """
+    issue_id = f"legacy_art_camera_{entry.entry_id}"
+    titles = _legacy_camera_titles(hass, entry.entry_id)
+    if not titles:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        is_persistent=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="legacy_art_camera",
+        translation_placeholders={
+            "device_name": entry.title or entry.entry_id,
+            "cameras": ", ".join(titles),
+            "new_path": art_dir(hass, entry.entry_id, "current.jpg"),
+        },
+    )

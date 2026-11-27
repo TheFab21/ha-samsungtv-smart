@@ -230,3 +230,135 @@ def test_the_folder_sensor_gives_a_url_per_file_in_order(fh):
     assert "www" not in attrs["path"]
     # Tokened URLs stay out of the recorder's history.
     assert "file_urls" in FrameArtFolderSensor._unrecorded_attributes
+
+
+# --- the camera and the repair for hand-made cameras ----------------------------------
+
+from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
+
+from custom_components.samsungtv_smart import camera as art_camera  # noqa: E402
+from custom_components.samsungtv_smart.art_files import (  # noqa: E402
+    async_check_legacy_art_cameras,
+)
+from custom_components.samsungtv_smart.const import (  # noqa: E402
+    CONF_IS_FRAME_TV,
+    DATA_ART_API,
+    DATA_CFG,
+    DOMAIN,
+)
+from homeassistant.helpers import issue_registry as ir  # noqa: E402
+
+
+async def _setup_camera(hass, entry, art_api=None):
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        DATA_CFG: {},
+        DATA_ART_API: art_api,
+    }
+    added = []
+    await art_camera.async_setup_entry(hass, entry, added.extend)
+    return added
+
+
+async def test_a_frame_tv_gets_the_current_artwork_camera(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_IS_FRAME_TV: True})
+    [cam] = await _setup_camera(hass, entry)
+    assert cam.unique_id == f"{entry.entry_id}_art_current"
+    assert cam.translation_key == "art_current"
+    assert await cam.async_camera_image() is None  # nothing downloaded yet
+    _write(art_dir(hass, entry.entry_id, "current.jpg"), b"\xff\xd8art")
+    assert await cam.async_camera_image() == b"\xff\xd8art"
+
+
+async def test_no_camera_for_a_tv_without_art_mode(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    assert await _setup_camera(hass, entry) == []
+
+
+async def test_first_setup_probes_the_tv_like_the_other_art_entities(hass):
+    class _Art:
+        async def supported(self):
+            return True
+
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    assert len(await _setup_camera(hass, entry, _Art())) == 1
+
+
+def _issue(hass, entry):
+    return ir.async_get(hass).async_get_issue(
+        DOMAIN, f"legacy_art_camera_{entry.entry_id}"
+    )
+
+
+async def test_hand_made_cameras_on_the_old_file_raise_a_repair(hass):
+    tv = MockConfigEntry(domain=DOMAIN, title="The Frame", data={})
+    tv.add_to_hass(hass)
+    MockConfigEntry(
+        domain="local_file",
+        title="Frame art",
+        options={"file_path": f"/config/www/frame_art/{tv.entry_id}/current.jpg"},
+    ).add_to_hass(hass)
+    MockConfigEntry(
+        domain="generic",
+        title="Frame generic",
+        options={
+            "still_image_url": f"http://ha:8123/local/frame_art/{tv.entry_id}/current.jpg"
+        },
+    ).add_to_hass(hass)
+    # Another TV's camera, or an unrelated one, is not this TV's business.
+    MockConfigEntry(
+        domain="local_file",
+        title="Other TV",
+        options={"file_path": "/config/www/frame_art/OTHERENTRY01/current.jpg"},
+    ).add_to_hass(hass)
+    MockConfigEntry(
+        domain="local_file", title="Door", options={"file_path": "/config/door.jpg"}
+    ).add_to_hass(hass)
+
+    async_check_legacy_art_cameras(hass, tv)
+    issue = _issue(hass, tv)
+    assert issue is not None
+    assert issue.translation_key == "legacy_art_camera"
+    assert issue.translation_placeholders["cameras"] == "Frame art, Frame generic"
+    assert issue.translation_placeholders["device_name"] == "The Frame"
+    assert issue.translation_placeholders["new_path"].endswith(
+        f".storage/samsungtv_smart/frame_art/{tv.entry_id}/current.jpg"
+    )
+
+
+async def test_the_repair_goes_once_no_camera_is_left(hass):
+    tv = MockConfigEntry(domain=DOMAIN, title="The Frame", data={})
+    tv.add_to_hass(hass)
+    cam = MockConfigEntry(
+        domain="local_file",
+        title="Frame art",
+        options={"file_path": f"/config/www/frame_art/{tv.entry_id}/current.jpg"},
+    )
+    cam.add_to_hass(hass)
+    async_check_legacy_art_cameras(hass, tv)
+    assert _issue(hass, tv) is not None
+
+    # Repointed to the private file, as the repair suggests.
+    hass.config_entries.async_update_entry(
+        cam, options={"file_path": art_dir(hass, tv.entry_id, "current.jpg")}
+    )
+    async_check_legacy_art_cameras(hass, tv)
+    assert _issue(hass, tv) is None
+
+
+def test_every_translated_repair_keeps_its_placeholders():
+    import glob
+    import json
+    import re
+
+    base = os.path.join(os.path.dirname(art_files.__file__))
+    wanted = {"device_name", "cameras", "new_path"}
+    for path in [os.path.join(base, "strings.json")] + glob.glob(
+        os.path.join(base, "translations", "*.json")
+    ):
+        with open(path, encoding="utf-8") as f:
+            issue = json.load(f).get("issues", {}).get("legacy_art_camera")
+        if issue is None:
+            continue
+        text = issue["title"] + issue["description"]
+        assert set(re.findall(r"{(\w+)}", text)) <= wanted, path
+        assert {"cameras", "new_path"} <= set(re.findall(r"{(\w+)}", text)), path

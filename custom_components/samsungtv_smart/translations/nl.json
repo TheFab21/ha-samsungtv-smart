@@ -273,6 +273,11 @@
       "art_color_temperature": {
         "name": "Kleurtemperatuur kunstmodus"
       }
+    },
+    "camera": {
+      "art_current": {
+        "name": "Huidig kunstwerk"
+      }
     }
   },
   "config": {
@@ -540,6 +545,10 @@
     "oauth_auth_failed": {
       "title": "SmartThings-authenticatie mislukt voor {device_name}",
       "description": "Home Assistant kon het SmartThings-toegangstoken voor **{device_name}** niet vernieuwen. Het vernieuwingstoken is niet langer geldig — dit kan gebeuren wanneer het token wordt ingetrokken, verloopt of door SmartThings wordt geroteerd.\n\nOp SmartThings gebaseerde functies (aan-/uitstatus, beeldmodus, bronselectie) werken niet totdat je opnieuw verbinding maakt.\n\nGa om dit op te lossen naar **Instellingen → Apparaten & diensten → Samsung TV Smart**, selecteer de betreffende vermelding, kies **Opnieuw configureren** en meld je opnieuw aan met Samsung."
+    },
+    "legacy_art_camera": {
+      "title": "Camera op de oude Frame Art-afbeelding van {device_name}",
+      "description": "Deze camera's verwijzen nog naar de oude locatie van het huidige kunstwerk in `www`, die niet meer wordt gebruikt: **{cameras}**.\n\nSinds 9.6.0 staan de Frame Art-afbeeldingen niet meer in `www`, waar Home Assistant ze zonder inloggen aan iedereen aanbood. Om een camera van het huidige kunstwerk te houden:\n\n- gebruik de camera **Huidig kunstwerk** die {device_name} nu biedt en verwijder de oude; of\n- wijzig bij een Local File-camera het bestandspad in `{new_path}`.\n\nEen Generic Camera kan niet zomaar worden omgezet (het nieuwe adres bevat een token dat bij elke herstart verandert): gebruik in plaats daarvan de camera **Huidig kunstwerk**.\n\nDeze melding verdwijnt zodra geen camera meer naar de oude locatie verwijst (gecontroleerd bij het starten van de integratie)."
     }
   }
 }

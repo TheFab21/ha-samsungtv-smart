@@ -1187,6 +1187,22 @@ gives you rather than building them:
 A hard-coded `/local/frame_art/...` URL in a dashboard stops working: switch it
 to one of the above.
 
+**A camera of the artwork on screen.** Each Frame TV gets a
+`camera.<tv_name>_current_artwork` entity, which serves `current.jpg` through
+Home Assistant's camera proxy: use it in picture cards, notifications or
+HomeKit. It replaces the cameras people set up by hand on the old file, which
+no longer find it:
+
+- a **Local File** camera on `/config/www/frame_art/<entry_id>/current.jpg`:
+  use the new camera, or change its file path to
+  `/config/.storage/samsungtv_smart/frame_art/<entry_id>/current.jpg`;
+- a **Generic Camera** on `/local/frame_art/<entry_id>/current.jpg`: use the new
+  camera (the new URL carries a token that changes at each restart, so it
+  cannot be typed into a Generic Camera).
+
+Home Assistant raises a repair (Settings → Repairs) naming any such camera, and
+clears it once none is left.
+
 **Smart caching**: thumbnails are only downloaded once. Subsequent calls to
 `art_get_thumbnail` or `art_get_thumbnails_batch` skip files that already exist,
 making batch operations fast on repeat runs. Use `force_download: true` to
