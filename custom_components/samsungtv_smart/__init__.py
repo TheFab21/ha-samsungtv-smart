@@ -50,6 +50,7 @@ from homeassistant.helpers.typing import ConfigType
 from .api.art import SamsungTVAsyncArt
 from .api.samsungws import ConnectionFailure, Ping, SamsungTVWS
 from .api.smartthings import SmartThingsTV
+from .art_files import migrate_legacy_art
 from .const import (
     ATTR_DEVICE_MAC,
     ATTR_DEVICE_MODEL,
@@ -1295,6 +1296,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     except Exception as exc:  # pylint: disable=broad-except
         _LOGGER.warning("Could not register thumbnail view: %s", exc)
 
+    # Frame Art thumbnails, kept out of www so they are not public (#472).
+    try:
+        from .http_art import SamsungTVArtView
+
+        hass.http.register_view(SamsungTVArtView(hass))
+    except Exception as exc:  # pylint: disable=broad-except
+        _LOGGER.warning("Could not register Frame Art view: %s", exc)
+
     # One-click upload endpoint used by the art-upload card (pick a file on any
     # device → straight to the Frame, no folder sensor needed).
     try:
@@ -1329,6 +1338,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # migrate options to new format if required
     _migrate_options_format(hass, entry)
+
+    # Frame Art thumbnails used to sit in www, served without login (#472).
+    try:
+        await hass.async_add_executor_job(migrate_legacy_art, hass, entry.entry_id)
+    except OSError as exc:
+        _LOGGER.warning("Could not move Frame Art files out of www: %s", exc)
 
     # Dismiss any stale "local connection not authorized" / "IP Control
     # token problem" notifications left over from a previous session. Both

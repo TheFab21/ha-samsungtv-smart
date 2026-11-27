@@ -165,6 +165,9 @@ class _Coordinator(_Holder):
     def _has_current_thumbnail(self):
         return True
 
+    def _current_thumbnail_url(self):
+        return "/api/samsungtv_smart/art/abc/current.jpg?token=t&v=1"
+
     def _has_thumbnail_for(self, content_id):
         return True
 

@@ -48,6 +48,7 @@ from .api.ipcontrol import (
     SamsungIPControlTransportError,
     SamsungIPControlUnsupportedError,
 )
+from .art_files import art_dir, art_file_url, art_url
 from .const import (
     ART_IDENTIFY_DEBOUNCE,
     CONF_API_KEY,
@@ -400,10 +401,10 @@ async def async_setup_entry(  # noqa: C901
             )
 
     if is_supported:
-        # Create www/frame_art/{entry_id} directory if it doesn't exist
+        # The TV's private Frame Art folder (art_files, #472).
         import os
 
-        www_path = hass.config.path("www", "frame_art", entry.entry_id)
+        www_path = art_dir(hass, entry.entry_id)
         try:
             os.makedirs(www_path, exist_ok=True)
             _LOGGER.debug("Frame Art directory ready: %s", www_path)
@@ -867,9 +868,7 @@ class FrameArtCoordinator(DataUpdateCoordinator):
             data["art_mode"] = "off"
             # Keep current_thumbnail_url from last known state (for Lovelace display)
             if self._has_current_thumbnail():
-                data["current_thumbnail_url"] = (
-                    f"/local/frame_art/{self._entry.entry_id}/current.jpg"
-                )
+                data["current_thumbnail_url"] = self._current_thumbnail_url()
             # Keep artwork_count from previous data if available
             if self.data and self.data.get("artwork_count") is not None:
                 data["artwork_count"] = self.data["artwork_count"]
@@ -1047,9 +1046,7 @@ class FrameArtCoordinator(DataUpdateCoordinator):
 
             # If we have a saved thumbnail, use it
             if self._has_current_thumbnail():
-                data["current_thumbnail_url"] = (
-                    f"/local/frame_art/{self._entry.entry_id}/current.jpg"
-                )
+                data["current_thumbnail_url"] = self._current_thumbnail_url()
 
             # Get artwork count (throttled, only if art_mode is on)
             if data["art_mode"] == "on":
@@ -1259,10 +1256,16 @@ class FrameArtCoordinator(DataUpdateCoordinator):
         """Check if current thumbnail file exists."""
         import os
 
-        www_path = self._hass.config.path(
-            "www", "frame_art", self._entry.entry_id, "current.jpg"
-        )
+        www_path = art_dir(self._hass, self._entry.entry_id, "current.jpg")
         return os.path.isfile(www_path)
+
+    def _current_thumbnail_url(self) -> str | None:
+        """The dashboard URL of current.jpg, which changes with the file."""
+        return art_file_url(
+            self._hass,
+            self._entry.entry_id,
+            art_dir(self._hass, self._entry.entry_id, "current.jpg"),
+        )
 
     def _clear_store_retry(self, content_id: str) -> None:
         """Clear the Art Store retry cooldown once ``content_id`` is resolved."""
@@ -1466,7 +1469,7 @@ class FrameArtCoordinator(DataUpdateCoordinator):
         try:
             import os
 
-            www_path = self._hass.config.path("www", "frame_art", self._entry.entry_id)
+            www_path = art_dir(self._hass, self._entry.entry_id)
 
             def _write_placeholder():
                 os.makedirs(www_path, exist_ok=True)
@@ -1597,7 +1600,7 @@ class FrameArtCoordinator(DataUpdateCoordinator):
                 await asyncio.sleep(retry_delays[attempt])
 
         if thumbnail_data:
-            www_path = self._hass.config.path("www", "frame_art", self._entry.entry_id)
+            www_path = art_dir(self._hass, self._entry.entry_id)
 
             def _write_thumbnails():
                 os.makedirs(www_path, exist_ok=True)
@@ -1726,7 +1729,7 @@ class FrameArtCoordinator(DataUpdateCoordinator):
         import os
         import shutil
 
-        www_path = self._hass.config.path("www", "frame_art", self._entry.entry_id)
+        www_path = art_dir(self._hass, self._entry.entry_id)
         subdir = self._subdir_for_content(content_id)
         content_file = f"{content_id.replace(':', '_')}.jpg"
         cached_path = os.path.join(www_path, subdir, content_file)
@@ -1965,8 +1968,9 @@ class FrameArtFolderSensor(SensorEntity):
     _attr_should_poll = True
     # file_list grows with the number of thumbnails and can exceed the
     # recorder's 16 KiB per-state attribute limit on TVs with many artworks.
-    # Keep it live for folder-gallery-card but out of the database history.
-    _unrecorded_attributes = frozenset({"file_list"})
+    # Keep it live for folder-gallery-card but out of the database history,
+    # with file_urls, which also carry this run's access token (#472).
+    _unrecorded_attributes = frozenset({"file_list", "file_urls"})
 
     def __init__(
         self,
@@ -1989,6 +1993,7 @@ class FrameArtFolderSensor(SensorEntity):
             identifiers={(DOMAIN, device_unique_id)},
         )
         self._files: list[str] = []
+        self._file_urls: list[str] = []
         self._total_bytes: int = 0
 
     @property
@@ -2005,42 +2010,55 @@ class FrameArtFolderSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return file list and metadata compatible with platform:folder."""
-        www_path = self.hass.config.path(
-            "www", "frame_art", self._entry.entry_id, self._subdir
-        )
+        """Return file list and metadata compatible with platform:folder.
+
+        ``file_list`` holds file paths, as platform:folder does; since the
+        files left www (#472) no ``/local/`` URL can be derived from them, so
+        ``file_urls`` gives the URL of each one, in the same order.
+        """
+        www_path = art_dir(self.hass, self._entry.entry_id, self._subdir)
         return {
             "path": f"{www_path}/",
             "filter": "*.jpg",
             "number_of_files": len(self._files),
             "bytes": self._total_bytes,
             "file_list": self._files,
+            "file_urls": self._file_urls,
         }
 
     async def async_update(self) -> None:
         """Scan the subdirectory and refresh file list + total size."""
         import os
 
-        www_path = self.hass.config.path(
-            "www", "frame_art", self._entry.entry_id, self._subdir
-        )
+        www_path = art_dir(self.hass, self._entry.entry_id, self._subdir)
 
-        def _scan() -> tuple[list[str], int]:
-            files: list[str] = []
+        def _scan() -> tuple[list[tuple[str, int]], int]:
+            files: list[tuple[str, int]] = []
             total: int = 0
             if not os.path.isdir(www_path):
                 return files, total
             for fname in sorted(os.listdir(www_path)):
                 if fname.lower().endswith(".jpg"):
                     fpath = os.path.join(www_path, fname)
-                    files.append(fpath)
                     try:
-                        total += os.path.getsize(fpath)
+                        stat = os.stat(fpath)
                     except OSError:
-                        pass
+                        continue
+                    files.append((fpath, int(stat.st_mtime)))
+                    total += stat.st_size
             return files, total
 
-        self._files, self._total_bytes = await self.hass.async_add_executor_job(_scan)
+        files, self._total_bytes = await self.hass.async_add_executor_job(_scan)
+        self._files = [fpath for fpath, _ in files]
+        self._file_urls = [
+            art_url(
+                self.hass,
+                self._entry.entry_id,
+                f"{self._subdir}/{os.path.basename(fpath)}",
+                version=mtime,
+            )
+            for fpath, mtime in files
+        ]
 
 
 class FrameArtOrientationSensor(ChangedCoordinatorEntity, SensorEntity):
@@ -2432,9 +2450,7 @@ class FrameArtSensor(ChangedCoordinatorEntity, SensorEntity):
             if thumbnail_data:
                 import os
 
-                www_path = self.hass.config.path(
-                    "www", "frame_art", self._entry.entry_id
-                )
+                www_path = art_dir(self.hass, self._entry.entry_id)
 
                 def _write_thumbnail():
                     if content_id.startswith("MY_F"):
@@ -2459,9 +2475,8 @@ class FrameArtSensor(ChangedCoordinatorEntity, SensorEntity):
                     "service": "get_thumbnail",
                     "success": True,
                     "content_id": content_id,
-                    "thumbnail_url": (
-                        f"/local/frame_art/{self._entry.entry_id}"
-                        f"/{subdir}/{file_name}"
+                    "thumbnail_url": art_url(
+                        self.hass, self._entry.entry_id, f"{subdir}/{file_name}"
                     ),
                     "size": len(thumbnail_data),
                 }

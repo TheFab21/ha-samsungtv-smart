@@ -16,11 +16,16 @@ from aiohttp import web
 
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import STORAGE_DIR
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 THUMBNAIL_URL = "/api/samsungtv_smart/thumbnail"
-_CACHE_SUBDIR = ("frame_art", ".thumb_cache")
+# Resized copies are kept out of www (#472): Home Assistant serves www to
+# anyone without login, and the cache used to sit at www/frame_art/.thumb_cache.
+_CACHE_SUBDIR = (STORAGE_DIR, DOMAIN, "thumb_cache")
 _DEFAULT_W = 400
 # The endpoint is unauthenticated and caches one file per (image, width): with
 # any width from 64 to 1024 accepted, anyone who can reach Home Assistant could
@@ -60,7 +65,7 @@ class SamsungTVThumbnailView(HomeAssistantView):
         """Initialize the view."""
         self._hass = hass
         self._www = os.path.realpath(hass.config.path("www"))
-        self._cache_dir = os.path.join(hass.config.path("www"), *_CACHE_SUBDIR)
+        self._cache_dir = hass.config.path(*_CACHE_SUBDIR)
 
     async def get(self, request: web.Request) -> web.StreamResponse:
         """Return a resized JPEG for ``?path=<url>&w=<width>``."""

@@ -47,6 +47,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
+from .art_files import art_dir
 from .const import (
     ART_CACHE_TTL_HIT,
     ART_CACHE_TTL_MISS,
@@ -925,7 +926,7 @@ async def async_identify_for_entry(
             "content_id": content_id,
         }
 
-    path = hass.config.path("www", "frame_art", entry.entry_id, "current.jpg")
+    path = art_dir(hass, entry.entry_id, "current.jpg")
     try:
         image_bytes = await hass.async_add_executor_job(_read_file_bytes, path)
     except OSError as ex:
