@@ -18,4 +18,4 @@ casttube>=0.2.1
 # The camera platform (camera.py) imports Home Assistant's camera component,
 # which needs this at import time; a real install has it from that
 # component's own requirements. Same pin as homeassistant 2026.10.4.
-PyTurboJPEG==1.8.3
+PyTurboJPEG==2.6.1
